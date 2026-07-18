@@ -1,4 +1,4 @@
-# Reef Command — Design
+# Reef Command — Design (DRAFT — not final; under active discussion)
 
 A two-sided chat agent for a live coral e-commerce store, built for the
 ClickHouse × Trigger.dev Virtual Summer Hackathon 2026 ("Beyond the Wall of
