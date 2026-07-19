@@ -39,7 +39,7 @@ const weekIndexOf = (ms: number) => Math.floor((ms - ANCHOR) / WEEK);
 const destOf = (c: SynthCustomer) => DESTINATIONS[c.id % DESTINATIONS.length];
 
 /** Shipment weight: unit weight × corals + box tare, floored (generic constants). */
-export const weightLb = (items: number) => Math.max(4, items * 0.5 + 1.5);
+export const weightLb = (items: number) => Math.max(4, items * 0.6 + 2);
 
 // ---------------------------------------------------------------- week script
 

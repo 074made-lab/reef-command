@@ -77,12 +77,13 @@ function buildPool(seed: number): SynthCustomer[] {
     });
   }
 
-  // percentile tier cuts over spendFactor: 5% / 20% / 50% (mirrors real practice)
+  // percentile tier cuts over spendFactor (generic cuts; the pattern —
+  // top slice = T1, long tail = T4 — is the point, not the exact numbers)
   const sorted = [...raw].sort((a, b) => b.spendFactor - a.spendFactor);
   const tierOf = new Map<number, 1 | 2 | 3 | 4>();
   sorted.forEach((c, idx) => {
     const pct = idx / sorted.length;
-    tierOf.set(c.id, pct < 0.05 ? 1 : pct < 0.20 ? 2 : pct < 0.50 ? 3 : 4);
+    tierOf.set(c.id, pct < 0.10 ? 1 : pct < 0.30 ? 2 : pct < 0.60 ? 3 : 4);
   });
   return raw.map((c) => ({ ...c, tier: tierOf.get(c.id)! }));
 }
