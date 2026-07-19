@@ -83,7 +83,12 @@ Driven by the durable week-cycle task (§4):
 - **Demo sends are simulated** (rendered previews + send log; no real e-mail/
   SMS service from a public repo). The seam makes the real sender a drop-in.
 
-### Task 3 — Combined orders (the core)
+### Task 3 — Combined orders (the core — and the OLTP+OLAP showcase)
+
+This task carries the bonus-category story: every consequential write here
+lands in Postgres (transactional truth), emits events to ClickHouse, and the
+affected charts update live on screen — see §4 for the two on-camera loops
+(order merge, label batch purchase).
 
 1. **Real-time monitoring + merge.** All three platforms' new orders stream
    in (auction wins, add-ons, and each platform's own organic sales). Every
