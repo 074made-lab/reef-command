@@ -1,61 +1,113 @@
 /**
  * Seam A — DataStore. Every read/write in the system goes through this
- * interface. The hackathon implementation is ClickHouse (OLAP stream +
+ * interface. The hackathon implementation is ClickHouse (OLAP event stream +
  * analytics) plus ClickHouse-managed Postgres (OLTP truth). A port to another
  * stack replaces the implementation, not the callers.
+ *
+ * Money is integer cents everywhere.
  */
 
-import type { AgingItem, OrderSummary, ProductCard } from "./protocol";
+import type {
+  AttentionItem, AudienceBreakdown, CoralCategory, CustomerRef,
+  CustomerRequest, FunnelStep, LotPrice, OrderSummary, Platform,
+  ReportSection, Series, ShipmentLine, WeatherFlag,
+} from "./protocol";
 
-/** Append-only event, the OLAP side. */
+/** Append-only event, the OLAP side. Mirrors db/clickhouse/0001_events.sql. */
 export type ReefEvent = {
   ts: string;                            // ISO8601
   type:
-    | "order_placed" | "order_shipped" | "bid_placed" | "auction_ended"
-    | "message_in" | "message_answered" | "inventory_move" | "pageview"
-    | "draft_edited" | "action_executed";
-  channel: "web" | "auction" | "marketplace";
+    // commerce
+    | "pageview" | "order_placed" | "order_cancelled" | "inventory_move"
+    // auction arc (THU open → SAT close)
+    | "auction_opened" | "bid_placed" | "auction_closed" | "auction_won"
+    | "discount_code_issued" | "discount_code_redeemed"
+    // combined-order pipeline
+    | "orders_merged" | "label_purchased" | "label_voided" | "order_shipped"
+    | "order_delivered"
+    // communication
+    | "campaign_sent" | "message_out" | "message_in" | "message_answered"
+    | "request_received" | "case_opened" | "case_decided"
+    // ops
+    | "weather_checked" | "action_executed";
+  platform: Platform | "system";
   sku?: string;
+  category?: CoralCategory;
+  customerId?: number;                   // 0/absent = unknown or n/a
   orderId?: string;
-  amountUsd?: number;
+  amountCents?: number;
   meta?: Record<string, unknown>;
 };
 
-export type RevenuePulse = {
-  todayUsd: number; ordersToday: number; deltaPct: number;
-  minutely: { t: string; v: number }[];
+// ---------- OLTP shapes ----------
+
+/** The customer-360 profile — Task 1's single read. */
+export type Customer360 = {
+  ref: CustomerRef;
+  identity: {
+    name: string;
+    emails: string[];
+    phones: string[];
+    accounts: { platform: Platform; handle: string }[];
+  };
+  preferences: { categories: CoralCategory[]; contact: "email" | "sms" | "both" };
+  totals: { orders: number; spentCents: number; firstOrderAt?: string; lastOrderAt?: string };
+  orders: OrderSummary[];
+  products: { sku: string; name: string; category: CoralCategory; qty: number; lastAt: string }[];
+  messages: { at: string; direction: "in" | "out"; preview: string; campaignId?: string }[];
+  requests: CustomerRequest[];
 };
 
-export type DriftRow = {
-  sku: string; name: string;
-  byChannel: Record<string, number>;     // channel -> listed qty
-  truth: number;                         // OLTP inventory
-  risk: "oversell" | "understock" | "ok";
+export type MatchResult = {
+  customerId: number;
+  confidence: number;                    // 1.0 exact email … lower for name-only
+  matchedOn: "email" | "phone" | "name";
 };
 
 export type CaseRecord = {
-  caseId: string; kind: "doa_claim" | "refund_request" | "discount_over_sop" | "other";
-  orderId: string; status: "open" | "approved" | "rejected";
-  summary: string; evidence: { label: string; detail: string }[];
-  createdAt: string; decidedAt?: string;
+  caseId: string;
+  kind: "doa_claim" | "refund_request" | "beyond_template" | "other";
+  orderId?: string;
+  customerId: number;
+  status: "open" | "approved" | "rejected";
+  summary: string;
+  evidence: { label: string; detail: string }[];
+  createdAt: string;
+  decidedAt?: string;
+};
+
+export type RevenuePulse = {
+  weekToDateCents: number;
+  ordersWeekToDate: number;
+  deltaWoWPct: number;
+  hourly: { t: string; v: number }[];
 };
 
 export interface DataStore {
-  // OLAP — analytics reads
+  // ---------- OLAP (ClickHouse) ----------
   insertEvents(events: ReefEvent[]): Promise<void>;
   revenuePulse(): Promise<RevenuePulse>;
-  salesTimeline(fromIso: string, toIso: string, bucket: "minute" | "hour"): Promise<{ t: string; v: number; channel: string }[]>;
-  anomalyWindow(dayIso: string): Promise<{ t: string; v: number; expected: number }[]>;
-  agingQueue(slaHours: number): Promise<AgingItem[]>;
-  inventoryDrift(): Promise<DriftRow[]>;
+  salesTimeline(fromIso: string, toIso: string, bucket: "minute" | "hour" | "day"): Promise<Series[]>;
+  auctionBoard(): Promise<{ lots: LotPrice[]; closesAt: string }>;
+  cycleFunnel(weekLabel: string): Promise<FunnelStep[]>;
+  weeklyReport(weekLabel: string): Promise<ReportSection[]>;   // incl. WoW/MoM + retention lenses
+  attentionFeed(): Promise<AttentionItem[]>;
 
-  // OLTP — transactional truth
-  getOrder(orderId: string): Promise<OrderSummary | null>;
-  ordersDueWithin(hours: number): Promise<OrderSummary[]>;
-  searchProducts(filters: Record<string, unknown>): Promise<ProductCard[]>;
-  setInventory(sku: string, qty: number): Promise<void>;
+  // ---------- OLTP (Postgres) ----------
+  getCustomer(customerId: number): Promise<Customer360 | null>;
+  matchCustomer(contact: { email?: string; phone?: string; name?: string }): Promise<MatchResult | null>;
+  upsertOrder(order: OrderSummary & { customerContact?: { email?: string; phone?: string; name?: string } }): Promise<{ orderId: string; mergeCandidate?: MatchResult }>;
+  mergeOrders(orderIds: string[], customerId: number): Promise<OrderSummary>;   // → combined order
+  unshippedShipments(weekLabel: string): Promise<ShipmentLine[]>;
+  purchaseLabels(shipmentIds: string[]): Promise<ShipmentLine[]>;              // after waitpoint approval
+  voidLabel(shipmentId: string, reason: string): Promise<ShipmentLine>;
+  weatherFlags(weekLabel: string): Promise<WeatherFlag[]>;
 
-  // Cases — the approval bridge between concierge and copilot
+  // campaigns
+  selectAudience(criteria: string): Promise<AudienceBreakdown>;
+  recordSends(campaignId: string, customerIds: number[], channel: "email" | "sms"): Promise<void>;
+
+  // cases — the approval bridge between concierge and copilot
   createCase(c: Omit<CaseRecord, "caseId" | "status" | "createdAt">): Promise<CaseRecord>;
   listOpenCases(): Promise<CaseRecord[]>;
   decideCase(caseId: string, decision: "approved" | "rejected"): Promise<CaseRecord>;
