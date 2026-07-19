@@ -1,5 +1,5 @@
 /**
- * Deterministic synthetic customer pool (~420 customers).
+ * Deterministic synthetic customer pool (~1,600 customers).
  *
  * Built to exercise the customer-360 matcher (Task 1):
  *  - ~35% hold accounts on 2+ platforms (merge fodder for Task 3.1)
@@ -22,6 +22,9 @@ export type SynthCustomer = {
   phone?: string;
   tier: 1 | 2 | 3 | 4;
   spendFactor: number;                   // relative order-size/frequency multiplier
+  joinWeek: number;                      // cycle-week index (vs generator ANCHOR) when
+                                         // this customer first appears — the pool GROWS
+                                         // over time so new-customer rate & retention are real
   platforms: { platform: Platform; handle: string; email: string; phone?: string }[];
   auctionActive: boolean;
   prefCategories: CoralCategory[];
@@ -35,7 +38,7 @@ const NOUN = ["builder", "keeper", "hunter", "farmer", "fan", "guy", "gal", "dan
 const DOMAINS = ["example.com", "example.net", "example.org", "mail.example", "inbox.example"];
 const CATS: CoralCategory[] = ["zoas", "euphyllia", "goni", "mushroom", "sps", "other"];
 
-export const POOL_SIZE = 420;
+export const POOL_SIZE = 1600;
 
 function buildPool(seed: number): SynthCustomer[] {
   const rng = mulberry32(seed);
@@ -48,7 +51,7 @@ function buildPool(seed: number): SynthCustomer[] {
 
     // lognormal-ish spend propensity (Box–Muller)
     const n = Math.sqrt(-2 * Math.log(rng() || 1e-9)) * Math.cos(2 * Math.PI * rng());
-    const spendFactor = Math.exp(0.6 * n);
+    const spendFactor = Math.exp(0.9 * n);   // heavy tail: a few whales, a long tail of one-time buyers
 
     const primary: Platform = rng() < 0.45 ? "web" : rng() < 0.55 ? "auction" : "marketplace";
     const platforms: SynthCustomer["platforms"] = [
@@ -70,7 +73,9 @@ function buildPool(seed: number): SynthCustomer[] {
     }
 
     raw.push({
-      id: i, displayName: handle, email, phone, spendFactor, platforms,
+      id: i, displayName: handle, email, phone, spendFactor,
+      joinWeek: Math.floor(rng() * 38) - 8,      // steady acquisition, weeks -8 … 29
+      platforms,
       auctionActive: platforms.some((p) => p.platform === "auction") && rng() < 0.75,
       prefCategories: [CATS[Math.floor(rng() * CATS.length)], ...(rng() < 0.4 ? [CATS[Math.floor(rng() * CATS.length)]] : [])],
       contact: rng() < 0.5 ? "email" : rng() < 0.7 ? "both" : "sms",

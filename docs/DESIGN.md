@@ -137,6 +137,9 @@ trajectory, not a snapshot.
 - **Product analysis:** six categories — zoas, euphyllia, goni, mushroom,
   sps, other — with unit price, share of sales, and WoW movement, to steer
   next week's stocking.
+- **Auction top 10:** the week's ten highest hammer prices — item, category,
+  winner handle, hammer price, vs its base price — the fastest read on what
+  the market wants more of next week.
 - **Cycle funnel:** auction win → discount code → cross-platform add-on
   conversion (`windowFunnel` over the event stream) — the weekly economic
   thesis, quantified in one query and compared against previous weeks.

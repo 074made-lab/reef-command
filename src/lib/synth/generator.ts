@@ -24,7 +24,7 @@
  */
 
 import { AUCTIONABLE, CATALOG, DESTINATIONS, type CatalogItem } from "./catalog";
-import { AUCTION_CUSTOMERS, CUSTOMERS, type SynthCustomer } from "./customers";
+import { CUSTOMERS, type SynthCustomer } from "./customers";
 import { mulberry32, pick } from "./rand";
 import type { ReefEvent } from "../datastore";
 
@@ -37,6 +37,39 @@ const ANCHOR = Date.UTC(2026, 0, 1);
 
 const weekIndexOf = (ms: number) => Math.floor((ms - ANCHOR) / WEEK);
 const destOf = (c: SynthCustomer) => DESTINATIONS[c.id % DESTINATIONS.length];
+
+/** Customers who have joined by the given cycle week — the pool grows over
+ *  time so the new-customer rate and both retention lenses stay realistic. */
+type Pool = { all: SynthCustomer[]; auction: SynthCustomer[]; cumAll: number[]; cumAuction: number[] };
+const activeCache = new Map<number, Pool>();
+
+/** Cumulative spendFactor² weights — heavy-tail buying: whales order weekly,
+ *  most customers order once or twice ever (keeps repeat-rate realistic). */
+function cumWeights(cs: SynthCustomer[]): number[] {
+  const cum: number[] = [];
+  let acc = 0;
+  for (const c of cs) { acc += c.spendFactor ** 2; cum.push(acc); }
+  return cum;
+}
+
+function pickWeighted(rng: () => number, cs: SynthCustomer[], cum: number[]): SynthCustomer {
+  const target = rng() * cum[cum.length - 1];
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < target) lo = mid + 1; else hi = mid; }
+  return cs[lo];
+}
+
+function activePool(weekIndex: number): Pool {
+  const hit = activeCache.get(weekIndex);
+  if (hit) return hit;
+  let all = CUSTOMERS.filter((c) => c.joinWeek <= weekIndex);
+  if (!all.length) all = CUSTOMERS.slice(0, 40);
+  let auction = all.filter((c) => c.auctionActive);
+  if (!auction.length) auction = all;
+  const pool: Pool = { all, auction, cumAll: cumWeights(all), cumAuction: cumWeights(auction) };
+  activeCache.set(weekIndex, pool);
+  return pool;
+}
 
 /** Shipment weight: unit weight × corals + box tare, floored (generic constants). */
 export const weightLb = (items: number) => Math.max(4, items * 0.6 + 2);
@@ -105,6 +138,7 @@ function weekScript(weekIndex: number, seed: number): Script {
 
   const rng = mulberry32((seed * 2654435761) ^ weekIndex);
   const script: Script = new Map();
+  const pool = activePool(weekIndex);
   const w0 = ANCHOR + weekIndex * WEEK;              // THU 00:00
   const day = (d: number, h: number, m = 0) => w0 + ((d * 24 + h) * 60 + m) * MIN;
   // d: 0=THU 1=FRI 2=SAT 3=SUN 4=MON 5=TUE 6=WED
@@ -124,13 +158,13 @@ function weekScript(weekIndex: number, seed: number): Script {
   for (const lot of lots) {
     const nBids = 8 + Math.floor(rng() * 18);
     let price = Math.round(lot.item.basePriceCents * 0.35);
-    let bidder: SynthCustomer = pick(rng, AUCTION_CUSTOMERS);
+    let bidder: SynthCustomer = pickWeighted(rng, pool.auction, pool.cumAuction);
     for (let b = 0; b < nBids; b++) {
       const r = rng();
       const [d, h0, h1] = r < 0.2 ? [0, 19, 23] : r < 0.45 ? [1, 19, 23] : [2, 17, 22];
       const ms = day(d, h0) + Math.floor(rng() * (h1 - h0) * 60) * MIN;
       price += Math.round(lot.item.basePriceCents * (0.06 + rng() * 0.09));
-      bidder = pick(rng, AUCTION_CUSTOMERS);
+      bidder = pickWeighted(rng, pool.auction, pool.cumAuction);
       at(script, ms, {
         ts: new Date(ms).toISOString(), type: "bid_placed", platform: "auction",
         sku: lot.item.sku, category: lot.item.category, customerId: bidder.id,
@@ -301,7 +335,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   }
 
   // --- campaign cadence
-  const marketable = CUSTOMERS.filter((c) => c.tier <= 3);
+  const marketable = pool.all.filter((c) => c.tier <= 3);
   campaign(script, day(5 - 7, 10), `CMP-${weekIndex}-announce`, "announce", marketable,
     "This week's auction: 12 lots go live Thursday 6pm — preview inside.");
   // NOTE: TUE of the SAME cycle week is day index -2 relative to the THU anchor;
@@ -311,7 +345,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   campaign(script, day(0, 9), `CMP-${weekIndex}-reminder`, "reminder", marketable,
     "Auction opens tonight 6pm. Set your alarms.");
   campaign(script, day(2, 20, 30), `CMP-${weekIndex}-live`, "live",
-    AUCTION_CUSTOMERS.filter((c) => c.tier <= 3),
+    pool.auction.filter((c) => c.tier <= 3),
     "90 minutes left — current leaders inside, don't lose your torch.");
   campaign(script, closeMs + 30 * MIN, `CMP-${weekIndex}-winners`, "winners", winnerCustomers,
     "You won! Payment link inside + a code for add-ons — ship together Tue/Wed, one shipping fee.");
@@ -353,6 +387,7 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
   const ts = minuteStart.toISOString();
   const events: ReefEvent[] = [];
   const lvl = intensity(minuteStart);
+  const pool = activePool(weekIndexOf(minuteStart.getTime()));
 
   const pv = Math.floor(lvl.pageviews * (0.5 + rng()));
   for (let i = 0; i < pv; i++) {
@@ -361,7 +396,7 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
   }
 
   if (rng() < lvl.orders) {
-    const cust = pick(rng, CUSTOMERS);
+    const cust = pickWeighted(rng, pool.all, pool.cumAll);
     const platform = rng() < 0.65 ? "web" : "marketplace";
     const item = pick(rng, CATALOG);
     const qty = rng() < 0.8 ? 1 : 2;
@@ -373,7 +408,7 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
   }
 
   if (rng() < lvl.messages) {
-    const cust = pick(rng, CUSTOMERS);
+    const cust = pick(rng, pool.all);
     const id = `MSG-${Math.floor(rng() * 1e6)}`;
     events.push({
       ts, type: "message_in", platform: pick(rng, ["web", "auction", "marketplace"] as const),
