@@ -1,348 +1,323 @@
-# Reef Command — Design (v2)
+# Reef Command — Design (v3)
 
-> **Status:** Capability skeleton approved by owner 2026-07-18. Implementation
-> details may still evolve after team review. No application code has been
-> written against this document yet.
+> **Status:** Approved by the team 2026-07-19. This version supersedes v2's
+> capability-stack framing with a sharper spine: **the auction week**. Build
+> starts against this document.
 >
 > Built for the ClickHouse × Trigger.dev Virtual Summer Hackathon 2026
 > ("Beyond the Wall of Text"). Designed from day one to migrate off hackathon
-> infrastructure and into the owner's own stack (see §9).
+> infrastructure onto the owner's own stack (§9).
 
 ## 0. What this is
 
-**Reef Command is the operational front door for a small physical-commerce
-business — and the engine that gradually, auditably takes over its digital
-operations.**
+**One week of a live-coral e-commerce business, run from one chat window.**
 
-It is a chat agent whose answers are visual, interactive components. But the
-product thesis is bigger than rendering: today the business runs on ~23
-scheduled jobs that push reports at a human, plus static dashboards and a
-command-line approval queue. **The human is the bus** — every signal converges
-on the owner, who merges, judges, decides, and executes.
-
-Reef Command inverts that. One conversational surface where the owner:
-
-1. sees what needs attention the moment they open it,
-2. can ask *any* question about the business and get a correct answer or an
-   honest refusal,
-3. approves consequential actions with one click on assembled evidence, and
-4. — critically — where **every click teaches the system**, so the set of
-   things that still need a human shrinks measurably over time.
-
-**North-star metric:** owner decisions per week go *down* while business
-metrics go *up*. That is the progress bar of an AI-native company.
-
-The domain is a real live-coral e-commerce operation (Tue/Wed-only shipping of
-live animals, weather-gated packing, three sales channels, weekly auctions).
-All data in this repo is synthetic (§8), but the problems are not.
-
-## 1. Operating doctrine
-
-The design implements one loop, borrowed from the owner's company constitution:
+The business (modeled on a real coral store; all data synthetic) runs a weekly
+multi-platform cycle:
 
 ```text
-GOAL -> SENSE -> IDENTIFY -> PRIORITIZE -> ACT OR REQUEST HUMAN
-     -> VERIFY -> FOLLOW UP -> LEARN
+THU  auction opens on the auction platform (ReefnBid-style)
+SAT  auction closes → winners get payment instructions + discount codes
+     for the web store (Shopify-style) and marketplace (eBay-style)
+SUN–MON  winners add on: one shipping fee, more corals; add-on margin
+     beats auction margin — win-win
+MON  label day: product labels + shipping labels (weight calc, weather
+     check, batch purchase)
+TUE–WED  combined shipping (live animals ship Tue/Wed only)
+WED  weekly report closes the cycle and retargets next week's campaigns
 ```
 
-Most ops tooling only covers the middle (SENSE/IDENTIFY/ACT: dashboards,
-alerts, runbooks). The two ends — GOAL/PRIORITIZE (what should we do next?)
-and FOLLOW UP/LEARN (did it close? did we get smarter?) — normally live in the
-owner's head. Capability 0 exists to move them into the system.
+Coral shipping is expensive; customers want one shipping fee to cover as many
+corals as possible. Combining an auction win with add-on orders from other
+platforms is the store's core economic move — and coordinating it across
+three platforms is the store's hardest operational problem. That coordination
+is what Reef Command automates, visualizes, and gates.
 
-Hard boundaries (constitutional, non-negotiable):
+The chat surface is the only entrance: every artifact the system produces is
+an interactive component in the conversation; every consequential action is a
+chip on a card. Chat is the frame, components are the answers — the hackathon
+theme, applied to a real operating rhythm.
 
-- **Money is always human**: refunds, charges, purchases, transfers. The agent
-  assembles evidence and asks; it never executes.
-- **No fabrication**: every number traces to a query, every policy answer to a
-  document. Unknown stays unknown, stated plainly.
-- **No proactive customer outreach**; the concierge is inbound-only.
-- **The agent never widens its own authority** — promotion is proposed with
-  evidence and decided by the owner (§5).
+## 1. The four tasks
 
-## 2. Capability stack
+### Task 1 — Unified customer store
 
-Capability 0 is the operating system; 1–5 run inside it.
+- One Postgres CRM holds every customer's single identity, cross-matched by
+  email / phone / name across the three platforms.
+- Four dossier tiers; tier 4 = first-time customers (new-customer rate falls
+  out of the tier mix automatically).
+- Every platform reads and writes the same store; every change streams into
+  ClickHouse so analytics always sees the current identity graph.
 
-### Capability 0 — Goal engine (the part that leads)
+### Task 2 — Campaigns and communication (advertising + operational, one system)
 
-| Piece | Behavior |
+Driven by the durable week-cycle task (§4):
+
+- **TUE** auction announcement + product previews
+- **WED–THU** previews, countdowns, opening reminders
+- **THU (live)** price updates and closing-time nudges while bids stream in
+- **SAT** winner notifications: payment instructions, cross-platform discount
+  codes, add-on tutorial, shipping schedule
+- Audience selection per send = a ClickHouse query over tier × preference ×
+  platform. Every send is logged as an event, so campaign performance is live.
+- **Demo sends are simulated** (rendered previews + send log; no real e-mail/
+  SMS service from a public repo). The seam makes the real sender a drop-in.
+
+### Task 3 — Combined orders (the core)
+
+1. **Real-time monitoring + merge.** All three platforms' new orders stream
+   in (auction wins, add-ons, and each platform's own organic sales). Every
+   new order pings the attention feed; every order triggers a merge check
+   against the CRM — when the same customer orders on different platforms,
+   the two order cards visibly merge into one combined order on screen.
+2. **Label day (MON).** A scheduled durable task: per-order weight from item
+   count → per-destination weather check (heat/cold pack verdicts) → two
+   label sets generated: **product labels** (one per sold coral, bag-ready)
+   and **shipping labels** (one per customer/combined order) → manifest
+   rendered with costs and weather flags → **pauses on a human waitpoint**
+   → merchant approves the whole batch with one click → task resumes and
+   purchases labels (simulated carrier), progress streaming live to the UI.
+   Batch-approve (not fully unattended) is deliberate: label purchase spends
+   money, and the approval pause is Trigger.dev's native HITL on camera.
+3. **Pre-ship request watch.** Inbound customer requests are classified:
+   cancel this week / hold to next week / address change / last-second
+   add-on. For cancels and address changes affecting purchased labels, the
+   system **auto-voids the label first** (avoid carrier charges), **then**
+   reports to the merchant with a request card.
+4. **After-sales first response.** Codified templates answer immediately,
+   then report: condition concern → reassurance (shipping stress is normal,
+   give it time); DOA → support-ticket link; thank-you → acknowledgment.
+   Anything beyond the templates escalates as a case card. Auto-replies are
+   template-only — the model never freestyles customer-facing text.
+
+### Task 4 — Weekly report (WED, after the last ship day)
+
+Rendered entirely as interactive components:
+
+- **Customer analysis:** platform mix, tier mix, share of sales per tier,
+  new-customer rate (= tier-4 share). Segments feed Task 2's targeting
+  directly — the report is a control, not a rear-view mirror.
+- **Product analysis:** six categories — zoas, euphyllia, goni, mushroom,
+  sps, other — with unit price and share of sales, to steer next week's
+  stocking.
+- **Cycle funnel:** auction win → discount code → cross-platform add-on
+  conversion (`windowFunnel` over the event stream) — the weekly economic
+  thesis, quantified in one query.
+
+## 2. Why these two tools (unique-feature mapping)
+
+The design deliberately leans on capabilities each tool has that commodity
+alternatives (spreadsheets/local DB; generic workflow builders) do not.
+
+### ClickHouse
+
+| Unique capability | Used for |
 |---|---|
-| **Live goals** | Weekly funnel targets (awareness / trust / sales) held as state, not a doc. "How are we doing?" → gap-to-target with the driver named, not a data dump. |
-| **Daily proposal** | The first message of the day is not a report but a ranked proposal: "Today I suggest X — biggest impact on this week's gap; here's what I've already prepared." Ranking = impact × urgency × confidence × risk. |
-| **Commitments ledger** | Every case, accepted suggestion, and human request is tracked to *verified* closure. Nothing evaporates; "whatever happened to…?" always has an answer. |
-| **Click-to-learn** | Every owner action in the UI is a recorded training signal: draft edits → tone corpus; rejections → rule proposals; repeated identical approvals → promotion evidence. |
-| **Authority promotion flywheel** | When an action type accumulates a clean track record (N approvals, ~zero edits/incidents), the agent files a promotion request *with the evidence attached*: "You approved this 11 times unmodified — promote to auto?" Owner decides. |
-| **Takeover map** | A live view of every action type's tier (observe / recommend / draft / execute), its track record, and what promotion would require. The AI-takeover progress bar. |
+| High-rate ingest + sub-second aggregation simultaneously | Thursday-night live auction board while bid events flood in |
+| Materialized views (rollups updated on insert, not on cron) | Live revenue, per-platform order flow, cross-platform merge-candidate detection |
+| Funnel/sequence SQL (`windowFunnel`, `sequenceMatch`) | The auction→code→add-on conversion funnel (Task 4) in one query |
+| Columnar compression, full history retained | Complete cross-platform customer history, forever queryable |
 
-### Capability 1 — The morning three (proactive)
+### Trigger.dev
 
-The owner's actual daily rhythm, in priority order, exceptions first,
-everything actionable in place and queryable any time of day:
+| Unique capability | Used for |
+|---|---|
+| **Durable multi-day tasks** (`wait.until`, survives restarts, costs nothing while sleeping) | **The auction week is literally one task**: wakes TUE to announce, THU to run the live auction watch, SAT to notify winners, MON for label day, WED for the report |
+| **Human-in-the-loop waitpoints** | Label-manifest batch approval; campaign send confirmation |
+| `chat.agent()` with tool approvals | The chat surface itself — the agent runtime |
+| Realtime API | Labels purchasing one by one on screen; send-log streaming |
+| Code-first TypeScript tasks | Merge logic, weight calc, tier rules as tested, typed code |
 
-1. **Is anyone waiting on me?** Cross-channel unanswered-message queue, SLA
-   aging, customer context (history, tier, open orders), and a ready reply
-   draft beside each item. DOA/dispute/return intakes pinned to top.
-2. **What ships next?** Ship-day countdown (Tue/Wed only), per-order
-   readiness: paid? label bought? weather verdict (heat/cold pack)? holds?
-   address problems? Stuck orders in their own lane, each with a next action.
-3. **Is everything running?** Overnight jobs in business language ("inventory
-   reconcile didn't run → today's drift detection is blind"), site/webhook
-   liveness, cross-channel inventory drift and oversell risk, yesterday's
-   revenue in one line with a vs-normal signal.
-
-### Capability 2 — Answer anything (reactive)
-
-Three answer layers; this is what separates a product from a demo:
-
-- **L1 Curated**: high-frequency questions get purpose-built tools and rich
-  components (the queue, the radar, the heatmap, the weather strip).
-- **L2 Open analytics**: a guarded **read-only** SQL tool over the warehouse +
-  a **semantic layer** (`metrics/` — the business dictionary: what counts as
-  revenue, channel enums, ship-day rules, DOA-rate numerator/denominator) so
-  the model composes *correct* queries for the long tail; a generic component
-  fallback renders any result shape (table / timeseries / bar).
-- **L3 Business knowledge**: policy and how-we-operate questions answered from
-  a versioned `docs/business/` knowledge base (shipping policy, DOA policy,
-  channel notes), every answer citing its source card.
-
-**Honesty contract:** if the data doesn't exist, say so and offer the nearest
-answerable thing. Fabrication is a hard product failure (§10 scores it zero).
-
-### Capability 3 — Explain and suggest
-
-- **Anomaly attribution**: not "sales spiked" but "the 9pm auction drove it;
-  AOV 30% below normal; mostly new buyers."
-- **Evidence-backed suggestions**: slow movers to reprice, customers gone
-  quiet, channel trends — each with source data and a counter-metric, and each
-  lands in the commitments ledger if accepted. Suggest-only.
-
-### Capability 4 — Cases and gated actions
-
-- Requests beyond authority (refunds, claims, big disputes) become a **case**:
-  what happened, customer history, order evidence, policy basis, recommended
-  options. One click to decide.
-- **Risk tiers**: `auto` (typo-level address fix) · `gated` (inventory sync,
-  hold order, void label, budget-capped goodwill) · `human-only` (anything
-  touching money — the agent files a case, never executes).
-- Every action is audit-logged: who approved, when, payload, outcome. The
-  audit log doubles as promotion evidence for Capability 0.
-
-### Capability 5 — Customer concierge (same brain, second face)
-
-Order tracking, shipping ETA, policy questions — answered from the *same*
-semantic layer and knowledge base as the merchant side, so the two surfaces
-can never disagree. Anything beyond authority auto-escalates into a
-Capability-4 case, which means the merchant's "waiting on me" queue itself
-shrinks: routine questions never reach a human.
-
-## 3. Component protocol
+## 3. Chat surface and component protocol
 
 The agent never answers with prose alone. Tools return typed data; the agent
-composes a `ComponentSpec` the frontend renders. The spec is the contract
-between agent and UI — everything above it is stack-portable.
+composes `ComponentSpec`s the frontend renders inline in the chat stream
+(full width, no separate canvas). Two routes: `/merchant` (the cockpit) and
+`/shop` (customer-facing order tracking + requests, same brain, same policy
+sources; out-of-authority requests become cases in the merchant feed).
 
 ```ts
 type ChatResponse = {
   verdict?: string;            // one-line answer, ≤140 chars
-  components: ComponentSpec[]; // the actual response
+  components: ComponentSpec[];
 };
 
 type ComponentSpec =
+  // cycle & attention
+  | { kind: "cycle_timeline"; phase: WeekPhase; upcoming: PhaseStep[] }
+  | { kind: "attention_feed"; items: AttentionItem[] }        // new orders, requests, cases
+  // analytics
   | { kind: "metric_row";    metrics: Metric[] }
   | { kind: "timeseries";    series: Series[]; annotations?: Annotation[] }
-  | { kind: "heatmap";       rows: string[]; cols: string[]; cells: Cell[] }
-  | { kind: "verdict_card";  verdict: string; confidence: "high"|"medium"|"low";
-      evidence: Evidence[] }
-  | { kind: "weather_strip"; hours: HourTemp[]; policy: PackVerdict }
+  | { kind: "auction_board"; lots: LotPrice[]; closesAt: string }   // live THU board
+  | { kind: "funnel";        steps: FunnelStep[] }                  // auction→code→add-on
+  | { kind: "report";        sections: ReportSection[] }            // WED weekly report
+  // operations
+  | { kind: "campaign_card"; audience: AudienceBreakdown; preview: MessagePreview;
+      schedule: string; actions: ActionChip[] }
+  | { kind: "merge_card";    orders: OrderSummary[]; customer: CustomerRef;
+      combined: OrderSummary; actions?: ActionChip[] }
+  | { kind: "label_manifest"; shipments: ShipmentLine[]; productLabels: number;
+      weatherFlags: WeatherFlag[]; totalCost: number; actions: ActionChip[] }
   | { kind: "order_card";    order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
-  | { kind: "aging_queue";   items: AgingItem[]; slaHours: number }
-  | { kind: "product_grid";  products: ProductCard[]; filters: FilterState }
+  | { kind: "request_card";  request: CustomerRequest; autoActionsTaken: string[];
+      actions: ActionChip[] }                                  // e.g. "label voided"
   | { kind: "case_card";     caseId: string; evidence: Evidence[];
       actions: ActionChip[] }
-  | { kind: "policy_card";   answer: string; source: string }        // L3 citations
-  | { kind: "data_table";    columns: Column[]; rows: Row[] }        // L2 fallback
-  | { kind: "goal_card";     goal: Goal; progress: number; drivers: Driver[] }
-  | { kind: "promotion_card"; actionType: string; trackRecord: TrackRecord;
-      proposal: string; actions: ActionChip[] };                     // flywheel
+  | { kind: "verdict_card";  verdict: string; confidence: "high"|"medium"|"low";
+      evidence: Evidence[] }
+  | { kind: "weather_strip"; hours: HourTemp[]; policy: PackVerdict };
 
 type ActionChip = {
-  taskId: string;              // task to fire (Trigger.dev in hackathon)
+  taskId: string;              // Trigger.dev task to fire
   label: string;
   payload: Record<string, unknown>;
   risk: "auto" | "gated";      // gated = explicit human click required
 };
 ```
 
-UI layout: components render **inline in the chat stream**, full width. No
-separate canvas — the question→component causality must stay visible. Two
-routes: `/merchant`, `/shop`.
-
-## 4. Action catalog (risk-tiered)
-
-| Action | Tier | Notes |
-|---|---|---|
-| Attention queue / ship radar / revenue / anomaly drill-down | read-only | |
-| Address validation & fix | auto → gated | clean fix auto; ambiguous → chip |
-| Inventory sync across channels | gated | chip on drift heatmap |
-| Hold order / void label | gated | |
-| File claim / support case | gated | agent assembles evidence only |
-| Discount within codified SOP limits | auto | policy is a tool with hard limits |
-| Goodwill gift (budget-capped) | gated | |
-| Discount beyond SOP / refund / any money movement | **human-only** | case, never executed by agent |
-| Authority promotion of any of the above | **human-only** | agent proposes with evidence (Capability 0) |
-
-v1 implements the full protocol but wires **two gated actions end-to-end**
-(inventory sync, case approval) plus **one auto action** (address fix). The
-rest remain catalog + types; depth over breadth.
-
-## 5. Authority model
-
-Four tiers per action type: `observe → recommend → draft/gated → execute`.
-Promotion requires: ≥N clean approvals, ~zero edit/reject rate, no incidents,
-owner sign-off — all measured automatically from the audit log. Demotion is
-one click, always. The agent may file promotion proposals; it may never apply
-them. This is the flywheel that makes the product an engine rather than a
-mirror: **the interface is the instrument that collects the evidence
-authority expansion legally requires.**
-
-## 6. Architecture and the two seams
+## 4. Architecture
 
 ```
 Next.js chat UI (/merchant, /shop)
         │  ComponentSpec JSON + Trigger.dev Realtime
-Trigger.dev chat.agent() ── tools ──┐
-Trigger.dev scheduled tasks         │  seam A: DataStore interface
-  (synthetic event generator)       │
-        ┌───────────────────────────┴──────────────┐
-        │ ClickHouse Cloud (PRIMARY: event stream, │
-        │ materialized views, all analytics)       │
-        │ ClickHouse-managed Postgres (OLTP:       │
-        │ orders, inventory truth, cases,          │
-        │ commitments, audit/action log)           │
+Trigger.dev chat.agent() ── tools ──────────┐
+Trigger.dev AuctionWeek durable task        │
+  (TUE announce → THU live → SAT winners    │   seam A: DataStore
+   → MON labels [waitpoint] → WED report)   │
+Trigger.dev event-generator scheduled tasks │
+        ┌───────────────────────────────────┴──────┐
+        │ ClickHouse Cloud — OLAP: event stream,   │
+        │ materialized views, funnels, reports     │
+        │ ClickHouse-managed Postgres — OLTP:      │
+        │ customers (CRM), orders, labels,         │
+        │ requests, cases, action log              │
         └──────────────────────────────────────────┘
-  seam B: TaskRunner interface (action execution)
+  seam B: TaskRunner (actions; simulated carrier + message sender behind it)
 ```
 
-- **Seam A (`DataStore`)**: every read/write goes through one interface. Agent
-  logic never imports a DB client directly.
-- **Seam B (`TaskRunner`)**: actions are named tasks with payloads.
+- **Seam A (`DataStore`)**: all reads/writes through one interface; agent
+  logic never imports a DB client.
+- **Seam B (`TaskRunner`)**: actions are named tasks with payloads; the
+  simulated carrier and message sender sit behind it, so real services are
+  drop-ins later.
 
-### OLTP + OLAP (bonus category)
+### OLTP + OLAP on camera (bonus category)
 
-Postgres holds transactional truth (inventory, order state, open cases,
-commitments, audit log). ClickHouse holds the append-only event stream and
-powers every visual. An approved action writes to Postgres, emits an event to
-ClickHouse, and affected components re-render live — one click demonstrates
-the full OLTP→OLAP loop.
+Postgres holds transactional truth; ClickHouse holds the append-only event
+stream and powers every visual. The loop is demonstrated live, twice:
 
-## 7. Semantic layer and knowledge base
+1. Two orders merge → Postgres combined-order write → merge event →
+   ClickHouse → funnel and revenue components update.
+2. Label manifest approved → Postgres label rows + spend → label events →
+   ship-radar and cost components update.
 
-- `metrics/` — versioned metric definitions (name, description, SQL fragment,
-  grain, caveats). The L2 SQL tool is prompted *from* these definitions; the
-  model never invents an aggregation.
-- `docs/business/` — policy cards: shipping schedule and rationale, shipping
-  rates, DOA policy, channel descriptions, packing rules. Small, versioned,
-  citable. Source of truth for both surfaces.
+One click, both databases, visible consequence — that is the integration
+story told in a single camera move.
 
-Both are first-class durable extracts: the owner's real business currently has
-its metric definitions buried in analytics scripts and its policies scattered
-across agent docs. This repo makes the pattern explicit.
+## 5. Action tiers and boundaries
 
-## 8. Data: shape-calibrated synthesis
+| Action | Tier |
+|---|---|
+| Order merge (same-customer detection) | auto, with visible card + undo |
+| Campaign send | gated (one click per campaign) |
+| Label batch purchase | gated (one click per manifest) |
+| Label void on cancel/address change | auto **then** report (avoids carrier charges) |
+| After-sales first response | auto, codified templates only |
+| Refunds, payments, anything money-moving beyond the above | human-only; agent files a case |
 
-Two rules, both hard:
+Boundaries (constitutional, unchanged from v2): money decisions are human;
+no fabricated numbers or policies (honest refusal instead); no free-form
+model text to customers; the agent never widens its own authority.
+
+## 6. Data: shape-calibrated synthesis
 
 1. **Zero row-level real data.** No real order, customer, e-mail, or amount
-   enters this repo, ClickHouse Cloud, or any third party. (Public repo +
-   hackathon rules + owner's data-sovereignty stance.)
-2. **Real shape.** The generator is calibrated from *aggregate* statistics of
-   the real operation: channel mix, price bands, weekly rhythm (Sat-night
-   auction spike, Tue/Wed ship surge, small-hours drift detections), SKU
-   taxonomy, typical anomaly rates. The world feels real because its
-   distributions are; only its individuals are invented.
+   enters this repo or any third-party service. (Public repo + hackathon
+   rules + owner's data-sovereignty stance.)
+2. **Real shape.** The generator is calibrated from aggregate statistics of
+   the real operation: three-platform mix, price bands, the weekly rhythm
+   (THU–SAT auction arc, SUN–MON add-on wave, TUE/WED ship days), six-way
+   product taxonomy, tier distribution, typical anomaly rates (address
+   typos, cancels, DOA claims).
+3. **Deterministic demo seed.** An idempotent `seed-demo` script plants the
+   storyline: a full auction arc, winners who add on cross-platform, one
+   cold-destination shipment, one cancel-after-label request, one DOA claim,
+   organic sales on every platform. Live low-volume inserts run on top for
+   ticking charts. Never rely on randomness during a recording.
+4. **Scale:** multi-week backfill at realistic volume (hundreds of thousands
+   to millions of events — bids, pageviews, messages, orders, inventory
+   moves) so ClickHouse's speed is visible, not claimed.
 
-Generator personality: three channels, auction spikes at night, weekend browse
-surges, occasional address typos, drift injections. Demo storylines are
-**seeded deterministically** (idempotent `seed-demo` script): a last-night
-auction spike, one cold-weather destination order, three drifting SKUs, one
-over-SLA conversation, one delivered order eligible for a DOA claim. Live
-low-volume inserts run on top for the ticking-chart effect. Never rely on
-randomness during a recording.
+## 7. Evaluation — the judge test
 
-Schema discipline: entity tables mirror the owner's home CRM schema
-(`customers`, `orders`, `inventory`, `events`, `approvals`, …) by name and
-field wherever sensible, so migration is a seam swap, not a remodel.
-
-## 9. Migration home (the point of the whole exercise)
-
-Hackathon infrastructure is deliberately disposable; the seams are the escape
-hatch.
-
-| Hackathon | Home replacement | Note |
-|---|---|---|
-| ClickHouse (events + analytics) | owner's SQLite event bus | event schema mirrors home `events` table from day one |
-| ClickHouse-managed Postgres (OLTP) | same SQLite CRM (orders/inventory/approvals) | table/field names aligned |
-| Trigger.dev tasks (Seam B) | launchd + scripts + home approval queue | `case_card` is literally the missing UI of the home approval inbox |
-| Trigger.dev `chat.agent()` | Claude API direct | agent logic sits above the seams, unchanged |
-
-**What migrates untouched (the durable extracts):** UI + component protocol ·
-three-layer answer architecture · semantic layer + policy knowledge base ·
-authority model + promotion flywheel + audit log design · commitments ledger ·
-the judge-test evaluation set.
-
-## 10. Evaluation — the judge test
-
-A blind set of **20–30 questions** (half from the owner, half from the
-builder; data, policy, definition, and must-refuse categories; none from the
-demo script). Run after build, scored:
+A blind set of 20–30 questions (half owner-written, half builder-written;
+data / policy / definition / must-refuse categories; none from the demo
+script), run after build:
 
 - ✅ correct answer with correct component
-- ✅ correct, honest refusal ("we don't track cost data")
-- ❌ fabricated number or policy → **automatic fail, fix before submission**
+- ✅ honest refusal where data doesn't exist
+- ❌ fabricated number or policy → automatic fail, fix before submission
 
-Budget: ~30 questions ≈ $1.5 at Sonnet pricing with caching — well inside the
-$10 cap.
+## 8. Demo script (~5 min, chronological — one week, compressed)
 
-## 11. Demo (5 beats — capability slices, nothing more)
+Narrative: *"This is one week of a real coral business, run from one chat
+window."*
 
-Narrative arc: *"This is how an AI safely takes over a small business — it
-sees, it judges, it acts with permission, and it earns more authority with
-every clean decision."*
+1. **TUE** — campaign card: audience breakdown by tier, message preview,
+   one-click approve → simulated sends stream into the log.
+2. **THU night** — live auction board ticking while bid events flood in
+   (ClickHouse ingest+query on camera; scale moment).
+3. **SAT** — winners notified: payment + discount codes + add-on tutorial.
+4. **SUN** — a winner orders on the web store: **two order cards merge into
+   one combined order on screen** (the signature shot; OLTP→OLAP #1).
+5. **MON** — label manifest: weights, weather flags (heat pack for the cold
+   destination), total cost → one-click batch approve → labels purchase
+   live (waitpoint + Realtime on camera). A cancel request arrives: label
+   auto-voids, request card reports it.
+6. **WED** — weekly report: tier/platform mix, six-category product table,
+   auction→add-on funnel; one off-script question answered live.
+7. **Close (~60s)** — architecture: both tools' unique features, the
+   OLTP+OLAP loop, the two seams.
 
-1. **"What needs my attention?"** → daily proposal + attention queue + ship
-   radar + live revenue (Capabilities 0+1; the conversationalized morning
-   briefing).
-2. **"Why did sales spike last night?"** → drill-down → verdict_card naming
-   the auction (Capability 3).
-3. **"Can I ship to Denver on Tuesday?"** → weather_strip + pack verdict
-   (Capability 2 L1; the live-animal moment).
-4. **"Which corals risk overselling?"** → drift heatmap → gated sync chip →
-   task runs → chart re-renders live (Capability 4; both tools + OLTP→OLAP in
-   one click). Follow with the **promotion_card** beat: "you've approved this
-   N times — promote to auto?" (Capability 0, the flywheel on camera).
-5. **Two windows side-by-side:** customer files a DOA claim with the concierge
-   → case_card with evidence appears in the merchant copilot → one-click
-   approve → customer's chat updates in real time (Capabilities 5+4).
+## 9. Migration home
 
-Plus one off-script L2 question on camera ("show me AOV by channel this
-week") to prove the long tail is real, and a 60-second architecture close
-(both tools, OLTP+OLAP, seams).
+Hackathon infrastructure is deliberately disposable; the seams are the
+escape hatch.
 
-## 12. Build sequence
+| Hackathon | Home replacement |
+|---|---|
+| ClickHouse (events + analytics) | owner's SQLite event bus (schema mirrored from day one) |
+| ClickHouse-managed Postgres (OLTP) | same SQLite CRM (tables/fields aligned) |
+| Trigger.dev tasks + waitpoints | launchd + scripts + home approval queue |
+| Trigger.dev `chat.agent()` | Claude API direct |
+| Simulated carrier / message sender | real label pipeline / real e-mail+SMS services |
 
-- Days 2–4: merchant copilot end-to-end (Capabilities 1–4 core; risk floor —
-  submittable alone).
-- Days 5–6: concierge + case bridge + promotion flywheel + judge test run.
-- Day 7: polish, README, video, flip repo public, submit.
+**What migrates untouched:** UI + component protocol · the week-cycle
+orchestration design · CRM identity matching rules · label-day flow ·
+codified after-sales templates · report definitions · the judge-test set.
 
-## 13. Hackathon compliance
+## 10. Build sequence (4 days remain)
+
+- **7/19** — lock design; retune generator to the weekly cycle + six-way
+  taxonomy + tiers; protocol v3 types; Postgres + ClickHouse schemas.
+- **7/20** — data plane live (tables, materialized views, CRM identity
+  matching); chat cockpit shell; Task 1 + Task 3.1 (merge on screen).
+  *Risk floor: merge + attention feed + auction board is submittable.*
+- **7/21** — AuctionWeek durable task; Task 2 campaigns (simulated sender);
+  Task 3.2 label day with waitpoint approval.
+- **7/22** — Task 3.3 requests + auto-void; Task 3.4 after-sales templates;
+  Task 4 report; judge test run; seed-demo polish.
+- **7/23** — video, README, flip repo public, submit before midnight AoE.
+
+## 11. Hackathon compliance
 
 - ClickHouse is the primary database; Postgres is the ClickHouse-managed
   optional addition (per rules).
-- Trigger.dev `chat.agent()` is the agent runtime, literally.
+- Trigger.dev `chat.agent()` is the agent runtime; durable tasks + waitpoints
+  + Realtime are used materially, not decoratively.
 - All code written inside the 2026-07-17 → 07-23 window (git history is the
-  evidence). No proprietary code; no real customer data (§8); secrets in
-  `.env*` only, never committed.
+  evidence). No proprietary code; no real customer data; secrets in `.env*`
+  only, never committed.
 - MIT license; repo flips public at submission.
