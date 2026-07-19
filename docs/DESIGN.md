@@ -12,8 +12,10 @@
 
 **One week of a live-coral e-commerce business, run from one chat window.**
 
-The business (modeled on a real coral store; all data synthetic) runs a weekly
-multi-platform cycle:
+The business is modeled on the real weekly operations of
+**[TIA Coral](https://tiacoral.com)**, a live-coral store in New York. All
+data in this repository is synthetic; operational details are simplified for
+the demo. The weekly multi-platform cycle:
 
 ```text
 THU  auction opens on the auction platform (ReefnBid-style)
@@ -40,14 +42,32 @@ theme, applied to a real operating rhythm.
 
 ## 1. The four tasks
 
-### Task 1 — Unified customer store
+### Task 1 — Unified customer store (customer 360)
 
-- One Postgres CRM holds every customer's single identity, cross-matched by
-  email / phone / name across the three platforms.
-- Four dossier tiers; tier 4 = first-time customers (new-customer rate falls
-  out of the tier mix automatically).
-- Every platform reads and writes the same store; every change streams into
-  ClickHouse so analytics always sees the current identity graph.
+Not just a contact list — one store holds *everything the business knows
+about a customer*, and every platform and every task reads and writes it at
+any time:
+
+```text
+customer
+├── identity      name, emails[], phones[], platform accounts
+│                 (auction / web store / marketplace, matched by
+│                 email → phone → name)
+├── tier          1–4 dossier tier (tier 4 = first-time customers, so the
+│                 new-customer rate falls out of the tier mix automatically)
+├── preferences   favored categories (zoas, euphyllia, …), contact prefs
+├── orders        every order on every platform, incl. combined orders
+├── products      every coral ever bought (derived from order items)
+├── messages      campaign sends + inbound/outbound conversation log
+└── requests      cancels, holds, address changes, claims, cases
+```
+
+Implementation: normalized Postgres tables (`customers`,
+`customer_identities`, `orders`, `order_items`, `messages`, `requests`),
+served as one `getCustomer()` profile read through Seam A — every task and
+both chat surfaces see the same customer instantly. Every change streams
+into ClickHouse, so analytics always sees the current identity graph and
+purchase history.
 
 ### Task 2 — Campaigns and communication (advertising + operational, one system)
 
@@ -321,3 +341,7 @@ codified after-sales templates · report definitions · the judge-test set.
   evidence). No proprietary code; no real customer data; secrets in `.env*`
   only, never committed.
 - MIT license; repo flips public at submission.
+- Attribution: README, video, and this document credit TIA Coral
+  (tiacoral.com) as the operational model, always paired with the
+  synthetic-data + simplified-details disclaimer. No real internal numbers,
+  no real message templates, no "TIA currently does X" claims.
