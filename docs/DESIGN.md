@@ -96,7 +96,9 @@ affected charts update live on screen — see §4 for the two on-camera loops
    against the CRM — when the same customer orders on different platforms,
    the two order cards visibly merge into one combined order on screen.
 2. **Label day (MON).** A scheduled durable task: per-order weight from item
-   count → per-destination weather check (heat/cold pack verdicts) → two
+   count (per-coral unit weight + per-platform box tare, with a minimum
+   billable floor; constants generic) → per-destination weather check
+   (heat/cold pack verdicts) → two
    label sets generated: **product labels** (one per sold coral, bag-ready)
    and **shipping labels** (one per customer/combined order) → manifest
    rendered with costs and weather flags → **pauses on a human waitpoint**
@@ -117,17 +119,32 @@ affected charts update live on screen — see §4 for the two on-camera loops
 
 ### Task 4 — Weekly report (WED, after the last ship day)
 
-Rendered entirely as interactive components:
+Rendered entirely as interactive components, and always shown **against
+history**: every headline number carries a week-over-week and
+month-over-month delta plus a sparkline, so the report reads as a
+trajectory, not a snapshot.
 
 - **Customer analysis:** platform mix, tier mix, share of sales per tier,
-  new-customer rate (= tier-4 share). Segments feed Task 2's targeting
-  directly — the report is a control, not a rear-view mirror.
+  new-customer rate (= tier-4 share), and **retention through two lenses**:
+  - *Snapshot* — **return customer rate**: customers with ≥2 lifetime
+    orders ÷ all paying customers, as of the report date;
+  - *Weekly flow* — this week's revenue split between returning and
+    brand-new customers (the leading health indicator; it moves weeks
+    before the snapshot does).
+
+  Segments feed Task 2's targeting directly — the report is a control, not
+  a rear-view mirror.
 - **Product analysis:** six categories — zoas, euphyllia, goni, mushroom,
-  sps, other — with unit price and share of sales, to steer next week's
-  stocking.
+  sps, other — with unit price, share of sales, and WoW movement, to steer
+  next week's stocking.
 - **Cycle funnel:** auction win → discount code → cross-platform add-on
   conversion (`windowFunnel` over the event stream) — the weekly economic
-  thesis, quantified in one query.
+  thesis, quantified in one query and compared against previous weeks.
+- **History mechanics:** ClickHouse retains the full event stream, so any
+  past week's report is computable on demand — WoW/MoM is a window
+  comparison in one query, not a pre-built snapshot pipeline. Each published
+  report additionally persists a compact snapshot event (idempotent by week
+  label) for audit and fast trend charts.
 
 ## 2. Why these two tools (unique-feature mapping)
 
@@ -271,9 +288,11 @@ model text to customers; the agent never widens its own authority.
    cold-destination shipment, one cancel-after-label request, one DOA claim,
    organic sales on every platform. Live low-volume inserts run on top for
    ticking charts. Never rely on randomness during a recording.
-4. **Scale:** multi-week backfill at realistic volume (hundreds of thousands
-   to millions of events — bids, pageviews, messages, orders, inventory
-   moves) so ClickHouse's speed is visible, not claimed.
+4. **Scale & depth:** 8–12 weeks of backfill at realistic volume (hundreds
+   of thousands to millions of events — bids, pageviews, messages, orders,
+   inventory moves) so ClickHouse's speed is visible rather than claimed,
+   and so the report's week-over-week and month-over-month comparisons have
+   real history behind them.
 
 ## 7. Evaluation — the judge test
 
@@ -301,8 +320,9 @@ window."*
    destination), total cost → one-click batch approve → labels purchase
    live (waitpoint + Realtime on camera). A cancel request arrives: label
    auto-voids, request card reports it.
-6. **WED** — weekly report: tier/platform mix, six-category product table,
-   auction→add-on funnel; one off-script question answered live.
+6. **WED** — weekly report: tier/platform mix and return-customer rate with
+   WoW/MoM deltas, six-category product table, auction→add-on funnel vs
+   previous weeks; one off-script question answered live.
 7. **Close (~60s)** — architecture: both tools' unique features, the
    OLTP+OLAP loop, the two seams.
 
