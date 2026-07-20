@@ -1,44 +1,39 @@
 /**
  * Label day — the durable Trigger.dev task with a human waitpoint.
  *
- * MON: build the label manifest from Postgres truth, publish it, then PAUSE on
- * a waitpoint token until the merchant approves the whole batch with one click.
- * On approval the run resumes and purchases labels one by one, streaming
- * progress via run metadata (Realtime) while each write lands in Postgres +
- * ClickHouse — the second OLTP→OLAP loop, gated by Trigger.dev's native HITL.
- *
- * The manifest/token are published to metadata BEFORE the pause so the chat
- * tool (`prepareLabelDay`) can render the card with an approve chip; the chip
- * routes through `/api/actions` → `wait.completeToken`.
+ * The manifest is built ONCE by the chat tool and passed in as the task payload,
+ * so the card the owner approves is the exact immutable manifest the task later
+ * buys (no build-twice race — R2-M1). The task publishes the token + progress to
+ * run metadata, PAUSES on the waitpoint, and on approval purchases labels one by
+ * one (idempotent + ClickHouse-failure-visible, see lib/label-day.ts) while
+ * streaming progress via metadata (Realtime) — the second OLTP→OLAP loop, gated
+ * by Trigger.dev's native HITL. A human-approval flow does not auto-replay
+ * (maxAttempts: 1).
  */
 import { task, wait, metadata } from "@trigger.dev/sdk";
 import { chClient } from "../lib/store/clickhouse";
 import { pgPool } from "../lib/store/postgres";
-import { buildManifest, purchaseLabels } from "../lib/label-day";
+import { purchaseLabels, type Manifest } from "../lib/label-day";
 
 type Approval = { status: "approved" | "declined" };
 
 export const labelDay = task({
   id: "label-day",
   maxDuration: 3600,
-  // A human-approval flow must not auto-replay: a retry would re-create the
-  // token and ask for approval again. Purchases are idempotent regardless
-  // (shipment upsert + orders already linked leave the manifest).
   retry: { maxAttempts: 1 },
-  run: async () => {
-    const pg = pgPool();
+  run: async (payload: { manifest: Manifest }) => {
+    const { manifest } = payload;
+    if (!manifest?.shipments?.length) return { status: "empty" as const };
+
     const ch = chClient();
+    const pg = pgPool();
 
-    const manifest = await buildManifest(pg);
-    if (manifest.shipments.length === 0) {
-      return { status: "empty" as const };
-    }
-
-    // Publish the manifest + an approval token, THEN pause on the waitpoint.
+    // Publish token + progress (small fields only, not the full manifest — the
+    // card already rendered it), then pause on the waitpoint.
     const token = await wait.createToken({ timeout: "1h", tags: ["label-day"] });
-    metadata.set("manifest", manifest);
     metadata.set("approvalTokenId", token.id);
     metadata.set("shipments", manifest.shipments.length);
+    metadata.set("totalCostCents", manifest.totalCostCents);
     metadata.set("purchased", 0);
     metadata.set("status", "awaiting-approval");
 
@@ -49,13 +44,12 @@ export const labelDay = task({
       return { status: "declined" as const };
     }
 
-    // Approved — purchase one by one so the UI sees labels land in real time.
+    // Approved — buy one by one so the UI sees labels land in real time.
     metadata.set("status", "purchasing");
     let purchased = 0, spend = 0;
     const nowIso = new Date().toISOString();
     for (const s of manifest.shipments) {
-      const one = { ...manifest, shipments: [s] };
-      const out = await purchaseLabels(pg, ch, one, nowIso);
+      const out = await purchaseLabels(pg, ch, { ...manifest, shipments: [s] }, nowIso);
       purchased += out.purchased;
       spend += out.totalCostCents;
       metadata.set("purchased", purchased);

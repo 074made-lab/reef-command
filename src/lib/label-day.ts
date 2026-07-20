@@ -134,12 +134,17 @@ export function manifestSpec(m: Manifest, runId?: string): ComponentSpec {
 }
 
 /** Write half: shipment rows + spend → Postgres, label_purchased → ClickHouse,
- *  orders linked to their shipment. Idempotent on shipment_code. Returns the
- *  count and spend actually purchased. */
+ *  orders linked to their shipment.
+ *
+ *  Idempotent on shipment_code: a replay of an already-purchased shipment hits
+ *  the conflict, returns no row, and is skipped — no double count, no re-emit.
+ *  Each label's ClickHouse event is retried; a final failure THROWS with the
+ *  shipment id so a Postgres-committed / ClickHouse-missing split is visible,
+ *  not silently swallowed. (Full outbox reconciliation of an already-committed
+ *  shipment whose event never landed is future work — noted in DESIGN §4.) */
 export async function purchaseLabels(
   pg: Pool, ch: ClickHouseClient, m: Manifest, nowIso = new Date().toISOString(),
 ): Promise<{ purchased: number; totalCostCents: number }> {
-  const events: ReefEvent[] = [];
   let purchased = 0, spend = 0;
 
   for (const s of m.shipments) {
@@ -147,29 +152,40 @@ export async function purchaseLabels(
       INSERT INTO shipments (shipment_code, customer_id, ship_week, status, items,
         weight_lb, destination_city, pack, label_cost_cents, purchased_at)
       VALUES ($1,$2,$3,'purchased',$4,$5,$6,$7,$8,$9)
-      ON CONFLICT (shipment_code) DO UPDATE SET
-        status = 'purchased', label_cost_cents = EXCLUDED.label_cost_cents,
-        purchased_at = EXCLUDED.purchased_at
+      ON CONFLICT (shipment_code) DO NOTHING
       RETURNING id`,
       [s.shipmentId, s.customer.customerId, m.weekLabel, s.items,
         s.weightLb, s.destination, s.pack, s.costCents, nowIso]);
-    const shipmentPk = r.rows[0]?.id;
+    if (r.rowCount === 0) continue;                 // already purchased — idempotent skip
+    const shipmentPk = r.rows[0].id;
+
     const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
-    if (shipmentPk && orderIds.length) {
+    if (orderIds.length) {
       await pg.query(
         `UPDATE orders SET shipment_id = $1, status = 'labeled'
          WHERE customer_id = $2 AND external_id = ANY($3) AND shipment_id IS NULL`,
         [shipmentPk, s.customer.customerId, orderIds]);
     }
-    events.push({
+
+    const ev: ReefEvent = {
       ts: nowIso, type: "label_purchased", platform: "system",
       customerId: s.customer.customerId, orderId: s.shipmentId, amountCents: s.costCents,
       meta: { pack: s.pack, weightLb: s.weightLb, orderIds, destination: s.destination },
-    });
+    };
+    let chOk = false;
+    for (let attempt = 1; attempt <= 3 && !chOk; attempt++) {
+      try { await insertEvents(ch, [ev]); chOk = true; }
+      catch (e) {
+        if (attempt === 3) {
+          throw new Error(
+            `label_purchased for ${s.shipmentId} committed in Postgres but failed to reach ClickHouse: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
+    }
     purchased++;
     spend += s.costCents;
   }
 
-  if (events.length) await insertEvents(ch, events);
   return { purchased, totalCostCents: spend };
 }

@@ -23,8 +23,10 @@ const prepareLabelDay = tool({
     "Call this on label day (MON) or when the owner asks to run labels, print shipping labels, prep the batch, or 'ship manifest' — 'label day', 'buy labels', 'run the manifest'. Fires the durable label-day run (it pauses for your approval) and renders the manifest: per-shipment weight, weather pack verdicts, total cost, and a gated Approve chip that resumes the run and buys the labels.",
   inputSchema: z.object({}),
   execute: async () => {
-    const handle = await labelDay.trigger();
+    // Build ONCE, then hand the exact manifest to the run — the card the owner
+    // approves is the payload the task buys (no build-twice race; R2-M1).
     const manifest = await buildManifest(pgPool());
+    const handle = await labelDay.trigger({ manifest });
     return [manifestSpec(manifest, handle.id)];
   },
   toModelOutput: () => ({
