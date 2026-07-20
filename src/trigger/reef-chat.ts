@@ -45,7 +45,9 @@ export const reefChat = chat.agent({
       // hands the typed tool set to streamText. Explicit fields below win.
       ...chat.toStreamTextOptions({ tools }),
       model: anthropic(MODEL),
-      system: SYSTEM,
+      // Give the agent "now" so it reasons about live vs closed phases (the
+      // auction verdict must not call a closed board "heading into close").
+      system: `${SYSTEM}\n\nCurrent time (UTC): ${new Date().toISOString()}. Tools also carry explicit state (e.g. an auction's live/closed) — trust it over your own reading of a timestamp.`,
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(6),

@@ -35,7 +35,7 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
         />
       );
     case "auction_board":
-      return <AuctionBoard lots={spec.lots} closesAt={spec.closesAt} />;
+      return <AuctionBoard lots={spec.lots} closesAt={spec.closesAt} state={spec.state} />;
     case "funnel":
       return <FunnelChart title={spec.title} steps={spec.steps} />;
     case "report":

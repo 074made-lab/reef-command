@@ -185,7 +185,8 @@ export type ComponentSpec =
   // analytics
   | { kind: "metric_row"; metrics: Metric[] }
   | { kind: "timeseries"; title: string; series: Series[]; annotations?: Annotation[] }
-  | { kind: "auction_board"; lots: LotPrice[]; closesAt: string }
+  | { kind: "auction_board"; lots: LotPrice[]; closesAt: string;
+      state: "upcoming" | "live" | "closed" }
   | { kind: "funnel"; title: string; steps: FunnelStep[] }
   | { kind: "report"; weekLabel: string; sections: ReportSection[] }
   // operations

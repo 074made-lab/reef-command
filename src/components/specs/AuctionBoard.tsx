@@ -8,19 +8,23 @@ import { shortTime, usd } from "./format";
 export function AuctionBoard({
   lots,
   closesAt,
+  state = "live",
 }: {
   lots: LotPrice[];
   closesAt: string;
+  state?: "upcoming" | "live" | "closed";
 }) {
   const top = Math.max(...lots.map((l) => l.currentBidCents), 1);
+  const badge =
+    state === "closed"
+      ? { cls: "border-mute/50 text-mute", text: `closed · ${shortTime(closesAt)}` }
+      : state === "upcoming"
+        ? { cls: "border-teal/50 text-teal", text: "opens Thursday" }
+        : { cls: "border-coral/50 text-coralhi", text: `live · closes ${shortTime(closesAt)}` };
   return (
     <SpecCard
       tag="AUCTION BOARD"
-      right={
-        <Chip className="border-coral/50 text-coralhi">
-          closes {shortTime(closesAt)}
-        </Chip>
-      }
+      right={<Chip className={badge.cls}>{badge.text}</Chip>}
     >
       {lots.length === 0 ? (
         <p className="py-2 text-center font-mono text-xs text-mute">

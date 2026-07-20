@@ -69,10 +69,15 @@ export function summarize(specs: ComponentSpec[]): string {
         break;
       case "auction_board": {
         const top = s.lots[0];
+        const phase =
+          s.state === "closed"
+            ? `CLOSED — the auction ended at ${s.closesAt}. Report it as closed/final; do NOT say it is live or "heading into close".`
+            : s.state === "upcoming"
+              ? `not open yet (opens Thursday)`
+              : `LIVE — closes ${s.closesAt}`;
         parts.push(
-          `auction board: ${s.lots.length} lot(s)` +
-            (top ? `, top “${top.name}” at ${usd(top.currentBidCents)} (${top.bidCount} bids)` : "") +
-            `, closes ${s.closesAt}`,
+          `auction board [${phase}]: ${s.lots.length} lot(s)` +
+            (top ? `, top “${top.name}” at ${usd(top.currentBidCents)} (${top.bidCount} bids)` : ""),
         );
         break;
       }

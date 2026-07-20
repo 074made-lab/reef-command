@@ -116,7 +116,12 @@ export async function auctionBoard(ch: ClickHouseClient): Promise<ComponentSpec[
            argMax(JSONExtractString(meta,'bidder'), ts) AS leader
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
     GROUP BY lot, sku ORDER BY bid DESC`, w);
-  const closesAt = new Date(ANCHOR + wi * WEEK_MS + ((2 * 24 + 22) * 60 + 45) * 60_000).toISOString();
+  const opensAt = ANCHOR + wi * WEEK_MS;                                   // THU 00:00
+  const closesMs = ANCHOR + wi * WEEK_MS + ((2 * 24 + 22) * 60 + 45) * 60_000; // SAT 22:45
+  const closesAt = new Date(closesMs).toISOString();
+  const now = Date.now();
+  const state: "upcoming" | "live" | "closed" =
+    now < opensAt ? "upcoming" : now >= closesMs ? "closed" : "live";
   const board: LotPrice[] = lots.map((l) => {
     const item = bySku.get(l.sku);
     return {
@@ -124,7 +129,7 @@ export async function auctionBoard(ch: ClickHouseClient): Promise<ComponentSpec[
       currentBidCents: Number(l.bid), bidCount: Number(l.n), leader: l.leader, closesAt,
     };
   });
-  return [{ kind: "auction_board", lots: board, closesAt }];
+  return [{ kind: "auction_board", lots: board, closesAt, state }];
 }
 
 // ---------------------------------------------------------------- merge scan
@@ -251,10 +256,14 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
     GROUP BY c.tier ORDER BY c.tier`,
     [w.start.replace(" ", "T") + "Z", w.end.replace(" ", "T") + "Z"]);
   const tierTotal = tierRes.rows.reduce((s, r) => s + Number(r.rev), 0) || 1;
+  // Group by the customer's current dossier tier. Note: this is NOT the
+  // new-customer rate — that's the first-order-based "New-customer revenue"
+  // headline metric above. Labeling tier 4 "first-time" would contradict it,
+  // so the table is plainly the tier mix.
   const tierMix: ReportSection = {
-    kind: "table", title: "Tier mix — share of sales (tier 4 = first-time)",
-    columns: ["tier", "customers", "revenue $", "share %"],
-    rows: tierRes.rows.map((r) => [`tier ${r.tier}${Number(r.tier) === 4 ? " (new)" : ""}`,
+    kind: "table", title: "Customer tier mix — share of sales",
+    columns: ["dossier tier", "customers", "revenue $", "share %"],
+    rows: tierRes.rows.map((r) => [`tier ${r.tier}`,
       Number(r.customers), usd(Number(r.rev)), Math.round((Number(r.rev) / tierTotal) * 100)]),
   };
 
