@@ -41,6 +41,10 @@ const tools = { ...reefTools, prepareLabelDay };
 export const reefChat = chat.agent({
   id: "reef-chat",
   tools,
+  // Never leak stack traces / internals to the browser (the SDK's default does).
+  uiMessageStreamOptions: {
+    onError: () => "The agent hit an internal error — please try again.",
+  },
   run: async ({ messages, tools, signal }) =>
     streamText({
       // Spread FIRST — wires prepareStep (compaction/steering), telemetry, and
