@@ -18,7 +18,6 @@ export async function runTick(ch: ClickHouseClient, pg: Pool, nowIso: string, se
   events: number; orders: number; messages: number;
 }> {
   const events = generateTick(nowIso, seed);
-  await insertEvents(ch, events);
 
   let orders = 0, messages = 0;
   for (const e of events as ReefEvent[]) {
@@ -60,5 +59,7 @@ export async function runTick(ch: ClickHouseClient, pg: Pool, nowIso: string, se
         [m.requestId, e.customerId, m.kind, `customer asked: ${m.kind}`, e.ts]);
     }
   }
+  // narrative last: Postgres truth is committed before ClickHouse hears about it
+  await insertEvents(ch, events);
   return { events: events.length, orders, messages };
 }

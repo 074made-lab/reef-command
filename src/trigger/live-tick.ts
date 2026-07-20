@@ -12,6 +12,7 @@ export const liveTick = schedules.task({
   id: "live-tick",
   cron: "* * * * *",
   maxDuration: 55,
+  retry: { maxAttempts: 1 },   // a missed minute is harmless; a replayed one double-counts
   run: async (payload) => {
     const ch = chClient();
     const pg = pgPool();

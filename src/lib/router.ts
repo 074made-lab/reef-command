@@ -70,10 +70,13 @@ async function auction(): Promise<ChatResponse> {
   const board = firstOf(specs, "auction_board");
   const lots = board?.lots ?? [];
   const top = lots[0];
+  const closed = board ? Date.parse(board.closesAt) <= Date.now() : false;
   return {
     verdict: top
-      ? `${plural(lots.length, "lot")} live — “${top.name}” leads at ${usd(Math.round(top.currentBidCents / 100))} with ${plural(top.bidCount, "bid")}.`
-      : "No live bids on the board this cycle yet.",
+      ? closed
+        ? `Auction closed Saturday — final board: “${top.name}” hammered at ${usd(Math.round(top.currentBidCents / 100))} (${plural(top.bidCount, "bid")}).`
+        : `${plural(lots.length, "lot")} live — “${top.name}” leads at ${usd(Math.round(top.currentBidCents / 100))} with ${plural(top.bidCount, "bid")}.`
+      : "No bids on the board this cycle yet.",
     components: specs,
   };
 }

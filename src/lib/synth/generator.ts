@@ -415,7 +415,7 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
       customerId: cust.id, meta: { id, preview: pick(rng, MESSAGE_PREVIEWS) },
     });
     if (rng() < 0.85) {
-      const answeredAt = new Date(minuteStart.getTime() + (5 + rng() * 240) * MIN).toISOString();
+      const answeredAt = new Date(minuteStart.getTime() + (5 + rng() * 50) * 1000).toISOString();
       events.push({ ts: answeredAt, type: "message_answered", platform: "system", meta: { id } });
     }
   }
@@ -461,7 +461,8 @@ export function* generateBackfill(fromIso: string, toIso: string, seed = 1): Gen
   let day = from.getUTCDate();
   for (let t = from.getTime(); t < to.getTime(); t += MIN) {
     const minute = new Date(t);
-    chunk.push(...minuteEvents(seed, minute));
+    chunk.push(...minuteEvents(seed, minute).filter(
+      (e) => { const ms = Date.parse(e.ts); return ms >= from.getTime() && ms < to.getTime(); }));
     if (minute.getUTCDate() !== day) {
       yield chunk; chunk = []; day = minute.getUTCDate();
     }

@@ -33,7 +33,10 @@ const pctDelta = (cur: number, prev: number) =>
 
 export async function revenuePulse(ch: ClickHouseClient): Promise<ComponentSpec[]> {
   const wi = currentWeekIndex();
-  const cur = weekWindow(wi), prev = weekWindow(wi - 1);
+  const cur = weekWindow(wi);
+  // compare against the SAME elapsed portion of the prior cycle, not its full week
+  const elapsed = Date.now() - (ANCHOR + wi * WEEK_MS);
+  const prev = { start: weekWindow(wi - 1).start, end: fmt(ANCHOR + (wi - 1) * WEEK_MS + elapsed) };
   const [now, before] = await Promise.all([
     queryRows<{ rev: string; orders: string }>(ch, `
       SELECT sum(revenue_cents) AS rev, sum(orders) AS orders FROM mv_revenue_hourly
@@ -48,7 +51,7 @@ export async function revenuePulse(ch: ClickHouseClient): Promise<ComponentSpec[
   const rev = Number(now[0]?.rev ?? 0), orders = Number(now[0]?.orders ?? 0);
   const prevRev = Number(before[0]?.rev ?? 0);
   const metrics: Metric[] = [
-    { label: "Week to date", value: usd(rev), unit: "$", deltaWoW: pctDelta(rev, prevRev) },
+    { label: "Week to date (vs same point last cycle)", value: usd(rev), unit: "$", deltaWoW: pctDelta(rev, prevRev) },
     { label: "Orders", value: orders, unit: "orders", deltaWoW: pctDelta(orders, Number(before[0]?.orders ?? 0)) },
     { label: "Avg order", value: orders ? usd(rev / orders) : 0, unit: "$" },
   ];
@@ -141,13 +144,13 @@ export async function mergeScan(pg: Pool): Promise<ComponentSpec[]> {
     const orders = (r.orders as { orderId: string; platform: string; totalCents: number; destination: string }[])
       .map((o) => ({
         orderId: o.orderId, platform: o.platform as "auction" | "web" | "marketplace",
-        customer: { customerId: r.id, displayName: r.primary_name, tier: r.tier, platforms: [] },
+        customer: { customerId: Number(r.id), displayName: r.primary_name, tier: r.tier, platforms: [] },
         items: [], totalCents: Number(o.totalCents), destination: o.destination ?? "",
         status: "paid" as const, shipWeek: `W${currentWeekIndex()}`,
       }));
     return {
       kind: "merge_card",
-      customer: { customerId: r.id, displayName: r.primary_name, tier: r.tier, platforms: orders.map((o) => o.platform as never) },
+      customer: { customerId: Number(r.id), displayName: r.primary_name, tier: r.tier, platforms: orders.map((o) => o.platform as never) },
       orders,
       combined: {
         ...orders[0], orderId: `CMB-${r.id}-${currentWeekIndex()}`, platform: "combined",

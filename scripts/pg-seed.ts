@@ -39,7 +39,11 @@ async function main() {
   const weeks = Number(args[args.indexOf("--weeks") + 1]) || 10;
   const db = pgPool();
 
-  if (args.includes("--wipe")) {
+  if (!args.includes("--wipe")) {
+    console.error("pg-seed is reset-based, not incremental: rerun WITH --wipe.");
+    process.exit(1);
+  }
+  {
     await db.query(`TRUNCATE campaign_sends, campaigns, cases, requests, messages,
       order_items, orders, shipments, customer_identities, customers, action_log,
       report_snapshots RESTART IDENTITY CASCADE`);

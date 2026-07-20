@@ -35,29 +35,33 @@ export async function matchCustomer(
   const phone = contact.phone?.replace(/[^+\d]/g, "") || null;
   const name = contact.name?.trim().toLowerCase() || null;
 
+  const unique = async (sql: string, arg: string) => {
+    const r = await db.query(sql, [arg]);
+    return r.rows.length === 1 ? Number(r.rows[0].id) : null;   // 0 = no match; >1 = ambiguous → human
+  };
   if (email) {
-    const r = await db.query(
-      `SELECT c.id FROM customers c
+    const id = await unique(
+      `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE lower(c.primary_email) = $1 OR lower(i.external_email) = $1
-       LIMIT 1`, [email]);
-    if (r.rows[0]) return { customerId: r.rows[0].id, confidence: 1.0, matchedOn: "email" };
+       LIMIT 2`, email);
+    if (id) return { customerId: id, confidence: 1.0, matchedOn: "email" };
   }
   if (phone) {
-    const r = await db.query(
-      `SELECT c.id FROM customers c
+    const id = await unique(
+      `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE c.primary_phone = $1 OR i.external_phone = $1
-       LIMIT 1`, [phone]);
-    if (r.rows[0]) return { customerId: r.rows[0].id, confidence: 0.9, matchedOn: "phone" };
+       LIMIT 2`, phone);
+    if (id) return { customerId: id, confidence: 0.9, matchedOn: "phone" };
   }
   if (name && name.length >= 4) {
-    const r = await db.query(
-      `SELECT c.id FROM customers c
+    const id = await unique(
+      `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE lower(c.primary_name) = $1 OR lower(i.external_name) = $1
-       LIMIT 1`, [name]);
-    if (r.rows[0]) return { customerId: r.rows[0].id, confidence: 0.6, matchedOn: "name" };
+       LIMIT 2`, name);
+    if (id) return { customerId: id, confidence: 0.6, matchedOn: "name" };
   }
   return null;
 }
