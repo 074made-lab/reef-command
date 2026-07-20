@@ -17,6 +17,14 @@ export function chClient(): ClickHouseClient {
     password: process.env.CLICKHOUSE_PASSWORD ?? "",
     request_timeout: 120_000,
     compression: { request: true, response: true },
+    keep_alive: { enabled: true },
+    // Progress headers keep the socket alive under the Cloud load balancer's
+    // idle timeout — without them the first cold query can drop with a TLS
+    // ECONNRESET (Codex m4). Interval well under request_timeout.
+    clickhouse_settings: {
+      send_progress_in_http_headers: 1,
+      http_headers_progress_interval_ms: "20000",
+    },
   });
 }
 
@@ -56,6 +64,15 @@ export async function insertEvents(client: ClickHouseClient, events: ReefEvent[]
 
 export async function queryRows<T>(client: ClickHouseClient, query: string,
   params: Record<string, unknown> = {}): Promise<T[]> {
-  const rs = await client.query({ query, query_params: params, format: "JSONEachRow" });
-  return rs.json<T>();
+  // One bounded retry — reads are idempotent, and a cold connection can drop
+  // once with a socket reset before it warms (Codex m4).
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const rs = await client.query({ query, query_params: params, format: "JSONEachRow" });
+      return rs.json<T>();
+    } catch (e) {
+      if (attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
 }

@@ -10,7 +10,7 @@
  * The offline `/api/chat` + router path still exists as a fallback; this
  * surface uses the real LLM agent.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   useTriggerChatTransport,
@@ -72,11 +72,26 @@ function readAssistant(message: ReefMessage): {
   return { verdict: verdict.trim(), specs };
 }
 
-function AgentAnswer({ message }: { message: ReefMessage }) {
+function AgentAnswer({
+  message,
+  innerRef,
+}: {
+  message: ReefMessage;
+  innerRef?: React.Ref<HTMLDivElement>;
+}) {
   const { verdict, specs } = readAssistant(message);
-  if (!verdict && specs.length === 0) return null;
+  const [showRest, setShowRest] = useState(false);
+
+  // Feature the first merge candidate (the signature shot); tuck the rest
+  // behind a compact affordance so the top of the answer stays on screen (m2).
+  const merges = specs.filter((s) => s.kind === "merge_card");
+  const others = specs.filter((s) => s.kind !== "merge_card");
+  const restMerges = merges.slice(1);
+
+  if (!verdict && specs.length === 0) return <div ref={innerRef} />;
+
   return (
-    <div className="anim-rise space-y-3">
+    <div ref={innerRef} className="anim-rise space-y-3">
       {verdict ? (
         <p className="flex items-baseline gap-2 border-l-2 border-tealhi/70 pl-2.5 text-[14px] leading-snug text-ink">
           <span className="shrink-0 font-mono text-[12px] tracking-[0.2em] text-teal">
@@ -85,8 +100,27 @@ function AgentAnswer({ message }: { message: ReefMessage }) {
           {verdict}
         </p>
       ) : null}
-      {specs.map((spec, i) => (
-        <SpecRenderer key={i} spec={spec} />
+
+      {merges.length ? <SpecRenderer spec={merges[0]} /> : null}
+      {restMerges.length ? (
+        <div className="space-y-3">
+          {showRest
+            ? restMerges.map((spec, i) => <SpecRenderer key={`m${i}`} spec={spec} />)
+            : null}
+          <button
+            type="button"
+            onClick={() => setShowRest((v) => !v)}
+            className="rounded-full border border-line px-3 py-1 font-mono text-[12px] text-dim transition-colors hover:border-teal/60 hover:text-tealhi"
+          >
+            {showRest
+              ? "▲ hide extra merge candidates"
+              : `+ ${restMerges.length} more merge candidate${restMerges.length > 1 ? "s" : ""}`}
+          </button>
+        </div>
+      ) : null}
+
+      {others.map((spec, i) => (
+        <SpecRenderer key={`o${i}`} spec={spec} />
       ))}
     </div>
   );
@@ -104,9 +138,16 @@ export function MerchantChat() {
     transport,
   });
   const [input, setInput] = useState("");
+  const lastRef = useRef<HTMLDivElement>(null);
 
   const waiting = status === "submitted";
   const streaming = status === "streaming";
+
+  // Land the viewport on the START of the newest turn — the strong visual
+  // answers (merge cards, the tall report) open above the fold, not below it.
+  useEffect(() => {
+    lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [messages.length]);
 
   function submit(text: string) {
     const message = text.trim();
@@ -132,9 +173,14 @@ export function MerchantChat() {
             </div>
           ) : null}
 
-          {messages.map((m) =>
-            m.role === "user" ? (
-              <div key={m.id} className="flex justify-end">
+          {messages.map((m, i) => {
+            const isLast = i === messages.length - 1;
+            return m.role === "user" ? (
+              <div
+                key={m.id}
+                ref={isLast ? lastRef : undefined}
+                className="flex justify-end"
+              >
                 <p className="anim-rise max-w-[75%] rounded-md rounded-br-sm border border-line bg-raise px-3.5 py-2 text-[14px] text-ink">
                   {m.parts
                     .filter((p): p is { type: "text"; text: string } => p.type === "text")
@@ -143,9 +189,9 @@ export function MerchantChat() {
                 </p>
               </div>
             ) : (
-              <AgentAnswer key={m.id} message={m} />
-            ),
-          )}
+              <AgentAnswer key={m.id} message={m} innerRef={isLast ? lastRef : undefined} />
+            );
+          })}
 
           {waiting ? <CoralPulseSkeleton /> : null}
 
