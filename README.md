@@ -60,11 +60,17 @@ event to ClickHouse.
 
 ### OLTP + OLAP on camera (bonus category)
 
-Two loops are demonstrated live: **(1)** two orders merge → Postgres
-combined-order write → merge event → ClickHouse → the funnel/revenue components
-update; **(2)** a label batch is approved → Postgres label rows + spend →
-`label_purchased` events → ClickHouse → the cost/ship components update. One
-click, both databases, a visible consequence.
+The **label-day approval** is the loop shown executing end to end: one gated
+(owner-only) click completes the waitpoint → the durable task writes shipment
+rows + spend to Postgres → emits `label_purchased` events to ClickHouse → the
+cost/ship components update. One click, both databases, a visible consequence —
+with recoverable idempotency, so a partial failure resumes instead of leaving a
+split (`src/lib/label-day.ts`).
+
+The **merge** is the same shape, read-first: the merge card is computed live
+from the Postgres OLTP scan and its combined-order write path is defined, but
+the one-click *execute* is intentionally not wired yet — clicking it returns an
+honest 501 rather than faking the write.
 
 ## Boundaries (constitutional)
 
@@ -81,7 +87,8 @@ These are enforced by the system prompt and provable — see `agent-check.ts`.
 
 - Node 20+ (developed on 25) · a ClickHouse Cloud service · a ClickHouse-managed
   Postgres · a Trigger.dev project (CLI logged in: `npx trigger.dev@latest login`)
-  · an Anthropic API key.
+  · an Anthropic API key · an owner passphrase (`REEF_OWNER_TOKEN`) that unlocks
+  the cockpit's gated actions.
 - `cp .env.example .env.local` and fill it in, then `npm install`.
 
 ### First time only — create the data plane
@@ -111,6 +118,10 @@ Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
 - *"Run label day"* — the manifest + a gated **Approve** chip (the waitpoint)
 - *"Weekly report"* — platform/tier mix, retention, funnel, all vs history
 
+The cockpit is owner-gated: unlock it once with your `REEF_OWNER_TOKEN` (the
+gated Approve action and its progress require that owner session — a partial
+mitigation of the fact that a label purchase spends money).
+
 `/merchant` needs Terminal 1 running (the agent executes in the Trigger worker).
 Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.
 
@@ -119,12 +130,14 @@ Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.
 Every check runs against the **live** stores and prints real output:
 
 ```bash
-npx tsx scripts/agent-check.ts     # LLM → correct tool → live data + the refusal guardrails
-npx tsx scripts/report-check.ts    # weekly report: platform/tier mix, WoW/MoM, sparklines
-npx tsx scripts/labelday-check.ts  # the MON label manifest (read-only; no purchase)
-npx tsx scripts/tools-check.ts     # all five tools vs both stores
-npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries
-npx tsc --noEmit && npm run build  # types + production build
+npx tsx scripts/agent-check.ts            # LLM → correct tool → live data + refusal guardrails
+npx tsx scripts/report-check.ts           # weekly report: platform/tier mix, WoW/MoM, sparklines
+npx tsx scripts/labelday-check.ts         # the MON label manifest (read-only; no purchase)
+npx tsx scripts/labelday-recovery-check.ts # fault-injected label recovery/idempotency (no network)
+npx tsx scripts/owner-auth-check.ts       # owner-session sign/verify/expiry (no network)
+npx tsx scripts/tools-check.ts            # all five tools vs both stores
+npx tsx scripts/ch-verify.ts              # the ClickHouse demo queries
+npx tsc --noEmit && npm run build         # types + production build
 ```
 
 `agent-check.ts` makes real (cheap, $-capped) Anthropic calls; it reads live
@@ -136,7 +149,7 @@ data and does not write.
 
 ```
 Next.js chat UI (/merchant, /shop)
-   │  ComponentSpec JSON  ·  Trigger.dev Realtime
+   │  ComponentSpec JSON  ·  run-metadata polling
 Trigger.dev  chat.agent()  ──tools──►  five live-store reads → components
              label-day task (waitpoint → approve → buy)
              scheduled live tick

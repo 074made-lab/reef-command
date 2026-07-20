@@ -170,7 +170,7 @@ alternatives (spreadsheets/local DB; generic workflow builders) do not.
 | **Durable multi-day tasks** (`wait.until`, survives restarts, costs nothing while sleeping) | **The auction week is literally one task**: wakes TUE to announce, THU to run the live auction watch, SAT to notify winners, MON for label day, WED for the report |
 | **Human-in-the-loop waitpoints** | Label-manifest batch approval; campaign send confirmation |
 | `chat.agent()` with tool approvals | The chat surface itself — the agent runtime |
-| Realtime API | Labels purchasing one by one on screen; send-log streaming |
+| Run metadata + polling | Labels purchasing one by one on screen — the approve chip polls the run's metadata to completion (a Realtime subscription is a later step) |
 | Code-first TypeScript tasks | Merge logic, weight calc, tier rules as tested, typed code |
 
 ## 3. Chat surface and component protocol
@@ -226,7 +226,7 @@ type ActionChip = {
 
 ```
 Next.js chat UI (/merchant, /shop)
-        │  ComponentSpec JSON + Trigger.dev Realtime
+        │  ComponentSpec JSON + run-metadata polling
 Trigger.dev chat.agent() ── tools ──────────┐
 Trigger.dev AuctionWeek durable task        │
   (TUE announce → THU live → SAT winners    │   seam A: DataStore
@@ -251,12 +251,16 @@ Trigger.dev event-generator scheduled tasks │
 ### OLTP + OLAP on camera (bonus category)
 
 Postgres holds transactional truth; ClickHouse holds the append-only event
-stream and powers every visual. The loop is demonstrated live, twice:
+stream and powers every visual. The label-day loop is demonstrated executing
+live end to end:
 
-1. Two orders merge → Postgres combined-order write → merge event →
-   ClickHouse → funnel and revenue components update.
-2. Label manifest approved → Postgres label rows + spend → label events →
-   ship-radar and cost components update.
+- Label manifest approved (owner-gated) → Postgres label rows + spend → label
+  events → ClickHouse → ship-radar and cost components update, with recoverable
+  idempotency (a partial failure resumes instead of leaving a split).
+
+The merge is the same shape read-first: the merge card is computed live from the
+Postgres OLTP scan, but its combined-order *write* is gated and not yet wired
+(the execute chip returns an honest 501).
 
 One click, both databases, visible consequence — that is the integration
 story told in a single camera move.
@@ -318,11 +322,13 @@ window."*
    (ClickHouse ingest+query on camera; scale moment).
 3. **SAT** — winners notified: payment + discount codes + add-on tutorial.
 4. **SUN** — a winner orders on the web store: **two order cards merge into
-   one combined order on screen** (the signature shot; OLTP→OLAP #1).
+   one combined order on screen** (the signature shot — computed live from the
+   OLTP scan; the one-click execute is gated/not-yet-wired).
 5. **MON** — label manifest: weights, weather flags (heat pack for the cold
-   destination), total cost → one-click batch approve → labels purchase
-   live (waitpoint + Realtime on camera). A cancel request arrives: label
-   auto-voids, request card reports it.
+   destination), total cost → owner-gated one-click batch approve → labels
+   purchase live (waitpoint approval + run polling on camera; the OLTP→OLAP
+   loop that executes). A cancel request arrives: label auto-voids, request
+   card reports it.
 6. **WED** — weekly report: tier/platform mix and return-customer rate with
    WoW/MoM deltas, six-category product table, auction→add-on funnel vs
    previous weeks; one off-script question answered live.
@@ -364,7 +370,7 @@ codified after-sales templates · report definitions · the judge-test set.
 - ClickHouse is the primary database; Postgres is the ClickHouse-managed
   optional addition (per rules).
 - Trigger.dev `chat.agent()` is the agent runtime; durable tasks + waitpoints
-  + Realtime are used materially, not decoratively.
+  + run-metadata polling are used materially, not decoratively.
 - All code written inside the 2026-07-17 → 07-23 window (git history is the
   evidence). No proprietary code; no real customer data; secrets in `.env*`
   only, never committed.
