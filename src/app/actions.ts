@@ -5,9 +5,10 @@
  * browser never holds the Trigger.dev secret key. Per-user / per-plan
  * authorization would live here too.
  */
+import { cookies } from "next/headers";
 import { auth, runs } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { requireOwner } from "@/lib/owner-auth";
+import { OWNER_COOKIE, ownerAuthConfigured, requireOwner, verifySessionValue } from "@/lib/owner-auth";
 
 // Creates the Session + first run, returns a session-scoped PAT. Idempotent
 // on (env, chatId) — concurrent calls converge to the same session.
@@ -30,6 +31,19 @@ export async function mintChatAccessToken(chatId: string) {
 const TERMINAL_FAILURE = new Set([
   "FAILED", "CRASHED", "CANCELED", "SYSTEM_FAILURE", "TIMED_OUT", "INTERRUPTED", "EXPIRED",
 ]);
+
+// Whether gated actions are configured and whether THIS caller already has an
+// owner session — the approve chip reads this to decide between "disabled: set
+// REEF_OWNER_TOKEN", "unlock first", or "go". Never throws (unlike requireOwner)
+// so the read-only cockpit stays open regardless (R3-P1 rescope: only the money
+// action is gated, never the whole cockpit).
+export async function getOwnerAuthState(): Promise<{ configured: boolean; authenticated: boolean }> {
+  const configured = ownerAuthConfigured();
+  if (!configured) return { configured: false, authenticated: false };
+  const jar = await cookies();
+  const authenticated = verifySessionValue(jar.get(OWNER_COOKIE)?.value, Date.now()) !== null;
+  return { configured: true, authenticated };
+}
 
 // Progress of a label-day run, read from its metadata AND its execution status —
 // the UI polls this after approval so the owner watches "awaiting → purchasing

@@ -87,8 +87,9 @@ These are enforced by the system prompt and provable — see `agent-check.ts`.
 
 - Node 20+ (developed on 25) · a ClickHouse Cloud service · a ClickHouse-managed
   Postgres · a Trigger.dev project (CLI logged in: `npx trigger.dev@latest login`)
-  · an Anthropic API key · an owner passphrase (`REEF_OWNER_TOKEN`) that unlocks
-  the cockpit's gated actions.
+  · an Anthropic API key · an owner passphrase (`REEF_OWNER_TOKEN`) to authorize
+  the label-approval action (only that one money-moving action is gated — the
+  rest of the cockpit needs no auth).
 - `cp .env.example .env.local` and fill it in, then `npm install`.
 
 ### First time only — create the data plane
@@ -118,9 +119,12 @@ Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
 - *"Run label day"* — the manifest + a gated **Approve** chip (the waitpoint)
 - *"Weekly report"* — platform/tier mix, retention, funnel, all vs history
 
-The cockpit is owner-gated: unlock it once with your `REEF_OWNER_TOKEN` (the
-gated Approve action and its progress require that owner session — a partial
-mitigation of the fact that a label purchase spends money).
+The cockpit opens with zero config — chat, reports, boards, and the read-only
+manifest all work immediately. Only the money-moving **Approve & buy labels**
+action is owner-gated: set `REEF_OWNER_TOKEN` in `.env.local` and the chip
+prompts for that passphrase inline the first time you approve (a label purchase
+spends money, so it stays behind a human + a session). If the token is unset,
+that one chip is disabled with a hint; everything else is unaffected.
 
 `/merchant` needs Terminal 1 running (the agent executes in the Trigger worker).
 Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.

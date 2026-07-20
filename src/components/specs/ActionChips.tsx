@@ -1,16 +1,21 @@
 "use client";
 
 /** Executable action chips. `gated` = human-only click (coral); `auto` (teal).
- *  Clicking POSTs to /api/actions. The label-batch approval then POLLS the
- *  durable run and streams real progress — "awaiting → purchasing 1/N →
- *  purchased" with the OLTP+OLAP evidence — so the second loop closes on screen
- *  (R2-M3). Unwired actions surface the honest 501, never a fake success. */
+ *  Clicking POSTs to /api/actions. The label-batch approval is owner-gated: the
+ *  chip loads owner-auth state, and if the caller has no owner session it prompts
+ *  for the passphrase INLINE (never gating the rest of the cockpit — R3-P1
+ *  rescope), then — on unlock — asks the owner to click Approve again rather than
+ *  auto-buying. If REEF_OWNER_TOKEN isn't configured the chip is disabled with a
+ *  setup hint. On approval it POLLS the durable run and streams real progress —
+ *  "purchasing 1/N → purchased" — so the OLTP+OLAP loop closes on screen. Other
+ *  unwired actions surface the honest 501, never a fake success. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ActionChip } from "@/lib/protocol";
-import { getLabelRunProgress } from "@/app/actions";
+import { getLabelRunProgress, getOwnerAuthState } from "@/app/actions";
 
 type Progress = { status: string; failed: boolean; purchased: number; shipments: number; totalCostCents: number };
+type Auth = { configured: boolean; authenticated: boolean };
 
 function usd(cents: number) {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
@@ -23,6 +28,20 @@ function ChipButton({ chip }: { chip: ActionChip }) {
 
   const isApproval = chip.taskId === "approve-label-batch";
   const runId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
+
+  // Owner-auth state (approval chip only): drives disabled/unlock/go.
+  const [auth, setAuth] = useState<Auth | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const [pass, setPass] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockErr, setUnlockErr] = useState("");
+
+  useEffect(() => {
+    if (!isApproval) return;
+    let live = true;
+    getOwnerAuthState().then((a) => { if (live) setAuth(a); }).catch(() => {});
+    return () => { live = false; };
+  }, [isApproval]);
 
   async function pollRun(id: string) {
     // Watch the run to completion (fast — purchases stream in). Bounded.
@@ -59,7 +78,13 @@ function ChipButton({ chip }: { chip: ActionChip }) {
   }
 
   async function fire() {
-    if (state === "busy" || state === "running") return;
+    if (state === "busy" || state === "running" || state === "done") return;
+    // Approval gating happens client-side first so the owner sees the right
+    // affordance; the server still enforces it (requireOwner).
+    if (isApproval && auth) {
+      if (!auth.configured) return;                       // disabled
+      if (!auth.authenticated) { setUnlocking(true); return; } // unlock first
+    }
     setState("busy");
     setNote("");
     try {
@@ -70,6 +95,17 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
+        if (isApproval && res.status === 401) {           // session lost/expired
+          setState("idle");
+          setAuth((a) => (a ? { ...a, authenticated: false } : a));
+          setUnlocking(true);
+          return;
+        }
+        if (isApproval && res.status === 503) {           // token not configured
+          setState("idle");
+          setAuth({ configured: false, authenticated: false });
+          return;
+        }
         setState("error");
         setNote(data.error ?? `action failed (${res.status})`);
         return;
@@ -88,6 +124,39 @@ function ChipButton({ chip }: { chip: ActionChip }) {
     }
   }
 
+  async function unlock(e: React.FormEvent) {
+    e.preventDefault();
+    if (unlockBusy || !pass) return;
+    setUnlockBusy(true);
+    setUnlockErr("");
+    try {
+      const res = await fetch("/api/owner/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: pass }),
+      });
+      if (res.ok) {
+        setAuth({ configured: true, authenticated: true });
+        setUnlocking(false);
+        setPass("");
+        setState("idle");
+        setNote("Unlocked — click Approve again"); // deliberate: never auto-buy
+        return;
+      }
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 503) {
+        setAuth({ configured: false, authenticated: false });
+        setUnlocking(false);
+        return;
+      }
+      setUnlockErr(d.error ?? "sign-in failed");
+    } catch {
+      setUnlockErr("network error");
+    } finally {
+      setUnlockBusy(false);
+    }
+  }
+
   const gated = chip.risk === "gated";
   const base =
     "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[12px] tracking-wide transition-colors disabled:opacity-60";
@@ -96,12 +165,13 @@ function ChipButton({ chip }: { chip: ActionChip }) {
     : "border-teal/60 text-tealhi hover:bg-teal/10";
 
   const running = state === "running";
+  const unconfigured = isApproval && auth !== null && !auth.configured;
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={fire}
-        disabled={state === "busy" || running || state === "done" || state === "stalled"}
+        disabled={state === "busy" || running || state === "done" || state === "stalled" || unconfigured}
         className={`${base} ${tone}`}
       >
         {gated ? (
@@ -126,6 +196,34 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       ) : null}
       {state === "error" ? (
         <span className="font-mono text-[12px] text-danger">✕ {note}</span>
+      ) : null}
+      {state === "idle" && note ? (
+        <span className="font-mono text-[12px] text-tealhi">{note}</span>
+      ) : null}
+      {unconfigured ? (
+        <span className="font-mono text-[12px] text-warn">set REEF_OWNER_TOKEN to enable gated actions</span>
+      ) : null}
+      {unlocking ? (
+        <form onSubmit={unlock} className="inline-flex flex-wrap items-center gap-1.5">
+          <input
+            type="password"
+            autoComplete="current-password"
+            aria-label="Owner passphrase"
+            placeholder="owner passphrase"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            disabled={unlockBusy}
+            className="rounded-sm border border-line bg-raise px-2 py-1 text-[12px] text-ink outline-none focus:border-tealhi/70 disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={unlockBusy || !pass}
+            className="inline-flex items-center rounded-sm border border-coral/60 px-2 py-1 font-mono text-[12px] text-coralhi hover:bg-coral/10 disabled:opacity-60"
+          >
+            {unlockBusy ? "unlocking…" : "Unlock"}
+          </button>
+          {unlockErr ? <span className="font-mono text-[12px] text-danger">✕ {unlockErr}</span> : null}
+        </form>
       ) : null}
     </span>
   );
