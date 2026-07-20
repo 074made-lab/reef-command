@@ -1,30 +1,166 @@
 # 🪸 Reef Command
 
-**A chat agent where the answer is never a wall of text.** Two-sided chat for a
-live coral e-commerce store: a merchant copilot and a customer concierge
-sharing one live data plane — every response a chart, a heatmap, a verdict
-card, or a one-click gated action.
+**One week of a live-coral business, run from one chat window — where the
+answer is never a wall of text.**
 
-Built for the ClickHouse × Trigger.dev Virtual Summer Hackathon 2026.
+Ask about the week and you don't get paragraphs; you get a live auction board,
+two orders visibly merging into one shipping box, a reef-health report with
+week-over-week deltas, or a one-click gated action. Chat is the frame;
+interactive components are the answers.
 
-- **ClickHouse Cloud** — primary database: high-volume synthetic event stream
-  (orders, auction bids, messages, inventory moves), materialized views
-  powering every visual in real time.
-- **Trigger.dev** — `chat.agent()` orchestration, scheduled event generators,
-  gated background action tasks, Realtime streaming to the UI.
-- **ClickHouse-managed Postgres** — OLTP truth (orders, inventory, approval
-  cases); every approved action closes the OLTP→OLAP loop on screen.
+Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme:
+*Beyond the Wall of Text*).
 
-All data is synthetic. Design: [docs/DESIGN.md](docs/DESIGN.md).
+> **Modeled on the real weekly operations of [TIA Coral](https://tiacoral.com),
+> a live-coral store in New York.** All data in this repository is **synthetic**
+> and operational details are simplified for the demo — no real customer,
+> order, amount, or message appears anywhere. See [`docs/DESIGN.md`](docs/DESIGN.md).
 
-## Run
+---
+
+## The week it runs
+
+```
+THU  auction opens          →  SAT  winners get payment + cross-platform codes
+SUN–MON  one-fee add-ons     →  MON  label day (weigh, weather, batch-approve)
+TUE–WED  combined shipping   →  WED  weekly report retargets next week
+```
+
+Coral shipping is expensive; customers want one fee to cover as many corals as
+possible. Combining an auction win with add-on orders across three platforms is
+the store's core economic move — and its hardest operational problem. Reef
+Command automates, visualizes, and **gates** that coordination.
+
+## How it uses both tools (materially, not decoratively)
+
+**ClickHouse — the primary database.** ~1.9M synthetic events (orders, bids,
+messages, inventory moves). Materialized views roll up revenue/orders per
+platform on insert; `windowFunnel` computes the auction→code→add-on conversion
+in one query; full history makes every WoW/MoM delta a window comparison.
+Sub-second analytics behind every component.
+
+**Trigger.dev — the orchestration + agent runtime.**
+- **`chat.agent()`** (`src/trigger/reef-chat.ts`) is the brain: a durable chat
+  agent running Claude (Sonnet) via the Vercel AI SDK. The store reads are
+  registered as typed tools; the agent picks which to call and each returns a
+  renderable component. History is durable server-side — it survives a refresh.
+- **A human-in-the-loop waitpoint** (`src/trigger/label-day.ts`): label day
+  builds a shipment manifest, then **pauses** on a waitpoint until the merchant
+  approves the batch with one click; on approval it resumes and buys the labels
+  one by one, streaming progress via **Realtime**.
+- **A scheduled task** ticks one minute of reality into both stores every
+  minute, so the charts move live.
+
+**ClickHouse-managed Postgres — the optional OLTP truth** (customers, orders,
+shipments, cases). Every consequential write lands here first, then emits an
+event to ClickHouse.
+
+### OLTP + OLAP on camera (bonus category)
+
+Two loops are demonstrated live: **(1)** two orders merge → Postgres
+combined-order write → merge event → ClickHouse → the funnel/revenue components
+update; **(2)** a label batch is approved → Postgres label rows + spend →
+`label_purchased` events → ClickHouse → the cost/ship components update. One
+click, both databases, a visible consequence.
+
+## Boundaries (constitutional)
+
+Money is human-only — the agent files a case, it never refunds, charges, or
+pays out. It never fabricates a number or a policy (an honest "I don't have
+that" beats a plausible guess), and it never writes free-form customer text.
+These are enforced by the system prompt and provable — see `agent-check.ts`.
+
+---
+
+## Run it
+
+### Prerequisites
+
+- Node 20+ (developed on 25) · a ClickHouse Cloud service · a ClickHouse-managed
+  Postgres · a Trigger.dev project (CLI logged in: `npx trigger.dev@latest login`)
+  · an Anthropic API key.
+- `cp .env.example .env.local` and fill it in, then `npm install`.
+
+### First time only — create the data plane
 
 ```bash
-cp .env.example .env.local   # fill in ClickHouse / Trigger.dev / Anthropic
-npm install
+npx tsx scripts/ch-init.ts      # apply the ClickHouse schema (events + MVs)
+npx tsx scripts/pg-init.ts      # apply the Postgres schema
+npx tsx scripts/backfill.ts     # backfill ~1.9M synthetic events into ClickHouse
+npx tsx scripts/pg-seed.ts --wipe   # seed Postgres from the same deterministic world
+```
+
+### The live cockpit — two terminals
+
+```bash
+# Terminal 1 — the agent worker (runs chat.agent() + the label-day waitpoint):
+npx trigger.dev@latest dev
+
+# Terminal 2 — the app:
 npm run dev
+```
+
+Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
+
+- *"What needs my attention?"* — open cases, requests, unanswered messages
+- *"How's the auction going?"* — the live/closed board
+- *"Any orders to merge?"* — cross-platform merge cards (the signature shot)
+- *"Run label day"* — the manifest + a gated **Approve** chip (the waitpoint)
+- *"Weekly report"* — platform/tier mix, retention, funnel, all vs history
+
+`/merchant` needs Terminal 1 running (the agent executes in the Trigger worker).
+Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.
+
+### See it work without a browser (fastest verification)
+
+Every check runs against the **live** stores and prints real output:
+
+```bash
+npx tsx scripts/agent-check.ts     # LLM → correct tool → live data + the refusal guardrails
+npx tsx scripts/report-check.ts    # weekly report: platform/tier mix, WoW/MoM, sparklines
+npx tsx scripts/labelday-check.ts  # the MON label manifest (read-only; no purchase)
+npx tsx scripts/tools-check.ts     # all five tools vs both stores
+npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries
+npx tsc --noEmit && npm run build  # types + production build
+```
+
+`agent-check.ts` makes real (cheap, $-capped) Anthropic calls; it reads live
+data and does not write.
+
+---
+
+## Architecture
+
+```
+Next.js chat UI (/merchant, /shop)
+   │  ComponentSpec JSON  ·  Trigger.dev Realtime
+Trigger.dev  chat.agent()  ──tools──►  five live-store reads → components
+             label-day task (waitpoint → approve → buy)
+             scheduled live tick
+        ┌───────────────────────────────────────────────┐
+        │ ClickHouse Cloud — OLAP: events, MVs, funnels  │
+        │ ClickHouse-managed Postgres — OLTP: truth      │
+        └───────────────────────────────────────────────┘
+```
+
+The agent brain (`src/lib/agent-config.ts`: model, system prompt, tools) has no
+Trigger.dev dependency, and the schemas are mirrored from day one — the design
+is built to migrate off hackathon infrastructure onto the owner's own stack
+(SQLite event bus + launchd + Claude API direct). See `docs/DESIGN.md` §9.
+
+## Repo layout
+
+```
+docs/DESIGN.md          the authoritative spec (read this)
+docs/UI-DIRECTION.md    the visual language
+db/                     ClickHouse + Postgres schemas
+src/lib/                agent-config, tools, label-day, synth generator, store clients
+src/trigger/            reef-chat (chat.agent), label-day (waitpoint), live-tick
+src/components/specs/   one renderer per component kind — the "answers are components" layer
+scripts/                init / backfill / seed + the live verification harnesses
 ```
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). All code written inside the 2026-07-17 → 07-23
+build window (git history is the evidence).
