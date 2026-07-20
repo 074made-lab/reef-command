@@ -1,65 +1,74 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Wordmark } from "@/components/chat/Header";
+
+const SURFACES = [
+  {
+    href: "/merchant",
+    tag: "MERCHANT COCKPIT",
+    line: "Run the auction week from one conversation — attention, merges, labels, the report.",
+    live: true,
+  },
+  {
+    href: "/shop",
+    tag: "CUSTOMER CONCIERGE",
+    line: "Order tracking, DOA claims, add-ons for buyers. Opens tomorrow.",
+    live: false,
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6">
+      {/* sonar rings */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="sonar-ring absolute h-[42rem] w-[42rem] rounded-full border border-teal/25"
+            style={{ animationDelay: `${i * 1.33}s` }}
+          />
+        ))}
+      </div>
+
+      <div className="relative flex flex-col items-center text-center">
+        <p className="mb-4 font-mono text-[10px] tracking-[0.4em] text-mute uppercase">
+          depth 04 · channel open
+        </p>
+        <Wordmark size="lg" />
+        <p className="mt-5 max-w-md text-[15px] leading-relaxed text-dim">
+          One week of a coral business, run from one chat window.
+        </p>
+
+        <div className="mt-10 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+          {SURFACES.map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="group rounded-md border border-line bg-panel/80 px-5 py-4 text-left transition-colors hover:border-teal/60"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <p className="flex items-center justify-between font-mono text-[11px] tracking-[0.2em] text-tealhi">
+                {s.tag}
+                <span
+                  className={`transition-transform group-hover:translate-x-0.5 ${
+                    s.live ? "text-coralhi" : "text-mute"
+                  }`}
+                  aria-hidden
+                >
+                  ▸
+                </span>
+              </p>
+              <p className="mt-1.5 text-[13px] leading-snug text-dim">{s.line}</p>
+              <p className="mt-2 font-mono text-[10px] tracking-widest text-mute">
+                {s.live ? "LIVE" : "TOMORROW"}
+              </p>
+            </Link>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+        <p className="mt-12 font-mono text-[10px] tracking-[0.25em] text-mute uppercase">
+          ClickHouse × Trigger.dev · Beyond the Wall of Text
+        </p>
+      </div>
+    </main>
   );
 }
