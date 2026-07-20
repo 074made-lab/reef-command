@@ -166,7 +166,13 @@ async function eventLanded(ch: ClickHouseClient, shipmentId: string): Promise<bo
  *  the unfinished steps. An already-'purchased' shipment short-circuits with no
  *  re-link and no re-emit. (Full replay of a HITL-approved run is disabled
  *  anyway — trigger/label-day.ts maxAttempts:1 — this covers a manual re-fire
- *  and within-run partial failure.) */
+ *  and within-run partial failure.)
+ *
+ *  NOT strict exactly-once: the ClickHouse guard is check-then-insert, so two
+ *  identical manifests approved at the very same instant could race it and
+ *  double-emit. It isn't reachable in this demo (each run's waitpoint token
+ *  completes once; the store is single-owner), but a true exactly-once guard
+ *  (a unique key or a ReplacingMergeTree on the event) is future work. */
 export async function purchaseLabels(
   pg: Pool, ch: ClickHouseClient, m: Manifest, nowIso = new Date().toISOString(),
 ): Promise<{ purchased: number; totalCostCents: number }> {
