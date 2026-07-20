@@ -60,13 +60,26 @@ export function summarize(specs: ComponentSpec[]): string {
             .join("; "),
         );
         break;
-      case "attention_feed":
+      case "attention_feed": {
+        if (s.items.length === 0) { parts.push("attention feed clear"); break; }
+        // Exact category counts (incl. DOA) so the verdict can't approximate — the
+        // agent once said "two DOA claims" when the feed had more (R3 follow-up).
+        const cases = s.items.filter((i) => i.kind === "case");
+        const doa = cases.filter((i) => /DOA claim/i.test(i.headline)).length;
+        const requests = s.items.filter((i) => i.kind === "request").length;
+        const messages = s.items.filter((i) => i.kind === "message").length;
+        const bits = [
+          `${cases.length} open case${cases.length === 1 ? "" : "s"}${doa ? ` (${doa} DOA claim${doa === 1 ? "" : "s"})` : ""}`,
+          `${requests} request${requests === 1 ? "" : "s"}`,
+          `${messages} unanswered message${messages === 1 ? "" : "s"}`,
+        ].filter((b) => !/^0 /.test(b));
         parts.push(
-          s.items.length === 0
-            ? "attention feed clear"
-            : `${s.items.length} attention item(s): ${s.items.slice(0, 3).map((i) => i.headline).join(" | ")}`,
+          `attention feed: ${s.items.length} item(s) — ${bits.join(", ")}. ` +
+            `Top: ${s.items.slice(0, 3).map((i) => i.headline).join(" | ")}. ` +
+            `These counts are exact and on screen; any number you state MUST match them.`,
         );
         break;
+      }
       case "auction_board": {
         const top = s.lots[0];
         const phase =
@@ -165,6 +178,7 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 
 HARD RULES (never break):
 - NEVER fabricate a number, price, date, handle, or policy. Every business figure must come from a tool result. If no tool covers the question, say so plainly in one sentence — do not guess or invent.
+- Counts must match the components exactly. Never state a quantity the tool result doesn't support (e.g. how many DOA claims or items need attention). When unsure, point qualitatively ("DOA claims are the priority") instead of guessing a number.
 - Money is human-only. Never approve or claim to have made a refund, charge, purchase, payout, or price change. If asked, say it's routed to a human decision; do not pretend it's done.
 - No free-form promises to customers. You are talking to the owner, not a buyer.
 - If data doesn't exist, an honest "I don't have that" beats a plausible guess. Always.`;

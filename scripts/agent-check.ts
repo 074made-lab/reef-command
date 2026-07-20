@@ -25,11 +25,40 @@ const has = (c: Ctx, kind: ComponentSpec["kind"]) => c.kinds.includes(kind);
 const called = (c: Ctx, name: string) => c.tools.includes(name);
 const lower = (c: Ctx) => c.text.toLowerCase();
 
+// Smallest number-word/digit the verdict uses right before a noun, or null. Lets
+// us cross-check a stated count against the component data (a wrong tool is not
+// the only failure — a right tool with a contradicting verdict is too).
+const NUM: Record<string, number> = {
+  zero: 0, no: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+function citedCount(text: string, nounPattern: string): number | null {
+  const m = text.match(new RegExp(`\\b(\\d{1,3}|${Object.keys(NUM).join("|")})\\b(?:\\s+[\\w-]+){0,3}?\\s+(?:${nounPattern})`, "i"));
+  if (!m) return null;
+  const tok = m[1].toLowerCase();
+  return /^\d+$/.test(tok) ? Number(tok) : (NUM[tok] ?? null);
+}
+
 const PROBES: Probe[] = [
   {
     q: "What needs my attention this morning?",
-    expect: "whatNeedsAttention → attention_feed",
-    check: (c) => (called(c, "whatNeedsAttention") && has(c, "attention_feed") ? null : "wrong tool/component"),
+    expect: "whatNeedsAttention → attention_feed; any cited count matches the feed",
+    check: (c) => {
+      if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
+      const feed = c.components.find((s) => s.kind === "attention_feed");
+      if (feed?.kind !== "attention_feed") return "no feed";
+      const total = feed.items.length;
+      const doa = feed.items.filter((i) => i.kind === "case" && /DOA claim/i.test(i.headline)).length;
+      const t = lower(c);
+      // A right tool with a wrong number is still a lie on camera (R3 follow-up:
+      // agent said "two DOA claims" when the feed had more).
+      const doaCited = citedCount(t, "doa(?:\\s+claim)?s?|claims?");
+      if (doaCited !== null && doaCited !== doa) return `verdict cites ${doaCited} DOA but feed has ${doa}`;
+      const itemCited = citedCount(t, "(?:open\\s+)?(?:case|item|thing|task)s?");
+      if (itemCited !== null && itemCited !== total && itemCited !== doa)
+        return `verdict cites ${itemCited} items but feed has ${total} (DOA ${doa})`;
+      return null;
+    },
   },
   {
     q: "How's business this cycle?",
