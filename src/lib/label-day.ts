@@ -14,7 +14,7 @@
  */
 import type { ClickHouseClient } from "@clickhouse/client";
 import type { Pool } from "pg";
-import { insertEvents } from "./store/clickhouse";
+import { insertEvents, queryRows } from "./store/clickhouse";
 import { currentWeekIndex } from "./tools";
 import type { ReefEvent } from "./datastore";
 import type {
@@ -133,32 +133,63 @@ export function manifestSpec(m: Manifest, runId?: string): ComponentSpec {
   };
 }
 
+/** Has this shipment's label_purchased event already landed in ClickHouse?
+ *  order_id carries the shipment code (SHP-<cust>-<week>), unique per week, so
+ *  this is an exact dedup key. Lets a replay tell "event never emitted" (must
+ *  emit) from "emitted, but the ack was lost" (must NOT re-emit → no double
+ *  count). Bundled into the same retry as the insert so a fully-down ClickHouse
+ *  throws before we mark the shipment done. */
+async function eventLanded(ch: ClickHouseClient, shipmentId: string): Promise<boolean> {
+  const r = await queryRows<{ n: string }>(
+    ch,
+    `SELECT count() AS n FROM events WHERE type = 'label_purchased' AND order_id = {sid:String}`,
+    { sid: shipmentId },
+  );
+  return Number(r[0]?.n ?? 0) > 0;
+}
+
 /** Write half: shipment rows + spend → Postgres, label_purchased → ClickHouse,
  *  orders linked to their shipment.
  *
- *  Idempotent on shipment_code: a replay of an already-purchased shipment hits
- *  the conflict, returns no row, and is skipped — no double count, no re-emit.
- *  Each label's ClickHouse event is retried; a final failure THROWS with the
- *  shipment id so a Postgres-committed / ClickHouse-missing split is visible,
- *  not silently swallowed. (Full outbox reconciliation of an already-committed
- *  shipment whose event never landed is future work — noted in DESIGN §4.) */
+ *  Recoverable idempotency, not just dedup (Codex R3-P1). Each shipment is a
+ *  little state machine — a row is inserted as 'planned' and only flipped to
+ *  'purchased' AFTER all three effects land, in a fixed order:
+ *
+ *    1. INSERT ... status='planned'  ON CONFLICT DO NOTHING   (claim the row)
+ *    2. link its orders (guarded by shipment_id IS NULL → safe to repeat)
+ *    3. emit label_purchased to ClickHouse, skipping it if already present
+ *    4. UPDATE status='purchased', purchased_at=now                (commit)
+ *
+ *  The commit (4) is last and depends on (3) succeeding, so every partial
+ *  failure — orders not linked, ClickHouse never reached, crash mid-batch —
+ *  leaves the row 'planned' and a re-run of the SAME manifest resumes exactly
+ *  the unfinished steps. An already-'purchased' shipment short-circuits with no
+ *  re-link and no re-emit. (Full replay of a HITL-approved run is disabled
+ *  anyway — trigger/label-day.ts maxAttempts:1 — this covers a manual re-fire
+ *  and within-run partial failure.) */
 export async function purchaseLabels(
   pg: Pool, ch: ClickHouseClient, m: Manifest, nowIso = new Date().toISOString(),
 ): Promise<{ purchased: number; totalCostCents: number }> {
   let purchased = 0, spend = 0;
 
   for (const s of m.shipments) {
-    const r = await pg.query<{ id: string }>(`
+    // 1. Claim the shipment row (idempotent). status='planned' means "not yet
+    //    fully committed"; a prior partial attempt leaves it here to resume.
+    await pg.query(`
       INSERT INTO shipments (shipment_code, customer_id, ship_week, status, items,
-        weight_lb, destination_city, pack, label_cost_cents, purchased_at)
-      VALUES ($1,$2,$3,'purchased',$4,$5,$6,$7,$8,$9)
-      ON CONFLICT (shipment_code) DO NOTHING
-      RETURNING id`,
+        weight_lb, destination_city, pack, label_cost_cents)
+      VALUES ($1,$2,$3,'planned',$4,$5,$6,$7,$8)
+      ON CONFLICT (shipment_code) DO NOTHING`,
       [s.shipmentId, s.customer.customerId, m.weekLabel, s.items,
-        s.weightLb, s.destination, s.pack, s.costCents, nowIso]);
-    if (r.rowCount === 0) continue;                 // already purchased — idempotent skip
-    const shipmentPk = r.rows[0].id;
+        s.weightLb, s.destination, s.pack, s.costCents]);
+    const cur = await pg.query<{ id: string; status: string }>(
+      `SELECT id, status FROM shipments WHERE shipment_code = $1`, [s.shipmentId]);
+    const row = cur.rows[0];
+    if (!row) throw new Error(`shipment ${s.shipmentId} vanished after insert`);
+    if (row.status === "purchased") { purchased++; spend += s.costCents; continue; }
+    const shipmentPk = row.id;
 
+    // 2. Link the orders. Repeating this is a no-op once linked (IS NULL guard).
     const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
     if (orderIds.length) {
       await pg.query(
@@ -167,6 +198,10 @@ export async function purchaseLabels(
         [shipmentPk, s.customer.customerId, orderIds]);
     }
 
+    // 3. Emit the ClickHouse event unless it already landed. The dedup read and
+    //    the insert share one retry loop: a fully-down ClickHouse THROWS here,
+    //    BEFORE step 4, so the row stays 'planned' and is retried — never a
+    //    silent Postgres-committed / ClickHouse-missing split.
     const ev: ReefEvent = {
       ts: nowIso, type: "label_purchased", platform: "system",
       customerId: s.customer.customerId, orderId: s.shipmentId, amountCents: s.costCents,
@@ -174,15 +209,22 @@ export async function purchaseLabels(
     };
     let chOk = false;
     for (let attempt = 1; attempt <= 3 && !chOk; attempt++) {
-      try { await insertEvents(ch, [ev]); chOk = true; }
-      catch (e) {
+      try {
+        if (!(await eventLanded(ch, s.shipmentId))) await insertEvents(ch, [ev]);
+        chOk = true;
+      } catch (e) {
         if (attempt === 3) {
           throw new Error(
-            `label_purchased for ${s.shipmentId} committed in Postgres but failed to reach ClickHouse: ${e instanceof Error ? e.message : String(e)}`);
+            `label_purchased for ${s.shipmentId}: ClickHouse unreachable — shipment left 'planned' for retry: ${e instanceof Error ? e.message : String(e)}`);
         }
         await new Promise((r) => setTimeout(r, 400 * attempt));
       }
     }
+
+    // 4. Commit: all effects landed, so mark the shipment purchased.
+    await pg.query(
+      `UPDATE shipments SET status = 'purchased', purchased_at = $2
+       WHERE id = $1 AND status <> 'purchased'`, [shipmentPk, nowIso]);
     purchased++;
     spend += s.costCents;
   }
