@@ -43,11 +43,14 @@ Sub-second analytics behind every component.
 - **`chat.agent()`** (`src/trigger/reef-chat.ts`) is the brain: a durable chat
   agent running Claude (Sonnet) via the Vercel AI SDK. The store reads are
   registered as typed tools; the agent picks which to call and each returns a
-  renderable component. History is durable server-side — it survives a refresh.
+  renderable component. History accumulates server-side in the durable session.
+  *(Restoring the conversation into a fresh client after a page refresh is a
+  next step — the server session persists; the client does not yet re-hydrate.)*
 - **A human-in-the-loop waitpoint** (`src/trigger/label-day.ts`): label day
   builds a shipment manifest, then **pauses** on a waitpoint until the merchant
-  approves the batch with one click; on approval it resumes and buys the labels
-  one by one, streaming progress via **Realtime**.
+  approves the exact batch with one click; on approval it resumes and buys the
+  labels one by one, and the approve chip polls the run to show progress
+  ("purchasing 1/N → purchased") to completion.
 - **A scheduled task** ticks one minute of reality into both stores every
   minute, so the charts move live.
 
