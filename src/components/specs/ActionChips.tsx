@@ -10,14 +10,14 @@ import { useState } from "react";
 import type { ActionChip } from "@/lib/protocol";
 import { getLabelRunProgress } from "@/app/actions";
 
-type Progress = { status: string; purchased: number; shipments: number; totalCostCents: number };
+type Progress = { status: string; failed: boolean; purchased: number; shipments: number; totalCostCents: number };
 
 function usd(cents: number) {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
 function ChipButton({ chip }: { chip: ActionChip }) {
-  const [state, setState] = useState<"idle" | "busy" | "running" | "done" | "error">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "running" | "done" | "error" | "stalled">("idle");
   const [note, setNote] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
 
@@ -40,6 +40,12 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         setNote(`purchased ${p.purchased}/${p.shipments} labels · ${usd(p.totalCostCents)} — Postgres rows + ClickHouse events written`);
         return;
       }
+      if (p.failed) {
+        // A crashed/failed run is an error, never a green ✓ (R3-P1).
+        setState("error");
+        setNote("run failed — check the Trigger dashboard");
+        return;
+      }
       if (p.status === "declined" || p.status === "empty") {
         setState("error");
         setNote(p.status === "empty" ? "nothing to ship" : "declined");
@@ -47,8 +53,9 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
-    setState("done");
-    setNote("approved — run still finishing; check the Trigger dashboard");
+    // Out of poll budget with no terminal state — neutral, NOT a success.
+    setState("stalled");
+    setNote("still finishing — check the Trigger dashboard");
   }
 
   async function fire() {
@@ -94,7 +101,7 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       <button
         type="button"
         onClick={fire}
-        disabled={state === "busy" || running || state === "done"}
+        disabled={state === "busy" || running || state === "done" || state === "stalled"}
         className={`${base} ${tone}`}
       >
         {gated ? (
@@ -113,6 +120,9 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       ) : null}
       {state === "done" ? (
         <span className="anim-rise font-mono text-[12px] text-ok">✓ {note}</span>
+      ) : null}
+      {state === "stalled" ? (
+        <span className="font-mono text-[12px] text-mute">⋯ {note}</span>
       ) : null}
       {state === "error" ? (
         <span className="font-mono text-[12px] text-danger">✕ {note}</span>

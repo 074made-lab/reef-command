@@ -24,14 +24,26 @@ export async function mintChatAccessToken(chatId: string) {
   });
 }
 
-// Progress of a label-day run, read from its metadata — the UI polls this after
-// approval so the owner watches "awaiting → purchasing 1/N → purchased" and the
-// final OLTP+OLAP evidence land on screen (R2-M3).
+// Trigger execution states that mean the run is dead and will never publish a
+// 'purchased' status — the UI must show an error, not keep polling or flip green.
+const TERMINAL_FAILURE = new Set([
+  "FAILED", "CRASHED", "CANCELED", "SYSTEM_FAILURE", "TIMED_OUT", "INTERRUPTED", "EXPIRED",
+]);
+
+// Progress of a label-day run, read from its metadata AND its execution status —
+// the UI polls this after approval so the owner watches "awaiting → purchasing
+// 1/N → purchased" and the final OLTP+OLAP evidence land on screen (R2-M3). A
+// crashed run surfaces `failed` so the chip shows an error instead of a false
+// success (R3-P1). The raw error stays server-side (Trigger dashboard); only the
+// boolean crosses to the browser.
 export async function getLabelRunProgress(runId: string) {
   const run = await runs.retrieve(runId);
   const m = run.metadata ?? {};
+  const status = (m.status as string) ?? "unknown";
+  const failed = status === "failed" || TERMINAL_FAILURE.has(String(run.status));
   return {
-    status: (m.status as string) ?? "unknown",
+    status,
+    failed,
     purchased: Number(m.purchased ?? 0),
     shipments: Number(m.shipments ?? 0),
     totalCostCents: Number(m.totalCostCents ?? 0),
