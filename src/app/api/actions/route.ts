@@ -6,13 +6,32 @@
  * approve-label-batch → completes the paused label-day run's waitpoint, which
  * resumes the durable task and purchases the labels (Postgres + ClickHouse). The
  * approval is validated (R2-M4): the run must be a label-day run that is actually
- * awaiting approval, the token completion must succeed, and if REEF_ADMIN_TOKEN
- * is set the caller must present it. The approver is recorded on the token.
+ * awaiting approval, and the token completion must succeed. It is also owner-only
+ * and fail-closed (R3-P1): requireOwner() rejects any caller without a valid
+ * owner session, and the verified operator — not a hardcoded string — is stamped
+ * on the token and written to the action_log audit trail.
  */
 import { NextResponse } from "next/server";
 import { wait, runs } from "@trigger.dev/sdk";
+import { requireOwner, OwnerAuthError } from "@/lib/owner-auth";
+import { pgPool } from "@/lib/store/postgres";
 
 type Body = { taskId?: string; payload?: Record<string, unknown> };
+
+/** Best-effort audit of a gated approval — records the verified operator. The
+ *  money action already committed via the waitpoint, so a log failure must not
+ *  fail the response; it is surfaced to the server console instead. */
+async function auditApproval(operator: string, runId: string) {
+  try {
+    await pgPool().query(
+      `INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
+       VALUES ('approve-label-batch','gated',$1,$2,'ok')`,
+      [JSON.stringify({ runId }), operator],
+    );
+  } catch (e) {
+    console.error("action_log audit insert failed for approve-label-batch:", e);
+  }
+}
 
 export async function POST(req: Request) {
   let body: Body = {};
@@ -24,10 +43,17 @@ export async function POST(req: Request) {
   const taskId = typeof body.taskId === "string" ? body.taskId : null;
 
   if (taskId === "approve-label-batch") {
-    // Optional owner/demo gate — enforced only if configured.
-    const admin = process.env.REEF_ADMIN_TOKEN;
-    if (admin && req.headers.get("x-reef-admin") !== admin) {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    // Owner-only, fail-closed: no valid owner session (or no owner token
+    // configured at all) → reject. The verified operator is used below.
+    let operator: string;
+    try {
+      ({ operator } = await requireOwner());
+    } catch (e) {
+      if (e instanceof OwnerAuthError) {
+        const status = e.reason === "unconfigured" ? 503 : 401;
+        return NextResponse.json({ ok: false, error: e.message }, { status });
+      }
+      throw e;
     }
 
     const runId = typeof body.payload?.runId === "string" ? body.payload.runId : null;
@@ -67,7 +93,7 @@ export async function POST(req: Request) {
 
     const result = await wait.completeToken(tokenId, {
       status: "approved",
-      approvedBy: "merchant",
+      approvedBy: operator,
       approvedAt: new Date().toISOString(),
     });
     if (!result?.success) {
@@ -76,7 +102,8 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    return NextResponse.json({ ok: true, status: "approved", runId });
+    await auditApproval(operator, runId);
+    return NextResponse.json({ ok: true, status: "approved", runId, approvedBy: operator });
   }
 
   // Not yet wired — do not fake a success (Codex m1).

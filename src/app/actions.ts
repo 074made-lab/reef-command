@@ -7,6 +7,7 @@
  */
 import { auth, runs } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
+import { requireOwner } from "@/lib/owner-auth";
 
 // Creates the Session + first run, returns a session-scoped PAT. Idempotent
 // on (env, chatId) — concurrent calls converge to the same session.
@@ -37,6 +38,7 @@ const TERMINAL_FAILURE = new Set([
 // success (R3-P1). The raw error stays server-side (Trigger dashboard); only the
 // boolean crosses to the browser.
 export async function getLabelRunProgress(runId: string) {
+  await requireOwner(); // owner-only, like the approval it reports on (R3-P1)
   const run = await runs.retrieve(runId);
   const m = run.metadata ?? {};
   const status = (m.status as string) ?? "unknown";
