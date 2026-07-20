@@ -15,7 +15,7 @@ import type { ReefEvent } from "./datastore";
 const bySku = new Map(CATALOG.map((c) => [c.sku, c]));
 
 export async function runTick(ch: ClickHouseClient, pg: Pool, nowIso: string, seed = 1): Promise<{
-  events: number; orders: number; messages: number;
+  events: number; orders: number; messages: number; chOk: boolean;
 }> {
   const events = generateTick(nowIso, seed);
 
@@ -59,7 +59,17 @@ export async function runTick(ch: ClickHouseClient, pg: Pool, nowIso: string, se
         [m.requestId, e.customerId, m.kind, `customer asked: ${m.kind}`, e.ts]);
     }
   }
-  // narrative last: Postgres truth is committed before ClickHouse hears about it
-  await insertEvents(ch, events);
-  return { events: events.length, orders, messages };
+  // narrative last: Postgres truth is committed before ClickHouse hears about it.
+  // Retry only the CH insert in-run (cannot double PG). If it still fails, the
+  // minute is deterministic — generateTick(nowIso, seed) regenerates the exact
+  // same events for reconciliation.
+  let chOk = false;
+  for (let attempt = 1; attempt <= 3 && !chOk; attempt++) {
+    try { await insertEvents(ch, events); chOk = true; }
+    catch (e) {
+      if (attempt === 3) console.error(`CH narrative failed for ${nowIso}; reconcile by regenerating this minute`, e);
+      else await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+  return { events: events.length, orders, messages, chOk };
 }

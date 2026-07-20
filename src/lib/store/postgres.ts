@@ -35,32 +35,39 @@ export async function matchCustomer(
   const phone = contact.phone?.replace(/[^+\d]/g, "") || null;
   const name = contact.name?.trim().toLowerCase() || null;
 
-  const unique = async (sql: string, arg: string) => {
+  // 0 matches → try the next-weaker field; ≥2 matches → AMBIGUOUS: stop the
+  // whole cascade and hand to a human (falling through could bind an
+  // unrelated customer via a weaker field — Codex M8)
+  const lookup = async (sql: string, arg: string): Promise<number | "ambiguous" | null> => {
     const r = await db.query(sql, [arg]);
-    return r.rows.length === 1 ? Number(r.rows[0].id) : null;   // 0 = no match; >1 = ambiguous → human
+    if (r.rows.length === 1) return Number(r.rows[0].id);
+    return r.rows.length > 1 ? "ambiguous" : null;
   };
   if (email) {
-    const id = await unique(
+    const id = await lookup(
       `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE lower(c.primary_email) = $1 OR lower(i.external_email) = $1
        LIMIT 2`, email);
+    if (id === "ambiguous") return null;
     if (id) return { customerId: id, confidence: 1.0, matchedOn: "email" };
   }
   if (phone) {
-    const id = await unique(
+    const id = await lookup(
       `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE c.primary_phone = $1 OR i.external_phone = $1
        LIMIT 2`, phone);
+    if (id === "ambiguous") return null;
     if (id) return { customerId: id, confidence: 0.9, matchedOn: "phone" };
   }
   if (name && name.length >= 4) {
-    const id = await unique(
+    const id = await lookup(
       `SELECT DISTINCT c.id FROM customers c
        LEFT JOIN customer_identities i ON i.customer_id = c.id
        WHERE lower(c.primary_name) = $1 OR lower(i.external_name) = $1
        LIMIT 2`, name);
+    if (id === "ambiguous") return null;
     if (id) return { customerId: id, confidence: 0.6, matchedOn: "name" };
   }
   return null;

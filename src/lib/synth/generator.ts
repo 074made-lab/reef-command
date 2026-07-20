@@ -415,8 +415,9 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
       customerId: cust.id, meta: { id, preview: pick(rng, MESSAGE_PREVIEWS) },
     });
     if (rng() < 0.85) {
-      const answeredAt = new Date(minuteStart.getTime() + (5 + rng() * 50) * 1000).toISOString();
-      events.push({ ts: answeredAt, type: "message_answered", platform: "system", meta: { id } });
+      // answered at the same emission instant — the stream must never contain
+      // a timestamp later than the minute being generated (Codex M3)
+      events.push({ ts, type: "message_answered", platform: "system", meta: { id } });
     }
   }
 
