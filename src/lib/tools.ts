@@ -13,6 +13,7 @@ import type {
   AttentionItem, ComponentSpec, FunnelStep, LotPrice, Metric, ReportSection,
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
+import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);                 // a Thursday — cycle anchor
@@ -116,8 +117,9 @@ export async function auctionBoard(ch: ClickHouseClient): Promise<ComponentSpec[
            argMax(JSONExtractString(meta,'bidder'), ts) AS leader
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
     GROUP BY lot, sku ORDER BY bid DESC`, w);
-  const opensAt = ANCHOR + wi * WEEK_MS;                                   // THU 00:00
-  const closesMs = ANCHOR + wi * WEEK_MS + ((2 * 24 + 22) * 60 + 45) * 60_000; // SAT 22:45
+  const weekStart = ANCHOR + wi * WEEK_MS;
+  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
+  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
   const closesAt = new Date(closesMs).toISOString();
   const now = Date.now();
   const state: "upcoming" | "live" | "closed" =

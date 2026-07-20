@@ -24,6 +24,7 @@
  */
 
 import { AUCTIONABLE, CATALOG, DESTINATIONS, type CatalogItem } from "./catalog";
+import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./schedule";
 import { CUSTOMERS, type SynthCustomer } from "./customers";
 import { mulberry32, pick } from "./rand";
 import type { ReefEvent } from "../datastore";
@@ -143,14 +144,17 @@ function weekScript(weekIndex: number, seed: number): Script {
   const day = (d: number, h: number, m = 0) => w0 + ((d * 24 + h) * 60 + m) * MIN;
   // d: 0=THU 1=FRI 2=SAT 3=SUN 4=MON 5=TUE 6=WED
 
-  // --- lots + auction open (THU 18:00)
+  // --- lots + auction open (THU 18:00 / close SAT 22:45 — shared offsets so the
+  //     tools layer's live/closed computation reads the same instants)
+  const opensMs = w0 + AUCTION_OPEN_OFFSET_MS;
+  const closesMs = w0 + AUCTION_CLOSE_OFFSET_MS;
   const lots = Array.from({ length: 12 }, (_, i) => {
     const item = pick(rng, AUCTIONABLE);
     return { lotId: `W${weekIndex}-L${i + 1}`, item };
   });
-  at(script, day(0, 18), {
-    ts: new Date(day(0, 18)).toISOString(), type: "auction_opened", platform: "auction",
-    meta: { lots: lots.map((l) => ({ lotId: l.lotId, sku: l.item.sku })), closesAt: new Date(day(2, 22, 45)).toISOString() },
+  at(script, opensMs, {
+    ts: new Date(opensMs).toISOString(), type: "auction_opened", platform: "auction",
+    meta: { lots: lots.map((l) => ({ lotId: l.lotId, sku: l.item.sku })), closesAt: new Date(closesMs).toISOString() },
   });
 
   // --- bids over three evenings; last bidder wins
@@ -175,7 +179,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   }
 
   // --- close (SAT 22:45): won + auction orders + discount codes
-  const closeMs = day(2, 22, 45);
+  const closeMs = closesMs;
   at(script, closeMs, {
     ts: new Date(closeMs).toISOString(), type: "auction_closed", platform: "auction",
     meta: { lots: lots.length, grossCents: winners.reduce((s, w) => s + w.hammerCents, 0) },
