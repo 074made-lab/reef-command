@@ -439,6 +439,7 @@ function minuteEvents(seed: number, minuteStart: Date): ReefEvent[] {
   const rng = mulberry32(seed ^ key);
   const wi = weekIndexOf(ms);
   const scripted = [
+    ...(weekScript(wi - 1, seed).get(key) ?? []),    // last week's post-delivery messages spill into THU/FRI
     ...(weekScript(wi, seed).get(key) ?? []),
     ...(weekScript(wi + 1, seed).get(key) ?? []),    // next week's TUE/WED announce runs in this week's tail
   ];
