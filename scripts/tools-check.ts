@@ -14,7 +14,7 @@ async function main() {
     ["attentionFeed", () => attentionFeed(ch, pg)],
     ["auctionBoard", () => auctionBoard(ch)],
     ["mergeScan", () => mergeScan(pg)],
-    ["weeklyReport", () => weeklyReport(ch)],
+    ["weeklyReport", () => weeklyReport(ch, pg)],
   ] as const) {
     const t0 = Date.now();
     const specs = await fn();

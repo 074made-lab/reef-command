@@ -94,7 +94,7 @@ async function merges(): Promise<ChatResponse> {
 }
 
 async function report(): Promise<ChatResponse> {
-  const specs = await weeklyReport(ch);
+  const specs = await weeklyReport(ch, pg);
   const rep = firstOf(specs, "report");
   const revMetric =
     rep?.sections.find((s) => s.kind === "metrics")?.metrics[0];

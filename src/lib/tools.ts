@@ -165,7 +165,7 @@ export async function mergeScan(pg: Pool): Promise<ComponentSpec[]> {
 
 // ---------------------------------------------------------------- weekly report
 
-export async function weeklyReport(ch: ClickHouseClient, weekIndex?: number): Promise<ComponentSpec[]> {
+export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: number): Promise<ComponentSpec[]> {
   const wi = weekIndex ?? currentWeekIndex() - 1;        // default: last complete cycle
   const w = weekWindow(wi), w1 = weekWindow(wi - 1), w4 = weekWindow(wi - 4);
 
@@ -175,31 +175,87 @@ export async function weeklyReport(ch: ClickHouseClient, weekIndex?: number): Pr
       WHERE hour >= {start:DateTime} AND hour < {end:DateTime}`, win))[0];
   const [cur, prev, prev4] = await Promise.all([rev(w), rev(w1), rev(w4)]);
 
-  // retention lenses
-  const snap = (await queryRows<{ rate: number }>(ch, `
-    SELECT round(countIf(lifetime >= 2) / count(), 3) AS rate FROM (
-      SELECT customer_id, sum(orders) AS lifetime FROM mv_customer_daily
-      WHERE day < toDate({end:DateTime}) GROUP BY customer_id)`, w))[0];
-  const flow = (await queryRows<{ ret: string; neu: string }>(ch, `
-    WITH firsts AS (SELECT customer_id, min(day) AS first_day FROM mv_customer_daily GROUP BY customer_id)
-    SELECT sumIf(d.spend_cents, f.first_day <  toDate({start:DateTime})) AS ret,
-           sumIf(d.spend_cents, f.first_day >= toDate({start:DateTime})) AS neu
-    FROM mv_customer_daily d JOIN firsts f USING (customer_id)
-    WHERE d.day >= toDate({start:DateTime}) AND d.day < toDate({end:DateTime})`, w))[0];
+  // retention lenses — computed for this cycle AND its WoW / MoM comparators
+  const snapRate = async (win: { end: string }) =>
+    Number((await queryRows<{ rate: number }>(ch, `
+      SELECT round(countIf(lifetime >= 2) / count(), 3) AS rate FROM (
+        SELECT customer_id, sum(orders) AS lifetime FROM mv_customer_daily
+        WHERE day < toDate({end:DateTime}) GROUP BY customer_id)`, win))[0]?.rate ?? 0);
+  const newShare = async (win: { start: string; end: string }) => {
+    const f = (await queryRows<{ ret: string; neu: string }>(ch, `
+      WITH firsts AS (SELECT customer_id, min(day) AS first_day FROM mv_customer_daily GROUP BY customer_id)
+      SELECT sumIf(d.spend_cents, f.first_day <  toDate({start:DateTime})) AS ret,
+             sumIf(d.spend_cents, f.first_day >= toDate({start:DateTime})) AS neu
+      FROM mv_customer_daily d JOIN firsts f USING (customer_id)
+      WHERE d.day >= toDate({start:DateTime}) AND d.day < toDate({end:DateTime})`, win))[0];
+    const n = Number(f?.neu ?? 0), r = Number(f?.ret ?? 0);
+    return n + r > 0 ? Math.round((n / (n + r)) * 100) : 0;
+  };
+  const [snapW, snap1, snap4, flowW, flow1, flow4] = await Promise.all([
+    snapRate(w), snapRate({ end: w1.end }), snapRate({ end: w4.end }),
+    newShare(w), newShare(w1), newShare(w4),
+  ]);
 
-  const curRev = Number(cur?.rev ?? 0);
-  const newShare = Number(flow.neu) + Number(flow.ret) > 0
-    ? Math.round((Number(flow.neu) / (Number(flow.neu) + Number(flow.ret))) * 100) : 0;
+  // sparklines: weekly revenue + orders across the trailing 6 cycles (one query,
+  // bucketed in JS by cycle-week — cycles are Thursday-anchored, not calendar).
+  const sparkStart = fmt(ANCHOR + (wi - 5) * WEEK_MS);
+  const hourly = await queryRows<{ t: string; rev: string; ord: string }>(ch, `
+    SELECT toString(hour) AS t, sum(revenue_cents) AS rev, sum(orders) AS ord FROM mv_revenue_hourly
+    WHERE hour >= {start:DateTime} AND hour < {end:DateTime} GROUP BY hour ORDER BY hour`,
+    { start: sparkStart, end: w.end });
+  const revByWeek = new Array(6).fill(0), ordByWeek = new Array(6).fill(0);
+  for (const h of hourly) {
+    const idx = Math.floor((Date.parse(h.t.replace(" ", "T") + "Z") - ANCHOR) / WEEK_MS) - (wi - 5);
+    if (idx >= 0 && idx < 6) { revByWeek[idx] += Number(h.rev); ordByWeek[idx] += Number(h.ord); }
+  }
+  const revSpark = revByWeek.map((c) => Math.round(c / 100)), ordSpark = ordByWeek;
+
+  const curRev = Number(cur?.rev ?? 0), curOrders = Number(cur?.orders ?? 0);
   const headline: ReportSection = {
-    kind: "metrics", title: "The week in numbers",
+    kind: "metrics", title: "The week in numbers — every headline against history",
     metrics: [
-      { label: "Revenue", value: usd(curRev), unit: "$",
+      { label: "Revenue", value: usd(curRev), unit: "$", spark: revSpark,
         deltaWoW: pctDelta(curRev, Number(prev?.rev ?? 0)), deltaMoM: pctDelta(curRev, Number(prev4?.rev ?? 0)) },
-      { label: "Orders", value: Number(cur?.orders ?? 0), unit: "orders",
-        deltaWoW: pctDelta(Number(cur?.orders ?? 0), Number(prev?.orders ?? 0)) },
-      { label: "Return customer rate", value: Math.round((snap?.rate ?? 0) * 100), unit: "%" },
-      { label: "New-customer revenue", value: newShare, unit: "%" },
+      { label: "Orders", value: curOrders, unit: "orders", spark: ordSpark,
+        deltaWoW: pctDelta(curOrders, Number(prev?.orders ?? 0)), deltaMoM: pctDelta(curOrders, Number(prev4?.orders ?? 0)) },
+      { label: "Return customer rate", value: Math.round(snapW * 100), unit: "%",
+        deltaWoW: pctDelta(snapW, snap1), deltaMoM: pctDelta(snapW, snap4) },
+      { label: "New-customer revenue", value: flowW, unit: "%",
+        deltaWoW: pctDelta(flowW, flow1), deltaMoM: pctDelta(flowW, flow4) },
     ],
+  };
+
+  // platform mix — mv_revenue_hourly is keyed by (hour, platform); WoW vs w1
+  const platRows = await queryRows<{ platform: string; rev: string; ord: string }>(ch, `
+    SELECT platform, sum(revenue_cents) AS rev, sum(orders) AS ord FROM mv_revenue_hourly
+    WHERE hour >= {start:DateTime} AND hour < {end:DateTime} GROUP BY platform ORDER BY rev DESC`, w);
+  const platPrev = await queryRows<{ platform: string; rev: string }>(ch, `
+    SELECT platform, sum(revenue_cents) AS rev FROM mv_revenue_hourly
+    WHERE hour >= {start:DateTime} AND hour < {end:DateTime} GROUP BY platform`, w1);
+  const prevByPlat = new Map(platPrev.map((p) => [p.platform, Number(p.rev)]));
+  const platTotal = platRows.reduce((s, p) => s + Number(p.rev), 0) || 1;
+  const platformMix: ReportSection = {
+    kind: "table", title: "Platform mix (orders · revenue · share · WoW)",
+    columns: ["platform", "orders", "revenue $", "share %", "WoW %"],
+    rows: platRows.map((p) => [p.platform, Number(p.ord), usd(Number(p.rev)),
+      Math.round((Number(p.rev) / platTotal) * 100),
+      pctDelta(Number(p.rev), prevByPlat.get(p.platform) ?? 0) ?? "—"]),
+  };
+
+  // tier mix — tier lives in Postgres; share of sales per tier, tier 4 = new
+  const tierRes = await pg.query<{ tier: number; customers: string; rev: string }>(`
+    SELECT c.tier, count(DISTINCT o.customer_id) AS customers, coalesce(sum(o.total_cents),0) AS rev
+    FROM orders o JOIN customers c ON c.id = o.customer_id
+    WHERE o.ordered_at >= $1 AND o.ordered_at < $2
+      AND o.status IN ('paid','labeled','shipped','delivered')
+    GROUP BY c.tier ORDER BY c.tier`,
+    [w.start.replace(" ", "T") + "Z", w.end.replace(" ", "T") + "Z"]);
+  const tierTotal = tierRes.rows.reduce((s, r) => s + Number(r.rev), 0) || 1;
+  const tierMix: ReportSection = {
+    kind: "table", title: "Tier mix — share of sales (tier 4 = first-time)",
+    columns: ["tier", "customers", "revenue $", "share %"],
+    rows: tierRes.rows.map((r) => [`tier ${r.tier}${Number(r.tier) === 4 ? " (new)" : ""}`,
+      Number(r.customers), usd(Number(r.rev)), Math.round((Number(r.rev) / tierTotal) * 100)]),
   };
 
   // six-category product analysis with WoW movement
@@ -262,5 +318,6 @@ export async function weeklyReport(ch: ClickHouseClient, weekIndex?: number): Pr
     ],
   };
 
-  return [{ kind: "report", weekLabel: `W${wi}`, sections: [headline, products, top10, funnel] }];
+  return [{ kind: "report", weekLabel: `W${wi}`,
+    sections: [headline, platformMix, tierMix, products, top10, funnel] }];
 }

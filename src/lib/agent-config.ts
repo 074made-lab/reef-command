@@ -144,7 +144,7 @@ export const reefTools = {
         .optional()
         .describe("Absolute cycle index. Omit for the most recent complete cycle."),
     }),
-    execute: async ({ weekIndex }) => weeklyReport(ch(), weekIndex),
+    execute: async ({ weekIndex }) => weeklyReport(ch(), pg(), weekIndex),
     toModelOutput: (output) => asText(summarize(output)),
   }),
 };
