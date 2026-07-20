@@ -21,6 +21,10 @@ type Approval = { status: "approved" | "declined" };
 export const labelDay = task({
   id: "label-day",
   maxDuration: 3600,
+  // A human-approval flow must not auto-replay: a retry would re-create the
+  // token and ask for approval again. Purchases are idempotent regardless
+  // (shipment upsert + orders already linked leave the manifest).
+  retry: { maxAttempts: 1 },
   run: async () => {
     const pg = pgPool();
     const ch = chClient();
