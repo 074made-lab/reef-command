@@ -41,10 +41,10 @@ export function LabelManifest({ spec }: { spec: ManifestSpec }) {
       {weatherFlags.length ? (
         <ul className="mt-3 space-y-1.5 rounded-sm border border-warn/30 bg-warn/[0.04] px-3 py-2">
           {weatherFlags.map((f) => (
-            <li key={f.shipmentId} className="flex flex-wrap items-center gap-2 text-[12px]">
+            <li key={f.shipmentId} className="flex flex-wrap items-center gap-2 text-[13px]">
               <PackChip pack={f.pack} />
               <span className="text-ink">{f.destination}</span>
-              <span className="font-mono text-[11px] text-mute tabular-nums">
+              <span className="font-mono text-[12px] text-mute tabular-nums">
                 {f.lowF}–{f.highF}°F
               </span>
               <span className="text-dim">{f.reason}</span>
@@ -54,13 +54,13 @@ export function LabelManifest({ spec }: { spec: ManifestSpec }) {
       ) : null}
 
       <div className="mt-3 overflow-x-auto rounded-sm border border-line/60">
-        <table className="w-full min-w-[640px] border-collapse text-[12px]">
+        <table className="w-full min-w-[640px] border-collapse text-[13px]">
           <thead>
             <tr className="bg-raise/70">
               {["shipment", "customer", "orders", "corals", "lb", "destination", "pack", "cost", "status"].map((h) => (
                 <th
                   key={h}
-                  className="border-b border-line px-2.5 py-1.5 text-left font-mono text-[10px] font-medium tracking-wider whitespace-nowrap text-mute uppercase"
+                  className="border-b border-line px-2.5 py-1.5 text-left font-mono text-[12px] font-medium tracking-wider whitespace-nowrap text-mute uppercase"
                 >
                   {h}
                 </th>
@@ -70,13 +70,13 @@ export function LabelManifest({ spec }: { spec: ManifestSpec }) {
           <tbody>
             {shipments.map((s) => (
               <tr key={s.shipmentId} className="border-b border-line/40 last:border-0">
-                <td className="px-2.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-dim">
+                <td className="px-2.5 py-1.5 font-mono text-[12px] whitespace-nowrap text-dim">
                   {s.shipmentId}
                 </td>
                 <td className="px-2.5 py-1.5 whitespace-nowrap text-ink">
                   {s.customer.displayName}
                 </td>
-                <td className="px-2.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-dim">
+                <td className="px-2.5 py-1.5 font-mono text-[12px] whitespace-nowrap text-dim">
                   {s.orderIds.join(" + ")}
                 </td>
                 <td className="px-2.5 py-1.5 text-right font-mono text-dim tabular-nums">

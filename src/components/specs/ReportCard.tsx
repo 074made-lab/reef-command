@@ -33,11 +33,11 @@ function DataTable({ section }: { section: TableSection }) {
   const platformColumn = section.columns[0]?.toLowerCase() === "platform";
   return (
     <div className="overflow-x-auto rounded-sm border border-line/60">
-      <table className="w-full min-w-[520px] border-collapse text-[12px]">
+      <table className="w-full min-w-[520px] border-collapse text-[13px]">
         <thead>
           <tr className="bg-raise/70">
             {section.columns.map((c) => (
-              <th key={c} className="border-b border-line px-2.5 py-2 text-left font-mono text-[11px] font-medium tracking-wider whitespace-nowrap text-mute uppercase">
+              <th key={c} className="border-b border-line px-2.5 py-2 text-left font-mono text-[12px] font-medium tracking-wider whitespace-nowrap text-mute uppercase">
                 {c}
               </th>
             ))}
@@ -60,7 +60,7 @@ function DataTable({ section }: { section: TableSection }) {
             </tr>
           ))}
           {section.rows.length === 0 ? (
-            <tr><td colSpan={section.columns.length} className="px-2.5 py-4 text-center font-mono text-[11px] text-mute">no rows this week</td></tr>
+            <tr><td colSpan={section.columns.length} className="px-2.5 py-4 text-center font-mono text-[13px] text-mute">no rows this week</td></tr>
           ) : null}
         </tbody>
       </table>
@@ -74,8 +74,8 @@ function PlatformCurrents({ section }: { section: TableSection }) {
   return (
     <div className="rounded-md border border-line/70 bg-abyss/45 p-3">
       <div className="mb-3 flex items-center justify-between">
-        <span className="font-mono text-[11px] tracking-[0.16em] text-teal uppercase">three currents · one reef</span>
-        <span className="font-mono text-[10px] text-mute">share of weekly revenue</span>
+        <span className="font-mono text-[13px] tracking-[0.14em] text-teal uppercase">three currents · one reef</span>
+        <span className="font-mono text-[12px] text-mute">share of weekly revenue</span>
       </div>
       <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px] md:items-stretch">
         <div className="space-y-2">
@@ -85,8 +85,8 @@ function PlatformCurrents({ section }: { section: TableSection }) {
             return (
               <div key={platform} className="relative overflow-hidden rounded-sm border border-line bg-raise/45 px-3 py-2">
                 <div className="relative z-10 flex items-center justify-between gap-3">
-                  <span className="text-[12px] font-medium text-ink">{PLATFORM_LABEL[platform] ?? platform}</span>
-                  <span className="font-mono text-[12px] text-tealhi">{share}% · {revenueAt >= 0 ? `$${numberish(row[revenueAt]).toLocaleString("en-US")}` : ""}</span>
+                  <span className="text-[13px] font-medium text-ink">{PLATFORM_LABEL[platform] ?? platform}</span>
+                  <span className="font-mono text-[13px] text-tealhi">{share}% · {revenueAt >= 0 ? `$${numberish(row[revenueAt]).toLocaleString("en-US")}` : ""}</span>
                 </div>
                 <span className="absolute inset-y-0 left-0 bg-teal/[0.09]" style={{ width: `${Math.max(share, 3)}%` }} />
                 <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-60" viewBox="0 0 420 34" preserveAspectRatio="none" aria-hidden>
@@ -99,9 +99,9 @@ function PlatformCurrents({ section }: { section: TableSection }) {
         <div className="relative flex min-h-24 items-center justify-center overflow-hidden rounded-md border border-coral/35 bg-coral/[0.055]">
           <span className="sonar-ring absolute h-24 w-24 rounded-full border border-coral/30" />
           <span className="relative text-center">
-            <span className="block font-mono text-[10px] tracking-[0.16em] text-coralhi">ONE REEF</span>
-            <span className="mt-1 block text-[12px] text-ink">weekly demand</span>
-            <span className="block text-[11px] text-mute">all platforms</span>
+            <span className="block font-mono text-[12px] tracking-[0.16em] text-coralhi">ONE REEF</span>
+            <span className="mt-1 block text-[13px] text-ink">weekly demand</span>
+            <span className="block text-[12px] text-mute">all platforms</span>
           </span>
         </div>
       </div>
@@ -111,7 +111,7 @@ function PlatformCurrents({ section }: { section: TableSection }) {
 
 function TierNote() {
   return (
-    <div className="mt-2 rounded-sm border border-line/70 bg-raise/35 px-3 py-2 text-[11px] leading-relaxed text-dim">
+    <div className="mt-2 rounded-sm border border-line/70 bg-raise/35 px-3 py-2 text-[13px] leading-relaxed text-dim">
       <span className="font-mono text-tealhi">How dossier tiers work · </span>
       Synthetic customers are ranked by spend propensity: <b className="text-ink">T1 top 10%</b>, T2 next 20%, T3 next 30%, T4 remaining 40%.
       New-customer revenue is calculated separately from actual first-order timing, not inferred from tier.
@@ -122,7 +122,7 @@ function TierNote() {
 function Section({ section }: { section: ReportSection }) {
   return (
     <div>
-      <h3 className="mb-2 font-mono text-[11px] tracking-[0.18em] text-dim uppercase">▪ {section.title}</h3>
+      <h3 className="mb-2 font-mono text-[13px] tracking-[0.16em] text-dim uppercase">▪ {section.title}</h3>
       {section.kind === "metrics" ? <MetricRow metrics={section.metrics} bare /> : null}
       {section.kind === "table" ? <DataTable section={section} /> : null}
       {section.kind === "series" ? <Timeseries title={section.title} series={section.series} /> : null}
@@ -131,7 +131,7 @@ function Section({ section }: { section: ReportSection }) {
           <FunnelBars steps={section.steps} />
           {section.prevWeeks?.length ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[10px] tracking-widest text-mute">VS HISTORY</span>
+              <span className="font-mono text-[12px] tracking-widest text-mute">VS HISTORY</span>
               {section.prevWeeks.map((p) => <Chip key={p.week}>{p.week} · {Math.round(p.overall * 100)}%</Chip>)}
             </div>
           ) : null}
@@ -189,9 +189,9 @@ function StockInsights({ products, auction }: { products?: TableSection; auction
     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
       {insights.map((insight) => (
         <div key={insight.title} className={`rounded-md border p-3 ${insight.tone}`}>
-          <span className="font-mono text-[10px] tracking-[0.14em] uppercase">NEXT WEEK</span>
-          <h4 className="mt-1 text-[13px] font-semibold text-ink">{insight.title}</h4>
-          <p className="mt-1 text-[11px] leading-relaxed text-dim">{insight.detail}</p>
+          <span className="font-mono text-[12px] tracking-[0.14em] uppercase">NEXT WEEK</span>
+          <h4 className="mt-1 text-[14px] font-semibold text-ink">{insight.title}</h4>
+          <p className="mt-1 text-[13px] leading-relaxed text-dim">{insight.detail}</p>
         </div>
       ))}
     </div>
@@ -211,7 +211,7 @@ export function ReportCard({ weekLabel, sections }: { weekLabel: string; section
     <SpecCard tag="REEF HEALTH REPORT" right={<Chip className="border-tealhi/50 text-tealhi">{weekLabel}</Chip>}>
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line/70 pb-2">
         {VIEWS.map((v) => (
-          <button key={v.id} type="button" onClick={() => setView(v.id)} className={`shrink-0 rounded-sm border px-2.5 py-1.5 font-mono text-[11px] tracking-wide transition-colors ${view === v.id ? "border-teal/60 bg-teal/10 text-tealhi" : "border-transparent text-mute hover:border-line hover:text-dim"}`}>
+          <button key={v.id} type="button" onClick={() => setView(v.id)} className={`shrink-0 rounded-sm border px-2.5 py-1.5 font-mono text-[13px] tracking-wide transition-colors ${view === v.id ? "border-teal/60 bg-teal/10 text-tealhi" : "border-transparent text-mute hover:border-line hover:text-dim"}`}>
             {v.label}
           </button>
         ))}

@@ -93,7 +93,7 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
       if (!res.ok) {
         if (isApproval && res.status === 401) {           // session lost/expired
           setState("idle");
@@ -116,7 +116,7 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         void pollRun(runId);
       } else {
         setState("done");
-        setNote("done");
+        setNote(data.note ?? "done");
       }
     } catch {
       setState("error");
@@ -159,7 +159,7 @@ function ChipButton({ chip }: { chip: ActionChip }) {
 
   const gated = chip.risk === "gated";
   const base =
-    "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[12px] tracking-wide transition-colors disabled:opacity-60";
+    "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[13px] tracking-wide transition-colors disabled:opacity-60";
   const tone = gated
     ? "border-coral/60 text-coralhi hover:bg-coral/10"
     : "border-teal/60 text-tealhi hover:bg-teal/10";
@@ -175,33 +175,33 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         className={`${base} ${tone}`}
       >
         {gated ? (
-          <span className="rounded-[2px] bg-coral/20 px-1 text-[11px] text-coralhi">GATED</span>
+          <span className="rounded-[2px] bg-coral/20 px-1 text-[12px] text-coralhi">GATED</span>
         ) : null}
         {chip.label}
         <span aria-hidden>▸</span>
       </button>
-      {state === "busy" ? <span className="font-mono text-[12px] text-mute">sending…</span> : null}
+      {state === "busy" ? <span className="font-mono text-[13px] text-mute">sending…</span> : null}
       {running ? (
-        <span className="anim-rise font-mono text-[12px] text-tealhi">
+        <span className="anim-rise font-mono text-[13px] text-tealhi">
           {prog && prog.status === "purchasing"
             ? `▸ purchasing ${prog.purchased}/${prog.shipments}…`
             : note || "approved — buying labels…"}
         </span>
       ) : null}
       {state === "done" ? (
-        <span className="anim-rise font-mono text-[12px] text-ok">✓ {note}</span>
+        <span className="anim-rise font-mono text-[13px] text-ok">✓ {note}</span>
       ) : null}
       {state === "stalled" ? (
-        <span className="font-mono text-[12px] text-mute">⋯ {note}</span>
+        <span className="font-mono text-[13px] text-mute">⋯ {note}</span>
       ) : null}
       {state === "error" ? (
-        <span className="font-mono text-[12px] text-danger">✕ {note}</span>
+        <span className="font-mono text-[13px] text-danger">✕ {note}</span>
       ) : null}
       {state === "idle" && note ? (
-        <span className="font-mono text-[12px] text-tealhi">{note}</span>
+        <span className="font-mono text-[13px] text-tealhi">{note}</span>
       ) : null}
       {unconfigured ? (
-        <span className="font-mono text-[12px] text-warn">set REEF_OWNER_TOKEN to enable gated actions</span>
+        <span className="font-mono text-[13px] text-warn">set REEF_OWNER_TOKEN to enable gated actions</span>
       ) : null}
       {unlocking ? (
         <form onSubmit={unlock} className="inline-flex flex-wrap items-center gap-1.5">
@@ -213,16 +213,16 @@ function ChipButton({ chip }: { chip: ActionChip }) {
             value={pass}
             onChange={(e) => setPass(e.target.value)}
             disabled={unlockBusy}
-            className="rounded-sm border border-line bg-raise px-2 py-1 text-[12px] text-ink outline-none focus:border-tealhi/70 disabled:opacity-60"
+            className="rounded-sm border border-line bg-raise px-2 py-1 text-[13px] text-ink outline-none focus:border-tealhi/70 disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={unlockBusy || !pass}
-            className="inline-flex items-center rounded-sm border border-coral/60 px-2 py-1 font-mono text-[12px] text-coralhi hover:bg-coral/10 disabled:opacity-60"
+            className="inline-flex items-center rounded-sm border border-coral/60 px-2 py-1 font-mono text-[13px] text-coralhi hover:bg-coral/10 disabled:opacity-60"
           >
             {unlockBusy ? "unlocking…" : "Unlock"}
           </button>
-          {unlockErr ? <span className="font-mono text-[12px] text-danger">✕ {unlockErr}</span> : null}
+          {unlockErr ? <span className="font-mono text-[13px] text-danger">✕ {unlockErr}</span> : null}
         </form>
       ) : null}
     </span>

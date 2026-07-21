@@ -19,7 +19,8 @@ question entry points.
 ## Palette
 
 - Keep the deep-ocean blue base.
-- Primary accents: **coral orange**, **bioluminescent teal/cyan**.
+- Primary accents: **coral orange (`#FF8559`, tint `#FFB89E`)**,
+  **bioluminescent teal/cyan**.
 - Secondary: a little **beach off-white / sand**.
 - **No generic AI purple.** No purple-gradient-on-dark.
 
@@ -55,6 +56,14 @@ Very light only: water ripple, bubbles, a coral bioluminescent "breathing"
 glow. **No** AI orb, **no** typewriter long-text, **no** meaningless loading
 spinners.
 
+- After a question, follow the working state and then place the start of
+  Teddy's newest answer above the fold. User scroll intent pauses following;
+  a compact jump control restores it.
+- Keep routine feedback within roughly 100–300ms. The Merge Card may use one
+  short coordinated entrance to explain many orders becoming one box.
+- Never hide content behind motion. Respect `prefers-reduced-motion`, including
+  SVG particles.
+
 ## Interaction details
 
 - The header is a **selectable seven-day synthetic week**, never the evaluator's
@@ -63,6 +72,9 @@ spinners.
 - Selecting any weekday sends its synthetic-day context into `chat.agent()`.
   Teddy must render the day's goal, three priorities, one reminder, and prompt
   chips for supported live components. Selection does not execute the work.
+- The empty cockpit shows only three compact priority bullets. Day briefs keep
+  the same evidence but reveal explanations progressively so the default view
+  remains scannable on a recording and during store operations.
 - Platform labels use the business names everywhere: **ReefnBid**, **Online
   Store (Shopify)**, and **eBay**.
 - Merge cards use layered water currents and moving particles to carry every

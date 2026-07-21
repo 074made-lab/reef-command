@@ -28,13 +28,13 @@ export function PhaseChip() {
     <div className="border-t border-line/70 bg-panel/55">
       <div className="mx-auto max-w-4xl px-4 py-2">
         <div className="mb-1.5 flex items-center justify-between gap-3 font-mono uppercase">
-          <span className="text-[12px] tracking-[0.15em] text-mute">
-            Synthetic demo week · choose today
+          <span className="text-[13px] tracking-[0.15em] text-mute">
+            Demo week
           </span>
-          <span className="flex items-center gap-1.5 text-[12px] tracking-[0.08em]">
+          <span className="flex items-center gap-1.5 text-[13px] tracking-[0.08em]">
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-tealhi" />
-            <span className="text-mute">TODAY IS</span>
-            <span className="text-tealhi">{today.weekday}</span>
+            <span className="text-mute">TODAY</span>
+            <span className="text-coral">{today.weekday}</span>
             <span className="text-ink">· {today.label}</span>
             <span className="text-mute">· {today.time}</span>
           </span>
@@ -50,16 +50,16 @@ export function PhaseChip() {
                   key={day.id}
                   aria-pressed={active}
                   onClick={() => selectDay(day.id)}
-                  className={`rounded-sm border px-2 py-1.5 text-left transition-colors ${
+                  className={`rounded-sm border px-2 py-1.5 text-left transition-[color,background-color,border-color,transform] active:scale-[0.98] ${
                     active
-                      ? "border-teal/70 bg-teal/10 shadow-[0_0_18px_rgba(79,227,207,0.07)]"
-                      : "border-line/70 bg-abyss/35 hover:border-teal/40 hover:bg-raise"
+                      ? "border-coral/70 bg-coral/[0.09] shadow-[0_0_22px_rgba(255,133,89,0.10)]"
+                      : "border-line/70 bg-abyss/35 hover:border-coral/40 hover:bg-raise"
                   }`}
                 >
-                  <span className={`block font-mono text-[12px] tracking-[0.16em] ${active ? "text-tealhi" : "text-mute"}`}>
+                  <span className={`block font-mono text-[13px] tracking-[0.16em] ${active ? "text-coral" : "text-mute"}`}>
                     {day.short}
                   </span>
-                  <span className={`mt-0.5 block truncate text-[12px] ${active ? "text-ink" : "text-dim"}`}>
+                  <span className={`mt-0.5 block truncate text-[13px] ${active ? "text-ink" : "text-dim"}`}>
                     {day.label}
                   </span>
                 </button>

@@ -23,7 +23,7 @@ export function SpecCard({
     >
       <header className="flex items-center justify-between gap-3 border-b border-line/70 px-3 py-1.5">
         <span
-          className={`font-mono text-[12px] font-semibold tracking-[0.18em] ${
+          className={`font-mono text-[13px] font-semibold tracking-[0.16em] ${
             tone === "coral" ? "text-coralhi" : "text-teal"
           }`}
         >
@@ -45,7 +45,7 @@ export function Chip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[12px] tracking-wider ${className}`}
+      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[13px] tracking-wide ${className}`}
     >
       {children}
     </span>
@@ -94,7 +94,7 @@ export function Delta({ v, label }: { v?: number; label: string }) {
   const tone = v > 0 ? "text-ok" : v < 0 ? "text-danger" : "text-mute";
   const mark = v > 0 ? "▲" : v < 0 ? "▼" : "▬";
   return (
-    <span className={`font-mono text-[11px] tabular-nums ${tone}`}>
+    <span className={`font-mono text-[12px] tabular-nums ${tone}`}>
       {mark} {Math.abs(v)}% <span className="text-mute">{label}</span>
     </span>
   );
@@ -145,7 +145,7 @@ export function ConfidenceMeter({
   const tone =
     level === "high" ? "text-ok" : level === "medium" ? "text-warn" : "text-danger";
   return (
-    <span className={`font-mono text-[10px] tracking-widest ${tone}`}>
+    <span className={`font-mono text-[12px] tracking-wider ${tone}`}>
       {"●".repeat(filled)}
       <span className="opacity-30">{"●".repeat(3 - filled)}</span>{" "}
       {level.toUpperCase()}

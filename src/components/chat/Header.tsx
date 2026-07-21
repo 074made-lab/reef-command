@@ -5,7 +5,7 @@ export function Wordmark({ size = "sm" }: { size?: "sm" | "lg" }) {
   return (
     <span
       className={`font-mono font-semibold tracking-[0.28em] whitespace-nowrap ${
-        size === "lg" ? "text-4xl sm:text-6xl" : "text-[13px]"
+        size === "lg" ? "text-4xl sm:text-6xl" : "text-[14px]"
       }`}
     >
       <span className="text-ink">REEF</span>
@@ -28,17 +28,17 @@ export function Header({ surface }: { surface: "merchant" | "shop" }) {
             alt="Teddy, the reef co-pilot"
             width={26}
             height={26}
-            className="rounded-full ring-1 ring-coral/60"
+            className="rounded-full ring-1 ring-coral/70 shadow-[0_0_14px_rgba(255,133,89,0.18)]"
           />
           <Wordmark />
         </Link>
-        <span className="hidden font-mono text-[12px] tracking-widest text-mute uppercase sm:inline">
+        <span className="hidden font-mono text-[13px] tracking-widest text-mute uppercase sm:inline">
           {surface === "merchant" ? "merchant cockpit" : "customer concierge"}
         </span>
         <nav className="ml-auto flex items-center gap-3">
           <Link
             href="/merchant"
-            className={`font-mono text-[12px] tracking-widest uppercase ${
+            className={`font-mono text-[13px] tracking-widest uppercase ${
               surface === "merchant" ? "text-tealhi" : "text-mute hover:text-dim"
             }`}
           >
@@ -46,7 +46,7 @@ export function Header({ surface }: { surface: "merchant" | "shop" }) {
           </Link>
           <Link
             href="/shop"
-            className={`font-mono text-[12px] tracking-widest uppercase ${
+            className={`font-mono text-[13px] tracking-widest uppercase ${
               surface === "shop" ? "text-tealhi" : "text-mute hover:text-dim"
             }`}
           >

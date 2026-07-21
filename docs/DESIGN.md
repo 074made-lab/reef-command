@@ -258,9 +258,11 @@ live end to end:
   events → ClickHouse → ship-radar and cost components update, with recoverable
   idempotency (a partial failure resumes instead of leaving a split).
 
-The merge is the same shape read-first: the merge card is computed live from the
-Postgres OLTP scan, but its combined-order *write* is gated and not yet wired
-(the execute chip returns an honest 501).
+The merge decision executes one notch lighter: the card is computed live from
+the Postgres OLTP scan, and the gated click validates the orders against
+Postgres truth, writes the audit row, and emits an `orders_merged` event to
+ClickHouse (deduped per customer+cycle). Not money, not physical — the orders
+consolidate into one labeled box at label day, like the real store.
 
 One click, both databases, visible consequence — that is the integration
 story told in a single camera move.

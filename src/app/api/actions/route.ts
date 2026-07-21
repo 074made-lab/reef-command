@@ -10,11 +10,24 @@
  * and fail-closed (R3-P1): requireOwner() rejects any caller without a valid
  * owner session, and the verified operator — not a hardcoded string — is stamped
  * on the token and written to the action_log audit trail.
+ *
+ * merge-orders → records the MERGE DECISION for a customer's cross-platform
+ * orders: validates them against Postgres truth, writes the audit row, and
+ * emits an `orders_merged` event to ClickHouse (deduped per customer+week).
+ * Deliberately NOT money and NOT physical: orders are not relinked here — the
+ * physical consolidation into one labeled box happens at label day, exactly
+ * like the real store. No owner session required (nothing is spent).
  */
 import { NextResponse } from "next/server";
+import type { ClickHouseClient } from "@clickhouse/client";
 import { wait, runs } from "@trigger.dev/sdk";
 import { requireOwner, OwnerAuthError } from "@/lib/owner-auth";
 import { pgPool } from "@/lib/store/postgres";
+import { chClient, insertEvents, queryRows } from "@/lib/store/clickhouse";
+import { currentWeekIndex } from "@/lib/tools";
+
+let chSingleton: ClickHouseClient | undefined;
+const ch = () => (chSingleton ??= chClient());
 
 type Body = { taskId?: string; payload?: Record<string, unknown> };
 
@@ -104,6 +117,60 @@ export async function POST(req: Request) {
     }
     await auditApproval(operator, runId);
     return NextResponse.json({ ok: true, status: "approved", runId, approvedBy: operator });
+  }
+
+  if (taskId === "merge-orders") {
+    const customerId = Number(body.payload?.customerId);
+    const orderIds = Array.isArray(body.payload?.orderIds)
+      ? (body.payload!.orderIds as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    if (!Number.isFinite(customerId) || orderIds.length < 2) {
+      return NextResponse.json(
+        { ok: false, error: "merge needs a customerId and at least two orderIds" },
+        { status: 400 },
+      );
+    }
+
+    // Validate against Postgres truth: the orders must exist, belong to this
+    // customer, be unshipped, and span ≥2 platforms — no fabricated merges.
+    const rows = await pgPool().query<{ external_id: string; platform: string; total_cents: string }>(
+      `SELECT external_id, platform, total_cents FROM orders
+       WHERE customer_id = $1 AND external_id = ANY($2)
+         AND status IN ('pending','paid') AND shipment_id IS NULL`,
+      [customerId, orderIds],
+    );
+    if (rows.rows.length < 2 || new Set(rows.rows.map((r) => r.platform)).size < 2) {
+      return NextResponse.json(
+        { ok: false, error: "orders are no longer mergeable (shipped, missing, or one platform)" },
+        { status: 409 },
+      );
+    }
+
+    // One merge decision per customer per cycle — a re-click (or a reloaded
+    // card) confirms instead of duplicating the event.
+    const mergeId = `MRG-${customerId}-W${currentWeekIndex()}`;
+    const dup = await queryRows<{ n: string }>(
+      ch(),
+      `SELECT count() AS n FROM events WHERE type = 'orders_merged' AND order_id = {id:String}`,
+      { id: mergeId },
+    );
+    const combinedCents = rows.rows.reduce((s, r) => s + Number(r.total_cents), 0);
+    if (Number(dup[0]?.n ?? 0) === 0) {
+      await pgPool().query(
+        `INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
+         VALUES ('merge-orders','gated',$1,'merchant-click','ok')`,
+        [JSON.stringify({ mergeId, customerId, orderIds: rows.rows.map((r) => r.external_id) })],
+      );
+      await insertEvents(ch(), [{
+        ts: new Date().toISOString(), type: "orders_merged", platform: "system",
+        customerId, orderId: mergeId, amountCents: combinedCents,
+        meta: { orderIds: rows.rows.map((r) => r.external_id), platforms: [...new Set(rows.rows.map((r) => r.platform))] },
+      }]);
+    }
+    return NextResponse.json({
+      ok: true,
+      note: `merged ${rows.rows.length} orders → one box, one fee — audit row + orders_merged event written`,
+    });
   }
 
   // Not yet wired — do not fake a success (Codex m1).

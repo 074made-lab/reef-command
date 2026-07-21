@@ -2,7 +2,7 @@
 
 /* ── Reef Command design tokens — deep-ocean dark console ──────────────
    Surfaces: near-black blue-greens. Data marks: phosphor teal (#0fa896).
-   Actions & alerts: one coral accent (#e8562b). Palette validated for
+   Brand, actions & alerts: TIA coral (#ff8559). Palette validated for
    CVD separation + contrast against --color-panel (dataviz six checks). */
 
 @theme {
@@ -15,8 +15,8 @@
   --color-mute: #567478; /* tertiary text */
   --color-teal: #0fa896; /* data mark */
   --color-tealhi: #4fe3cf; /* phosphor highlight: values, focus */
-  --color-coral: #e8562b; /* action / alert mark */
-  --color-coralhi: #ff7a4d; /* coral highlight: buttons, hot text */
+  --color-coral: #ff8559; /* brand / action / alert mark */
+  --color-coralhi: #ffb89e; /* Figma coral tint: hot text on dark surfaces */
   --color-ok: #34c98e; /* status good  (age < 1h) */
   --color-warn: #eab048; /* status warn  (age < 24h) */
   --color-danger: #f05e5e; /* status bad   (age beyond) */
@@ -34,7 +34,7 @@ body {
 
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   color: var(--color-ink);
   background:
     radial-gradient(
@@ -44,7 +44,7 @@ body {
     ),
     radial-gradient(
       900px 620px at -12% 112%,
-      rgba(232, 86, 43, 0.055),
+      rgba(255, 133, 89, 0.065),
       transparent 55%
     ),
     var(--color-abyss);
@@ -63,6 +63,29 @@ body::before {
     rgba(215, 231, 230, 0.012) 0 1px,
     transparent 1px 3px
   );
+}
+
+/* A quiet warm reef glow around the active command area. It is atmosphere,
+   not a decorative gradient wash. */
+.reef-room {
+  background:
+    radial-gradient(
+      620px 300px at 50% 4%,
+      rgba(255, 133, 89, 0.075),
+      transparent 68%
+    ),
+    radial-gradient(
+      760px 360px at 50% 106%,
+      rgba(15, 168, 150, 0.055),
+      transparent 72%
+    );
+}
+
+.coral-halo {
+  box-shadow:
+    0 0 0 6px rgba(255, 133, 89, 0.035),
+    0 0 54px rgba(255, 133, 89, 0.25),
+    0 18px 48px rgba(0, 0, 0, 0.35);
 }
 
 ::selection {
@@ -99,7 +122,7 @@ body::before {
   }
 }
 .anim-rise {
-  animation: rise 0.35s ease-out both;
+  animation: rise 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes shimmer {
@@ -190,5 +213,9 @@ body::before {
   .report-current,
   .sonar-ring {
     animation: none;
+  }
+
+  .merge-particle {
+    display: none;
   }
 }

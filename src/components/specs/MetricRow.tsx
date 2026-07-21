@@ -9,7 +9,7 @@ function Tile({ m }: { m: Metric }) {
   const suffix = m.unit && m.unit !== "$" ? m.unit : "";
   return (
     <div className="min-w-[150px] flex-1 rounded-sm border border-line/70 bg-raise/50 px-3 py-2.5">
-      <p className="font-mono text-[10px] tracking-[0.18em] text-mute uppercase">
+      <p className="font-mono text-[12px] tracking-[0.16em] text-mute uppercase">
         {m.label}
       </p>
       <div className="mt-1 flex items-end justify-between gap-2">

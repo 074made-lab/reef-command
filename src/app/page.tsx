@@ -31,7 +31,7 @@ export default function Home() {
       </div>
 
       <div className="relative flex flex-col items-center text-center">
-        <p className="mb-4 font-mono text-[10px] tracking-[0.4em] text-mute uppercase">
+        <p className="mb-4 font-mono text-[12px] tracking-[0.4em] text-mute uppercase">
           depth 04 · channel open
         </p>
         {/* Teddy at the center of the sonar — the store's real reef dog */}
@@ -40,13 +40,13 @@ export default function Home() {
           alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
           width={132}
           height={132}
-          className="mb-6 rounded-full ring-2 ring-coral/60 shadow-[0_0_56px_rgba(232,86,43,0.3)]"
+          className="coral-halo mb-6 rounded-full ring-2 ring-coral/70"
         />
         <Wordmark size="lg" />
         <p className="mt-5 max-w-md text-[15px] leading-relaxed text-dim">
           One week of a coral business, run from one chat window.
         </p>
-        <p className="mt-2 font-mono text-[11px] tracking-[0.24em] text-coralhi/85 uppercase">
+        <p className="mt-2 font-mono text-[12px] tracking-[0.24em] text-coral uppercase">
           watched over by teddy · happy reefing
         </p>
 
@@ -55,9 +55,9 @@ export default function Home() {
             <Link
               key={s.href}
               href={s.href}
-              className="group rounded-md border border-line bg-panel/80 px-5 py-4 text-left transition-colors hover:border-teal/60"
+              className="group rounded-md border border-line bg-panel/80 px-5 py-4 text-left shadow-[0_14px_38px_rgba(0,0,0,0.18)] transition-[border-color,background-color,transform] hover:-translate-y-0.5 hover:border-coral/55 hover:bg-raise/85"
             >
-              <p className="flex items-center justify-between font-mono text-[11px] tracking-[0.2em] text-tealhi">
+              <p className="flex items-center justify-between font-mono text-[12px] tracking-[0.2em] text-tealhi">
                 {s.tag}
                 <span
                   className={`transition-transform group-hover:translate-x-0.5 ${
@@ -69,14 +69,14 @@ export default function Home() {
                 </span>
               </p>
               <p className="mt-1.5 text-[13px] leading-snug text-dim">{s.line}</p>
-              <p className="mt-2 font-mono text-[10px] tracking-widest text-mute">
+              <p className="mt-2 font-mono text-[12px] tracking-widest text-mute">
                 {s.live ? "LIVE" : "PREVIEW"}
               </p>
             </Link>
           ))}
         </div>
 
-        <p className="mt-12 font-mono text-[10px] tracking-[0.25em] text-mute uppercase">
+        <p className="mt-12 font-mono text-[12px] tracking-[0.25em] text-mute uppercase">
           ClickHouse × Trigger.dev · Beyond the Wall of Text
         </p>
       </div>

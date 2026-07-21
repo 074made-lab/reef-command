@@ -145,9 +145,11 @@ We would rather tell you than have you "catch" us:
 
 - **Label-day approval EXECUTES the OLTP+OLAP loop** on one click: Postgres
   shipment rows + spend, then `label_purchased` events to ClickHouse, then the
-  cost/ship components update. The **merge is read-only**: the merge card is
-  computed live from the OLTP scan, but the one-click *execute* returns an honest
-  **501** — not wired, not faked (`src/app/api/actions/route.ts`).
+  cost/ship components update. The **merge decision also executes**, one notch
+  lighter: validated against Postgres truth → audit row → `orders_merged` event
+  to ClickHouse (deduped per customer+cycle); physical consolidation into one
+  labeled box happens at label day, like the real store. Remaining unwired
+  actions still return honest **501**s (`src/app/api/actions/route.ts`).
 - Label progress is surfaced by **polling run metadata**, not a Realtime
   subscription.
 - Label recovery is **sequential-idempotent, not strict exactly-once**: the

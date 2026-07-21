@@ -41,15 +41,15 @@ export function AuctionBoard({
               />
               <div className="relative flex items-center gap-3 px-1 py-2">
                 <span
-                  className={`w-6 shrink-0 text-right font-mono text-[11px] tabular-nums ${
+                  className={`w-6 shrink-0 text-right font-mono text-[12px] tabular-nums ${
                     i === 0 ? "text-tealhi" : "text-mute"
                   }`}
                 >
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] text-ink">{l.name}</p>
-                  <p className="font-mono text-[10px] text-mute">
+                  <p className="truncate text-[14px] text-ink">{l.name}</p>
+                  <p className="font-mono text-[12px] text-mute">
                     {l.category} · {l.lotId}
                   </p>
                 </div>
@@ -61,7 +61,7 @@ export function AuctionBoard({
                   >
                     {usd(l.currentBidCents)}
                   </p>
-                  <p className="font-mono text-[10px] text-dim">
+                  <p className="font-mono text-[12px] text-dim">
                     {l.leader} · {l.bidCount} bid{l.bidCount === 1 ? "" : "s"}
                   </p>
                 </div>

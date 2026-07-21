@@ -13,7 +13,7 @@ export function FunnelBars({ steps }: { steps: FunnelStep[] }) {
         const w = Math.max((s.count / max) * 100, s.count > 0 ? 3 : 0.5);
         return (
           <div key={s.label} className="flex items-center gap-3">
-            <span className="w-44 shrink-0 truncate text-right font-mono text-[11px] text-dim">
+            <span className="w-44 shrink-0 truncate text-right font-mono text-[13px] text-dim">
               {s.label}
             </span>
             <div className="relative h-6 flex-1 overflow-hidden rounded-sm bg-raise/60">
@@ -21,11 +21,11 @@ export function FunnelBars({ steps }: { steps: FunnelStep[] }) {
                 className="absolute inset-y-[2px] left-0 rounded-r-[4px] bg-teal"
                 style={{ width: `${w}%`, opacity: 1 - i * 0.18 }}
               />
-              <span className="absolute inset-y-0 left-2 flex items-center font-mono text-[11px] font-semibold text-ink tabular-nums mix-blend-plus-lighter">
+              <span className="absolute inset-y-0 left-2 flex items-center font-mono text-[13px] font-semibold text-ink tabular-nums mix-blend-plus-lighter">
                 {num(s.count)}
               </span>
             </div>
-            <span className="w-16 shrink-0 font-mono text-[11px] text-mute tabular-nums">
+            <span className="w-16 shrink-0 font-mono text-[13px] text-mute tabular-nums">
               {s.conversionFromPrev !== undefined
                 ? `→ ${Math.round(s.conversionFromPrev * 100)}%`
                 : ""}
@@ -61,7 +61,7 @@ export function FunnelChart({
       <FunnelBars steps={steps} />
       {prevWeeks?.length ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/60 pt-2">
-          <span className="font-mono text-[10px] tracking-widest text-mute">
+          <span className="font-mono text-[12px] tracking-widest text-mute">
             VS HISTORY
           </span>
           {prevWeeks.map((p) => (

@@ -70,10 +70,12 @@ cost/ship components update. One click, both databases, a visible consequence �
 with recoverable idempotency, so a partial failure resumes instead of leaving a
 split (`src/lib/label-day.ts`).
 
-The **merge** is the same shape, read-first: the merge card is computed live
-from the Postgres OLTP scan and its combined-order write path is defined, but
-the one-click *execute* is intentionally not wired yet — clicking it returns an
-honest 501 rather than faking the write.
+The **merge decision** executes too, one notch lighter: the card is computed
+live from the Postgres OLTP scan, and clicking **Merge into one shipment**
+validates the orders against Postgres truth, writes the audit row, and emits an
+`orders_merged` event to ClickHouse (deduped per customer+cycle). Deliberately
+not money and not physical — the orders are consolidated into one labeled box
+at label day, exactly like the real store.
 
 ## Boundaries (constitutional)
 
