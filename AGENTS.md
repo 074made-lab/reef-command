@@ -55,10 +55,10 @@ These need **your own** service keys (we ship none — see Integrity). Without
 them, read the assertions in each file to confirm the logic:
 
 ```bash
-npx tsx scripts/agent-check.ts     # 7 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
+npx tsx scripts/agent-check.ts     # 8 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
 npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel, retention)
 npx tsx scripts/report-check.ts    # weekly report: platform/tier mix, WoW/MoM, sparklines
-npx tsx scripts/tools-check.ts     # all five read tools vs both live stores
+npx tsx scripts/tools-check.ts     # the read tools vs both live stores
 ```
 
 ## Where to look for each judging criterion
@@ -133,7 +133,7 @@ requests from Postgres).
 | To understand… | Read |
 |---|---|
 | The agent brain (model, system prompt, the 5 tools) — orchestration-agnostic | `src/lib/agent-config.ts` |
-| The 5 read tools that return components | `src/lib/tools.ts` |
+| The read tools that return components (incl. the day-aware auction board) | `src/lib/tools.ts` |
 | The "answers are components" protocol + renderers | `src/lib/protocol.ts`, `src/components/specs/` |
 | The OLTP+OLAP write loop (the bonus category) | `src/lib/label-day.ts` (logic) + `src/trigger/label-day.ts` (durable task) |
 | Gated-action owner auth (fail-closed) | `src/lib/owner-auth.ts`, `src/app/api/owner/login/route.ts`, `src/app/api/actions/route.ts` |
