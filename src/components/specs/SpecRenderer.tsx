@@ -7,6 +7,7 @@ import { AuctionBoard } from "./AuctionBoard";
 import { CampaignCard } from "./CampaignCard";
 import { CaseCard } from "./CaseCard";
 import { CycleTimeline } from "./CycleTimeline";
+import { DayBriefCard } from "./DayBriefCard";
 import { FunnelChart } from "./FunnelChart";
 import { LabelManifest } from "./LabelManifest";
 import { MergeCard } from "./MergeCard";
@@ -17,12 +18,13 @@ import { RequestCard } from "./RequestCard";
 import { Timeseries } from "./Timeseries";
 import { VerdictCard } from "./VerdictCard";
 import { WeatherStrip } from "./WeatherStrip";
-import { PhaseBeacon } from "@/components/chat/PhaseBeacon";
 
 export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
   switch (spec.kind) {
     case "cycle_timeline":
       return <CycleTimeline phase={spec.phase} upcoming={spec.upcoming} />;
+    case "day_brief":
+      return <DayBriefCard spec={spec} />;
     case "attention_feed":
       return <AttentionFeed items={spec.items} />;
     case "metric_row":
@@ -36,17 +38,17 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
         />
       );
     case "auction_board":
-      return <><PhaseBeacon phase={spec.state === "live" ? "auction_live" : "winners"} /><AuctionBoard lots={spec.lots} closesAt={spec.closesAt} state={spec.state} /></>;
+      return <AuctionBoard lots={spec.lots} closesAt={spec.closesAt} state={spec.state} />;
     case "funnel":
       return <FunnelChart title={spec.title} steps={spec.steps} />;
     case "report":
-      return <><PhaseBeacon phase="report" /><ReportCard weekLabel={spec.weekLabel} sections={spec.sections} /></>;
+      return <ReportCard weekLabel={spec.weekLabel} sections={spec.sections} />;
     case "campaign_card":
       return <CampaignCard spec={spec} />;
     case "merge_card":
-      return <><PhaseBeacon phase="addon_window" /><MergeCard spec={spec} /></>;
+      return <MergeCard spec={spec} />;
     case "label_manifest":
-      return <><PhaseBeacon phase="label_day" /><LabelManifest spec={spec} /></>;
+      return <LabelManifest spec={spec} />;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

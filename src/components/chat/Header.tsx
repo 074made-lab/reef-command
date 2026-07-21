@@ -44,9 +44,9 @@ export function Header({ surface }: { surface: "merchant" | "shop" }) {
           >
             Shop
           </Link>
-          <PhaseChip />
         </nav>
       </div>
+      {surface === "merchant" ? <PhaseChip /> : null}
     </header>
   );
 }

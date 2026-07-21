@@ -10,7 +10,7 @@
  * The offline `/api/chat` + router path still exists as a fallback; this
  * surface uses the real LLM agent.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   useTriggerChatTransport,
@@ -18,12 +18,21 @@ import {
 } from "@trigger.dev/sdk/chat/react";
 import type { reefChat } from "@/trigger/reef-chat";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
-import type { ComponentSpec } from "@/lib/protocol";
+import type { ComponentSpec, DemoDayId } from "@/lib/protocol";
 import { SpecRenderer } from "@/components/specs/SpecRenderer";
+import {
+  DEFAULT_DEMO_DAY,
+  DEMO_CHAT_PROMPT_EVENT,
+  DEMO_DAYS,
+  DEMO_DAY_EVENT,
+  demoDay,
+  stripDemoDayContext,
+  withDemoDayContext,
+} from "@/lib/demo-clock";
 
 type ReefMessage = InferChatUIMessage<typeof reefChat>;
 
-const SUGGESTIONS = [
+const GENERAL_SUGGESTIONS = [
   "What needs my attention?",
   "How's the auction going?",
   "Any orders to merge?",
@@ -138,6 +147,8 @@ export function MerchantChat() {
     transport,
   });
   const [input, setInput] = useState("");
+  const [demoDayId, setDemoDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
+  const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
   const lastRef = useRef<HTMLDivElement>(null);
 
   const waiting = status === "submitted";
@@ -149,12 +160,42 @@ export function MerchantChat() {
     lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [messages.length]);
 
-  function submit(text: string) {
+  const submit = useCallback((text: string, dayOverride?: DemoDayId) => {
     const message = text.trim();
     if (!message || waiting || streaming) return;
     setInput("");
-    void sendMessage({ text: message });
-  }
+    void sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
+  }, [sendMessage, streaming, waiting]);
+
+  useEffect(() => {
+    const onDay = (event: Event) => {
+      const next = (event as CustomEvent<DemoDayId>).detail;
+      if (!DEMO_DAYS.some((day) => day.id === next)) return;
+      demoDayRef.current = next;
+      setDemoDayId(next);
+      const day = demoDay(next);
+      submit(
+        `Show me ${day.weekday}'s command brief. What are today's priorities, and what should you remind me not to miss?`,
+        next,
+      );
+    };
+    const onPrompt = (event: Event) => {
+      const prompt = (event as CustomEvent<string>).detail;
+      if (typeof prompt === "string") submit(prompt);
+    };
+    window.addEventListener(DEMO_DAY_EVENT, onDay);
+    window.addEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
+    return () => {
+      window.removeEventListener(DEMO_DAY_EVENT, onDay);
+      window.removeEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
+    };
+  }, [submit]);
+
+  const currentDay = demoDay(demoDayId);
+  const suggestions = [
+    ...currentDay.priorities.flatMap((priority) => priority.prompt ? [priority.prompt] : []),
+    ...GENERAL_SUGGESTIONS,
+  ].filter((suggestion, index, all) => all.indexOf(suggestion) === index).slice(0, 5);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -164,11 +205,11 @@ export function MerchantChat() {
           {messages.length === 0 && status === "ready" ? (
             <div className="pt-16 text-center">
               <p className="font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
-                channel open · Teddy is watching the reef
+                channel open · today is {currentDay.weekday} · {currentDay.label}
               </p>
               <p className="mt-2 text-sm text-dim">
-                Ask about the week — answers come back as live components, not
-                prose.
+                Choose a day above. Teddy will brief that day's priorities,
+                reminders, and the next component to open.
               </p>
             </div>
           ) : null}
@@ -185,6 +226,7 @@ export function MerchantChat() {
                   {m.parts
                     .filter((p): p is { type: "text"; text: string } => p.type === "text")
                     .map((p) => p.text)
+                    .map(stripDemoDayContext)
                     .join("")}
                 </p>
               </div>
@@ -214,7 +256,7 @@ export function MerchantChat() {
       <div className="border-t border-line/80 bg-abyss/90 backdrop-blur-sm">
         <div className="mx-auto max-w-4xl px-4 pt-2.5 pb-4">
           <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button
                 key={s}
                 type="button"

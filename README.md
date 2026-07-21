@@ -21,9 +21,9 @@ Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme
 ## The week it runs
 
 ```
-THU  auction opens          →  SAT  winners get payment + cross-platform codes
-SUN–MON  one-fee add-ons     →  MON  label day (weigh, weather, batch-approve)
-TUE–WED  combined shipping   →  WED  weekly report retargets next week
+MON  label day (merge, weigh, weather, approve) → TUE  ship + next preview
+WED  final ship + report     →  THU–FRI  ReefnBid live
+SAT  close + winner codes    →  SUN  one-fee add-ons across Shopify/eBay
 ```
 
 Coral shipping is expensive; customers want one fee to cover as many corals as
@@ -128,8 +128,12 @@ Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
 - *"Weekly report"* — an interactive reef-health report with platform/tier
   mix, retention, funnel, and evidence-backed stocking guidance
 
-The synthetic demo clock in the header follows the component on screen, so the
-story stays stable regardless of a judge's real date. In the attention feed,
+The header is a selectable seven-day **synthetic demo week**, so the story stays
+stable regardless of a judge's real date. Choosing Monday–Sunday tells Teddy
+what "today" means; the agent immediately renders that day's goal, work
+priorities, reminder, and supported next actions. Tuesday/Wednesday explicitly
+show the overlap between shipping the old cycle and previewing the next auction.
+In the attention feed,
 DOA rows expand to synthetic text + a clearly marked mock photo, while customer
 messages open an editable template draft. Their Approve/Send controls update
 demo UI state only — no refund or external email is executed.

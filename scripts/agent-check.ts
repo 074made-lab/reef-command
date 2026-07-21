@@ -41,6 +41,17 @@ function citedCount(text: string, nounPattern: string): number | null {
 
 const PROBES: Probe[] = [
   {
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me today's command brief and priorities.",
+    expect: "dayBrief → Monday day_brief; synthetic weekday beats wall clock",
+    check: (c) => {
+      if (!called(c, "dayBrief") || !has(c, "day_brief")) return "wrong tool/component";
+      const brief = c.components.find((s) => s.kind === "day_brief");
+      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Label Day"
+        ? null
+        : "did not honor synthetic Monday";
+    },
+  },
+  {
     q: "What needs my attention this morning?",
     expect: "whatNeedsAttention → attention_feed; cited DOA/request/message/item counts match the feed",
     check: (c) => {

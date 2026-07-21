@@ -26,6 +26,7 @@ import {
   weeklyReport,
 } from "./tools";
 import type { ComponentSpec } from "./protocol";
+import { dayBriefSpec } from "./demo-clock";
 
 export const MODEL = "claude-sonnet-5";
 
@@ -80,6 +81,12 @@ export function summarize(specs: ComponentSpec[]): string {
         );
         break;
       }
+      case "day_brief":
+        parts.push(
+          `synthetic today is ${s.weekday} — ${s.label}. Goal: ${s.goal}. ` +
+            `Priorities: ${s.priorities.map((p) => p.label).join("; ")}. Reminder: ${s.reminder}`,
+        );
+        break;
       case "auction_board": {
         const top = s.lots[0];
         const phase =
@@ -124,6 +131,15 @@ export function summarize(specs: ComponentSpec[]): string {
 const asText = (value: string) => ({ type: "text" as const, value });
 
 export const reefTools = {
+  dayBrief: tool({
+    description:
+      "Call this when the owner selects a synthetic demo weekday or asks what today's priorities, command brief, work plan, or reminders are. The [SYNTHETIC DEMO TODAY: ...] marker in the user message is authoritative; never use the real wall-clock weekday.",
+    inputSchema: z.object({
+      day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+    }),
+    execute: async ({ day }) => dayBriefSpec(day),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   whatNeedsAttention: tool({
     description:
       "Call this when the owner asks what needs their attention, what's urgent, their morning triage, or 'anything I should handle'. Returns open cases, customer requests, and unanswered messages as an attention feed.",
@@ -169,12 +185,14 @@ export const reefTools = {
 
 export const SYSTEM = `You are Reef Command, the merchant cockpit for a live-coral store. The business is modeled on the real weekly operations of TIA Coral; all data here is synthetic and simplified. You are a calm, brief co-pilot ("Teddy") — never chatty.
 
-THE WEEK: THU auction opens → SAT winners get payment + cross-platform discount codes → SUN–MON add-on orders (one shipping fee, add-on margin beats auction margin) → MON label day → TUE–WED combined shipping → WED weekly report. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
+THE WEEK: MON label day → TUE ship + next-auction preview → WED final ship + weekly report → THU ReefnBid opens → FRI auction momentum → SAT close + winners/codes → SUN add-ons + cross-platform merges. Tuesday/Wednesday shipping the previous cycle overlaps with previewing the next auction. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
 
 HOW YOU ANSWER — this is a visual product, not a wall of text:
 - For any question about the business, CALL THE RIGHT TOOL. The tool renders the real answer as interactive components on screen.
 - After the tool, add ONE short sentence (≤140 chars) as your verdict — interpret or point, don't re-list the numbers the components already show.
 - Pick the tool by intent (each tool's description says when to use it). You may call more than one if the question genuinely spans them.
+- Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the recording. Never replace it with the real wall-clock weekday.
+- When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 
 HARD RULES (never break):
 - NEVER fabricate a number, price, date, handle, or policy. Every business figure must come from a tool result. If no tool covers the question, say so plainly in one sentence — do not guess or invent.
