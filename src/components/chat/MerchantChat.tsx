@@ -60,6 +60,7 @@ const GENERAL_SUGGESTIONS = [
 ];
 const DRAFT_KEY = "reef-command:merchant-draft";
 const ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v1";
+const CHAT_RESPONSE_TIMEOUT_MS = 30_000;
 
 type RoutineTarget = {
   dayId: DemoDayId;
@@ -335,6 +336,7 @@ export function MerchantChat() {
   const [traceFollowupPending, setTraceFollowupPending] = useState(false);
   const [routineProgress, setRoutineProgress] = useState<RoutineProgressState>(createEmptyRoutineProgress);
   const [routineProgressReady, setRoutineProgressReady] = useState(false);
+  const [requestFailure, setRequestFailure] = useState<string | null>(null);
   const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
   const shipAlertStartedRef = useRef(false);
   const activeRoutineRef = useRef<ActiveRoutine | null>(null);
@@ -487,6 +489,19 @@ export function MerchantChat() {
     finishRoutine(active, "failed");
   }, [error, finishRoutine]);
 
+  useEffect(() => {
+    if (!waiting && !streaming) return;
+    const timeout = window.setTimeout(() => {
+      const active = activeRoutineRef.current;
+      if (active) finishRoutine(active, "failed");
+      setRequestFailure(
+        "Teddy did not receive an agent response within 30 seconds. Confirm the local Trigger.dev worker is running, then retry.",
+      );
+      void stop();
+    }, CHAT_RESPONSE_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [finishRoutine, stop, streaming, waiting]);
+
   const submit = useCallback((text: string, dayOverride?: DemoDayId, routine?: RoutineTarget) => {
     let message = text.trim();
     if (!message || waiting || streaming) return;
@@ -498,6 +513,7 @@ export function MerchantChat() {
     }
     followAnswerRef.current = true;
     setShowJump(false);
+    setRequestFailure(null);
     setInput("");
     if (routine) beginRoutine(routine);
     const routedMessage = routine ? withRoutineContext(routine.priorityIndex, message) : message;
@@ -772,14 +788,19 @@ export function MerchantChat() {
 
           {showWorking ? <CoralPulseSkeleton innerRef={lastRef} /> : null}
 
-          {error ? (
+          {error || requestFailure ? (
             <div className="anim-rise">
               <SpecRenderer
                 spec={{
                   kind: "verdict_card",
-                  verdict: "The agent hit an error. Showing it, not a guess.",
+                  verdict: requestFailure ?? "The agent could not complete this request. Please retry.",
                   confidence: "low",
-                  evidence: [{ label: "error", detail: error.message }],
+                  evidence: [{
+                    label: "next step",
+                    detail: requestFailure
+                      ? "Keep the Trigger.dev local worker running, then start the task again."
+                      : "Retry the task. If it fails again, check the local app and agent-worker terminals.",
+                  }],
                 }}
               />
             </div>

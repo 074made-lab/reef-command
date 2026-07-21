@@ -101,6 +101,16 @@ assert.match(merchantSource, /routineHadVisualRef\.current \? "complete" : "fail
   "routine completion must require a structured operational component");
 assert.doesNotMatch(merchantSource, /request\.then\(\(\) => finishRoutine\(active, "complete"\)\)/,
   "a resolved prose-only chat turn must not mark operational work complete");
+assert.match(merchantSource, /CHAT_RESPONSE_TIMEOUT_MS = 30_000/,
+  "chat requests must stop instead of loading forever when the worker is unavailable");
+assert.match(merchantSource, /setRequestFailure\([\s\S]*Trigger\.dev worker is running/,
+  "a timed-out chat request must explain the local recovery step");
+
+const phaseSource = readFileSync(new URL("../src/components/chat/PhaseChip.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(phaseSource, /block truncate text-\[13px\]/,
+  "demo-day labels must wrap instead of rendering ellipses");
+assert.match(phaseSource, /text-balance break-words whitespace-normal/,
+  "demo-day labels must use balanced dynamic wrapping");
 
 const agentSource = readFileSync(new URL("../src/lib/agent-config.ts", import.meta.url), "utf8");
 assert.match(agentSource, /structured_component_required=true[\s\S]*Call the matching live tool/,
