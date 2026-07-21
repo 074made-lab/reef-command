@@ -64,6 +64,35 @@ async function existingIncident(pg: Pool): Promise<ShipDayIncident | null> {
     ) linked ON true
     JOIN shipments s ON s.shipment_code = linked.shipment_code
     WHERE r.request_code = $1
+      AND s.status = 'purchased'
+      AND EXISTS (
+        SELECT 1 FROM orders o
+        WHERE o.shipment_id = s.id
+          AND o.status IN ('pending','paid','labeled')
+      )
+    LIMIT 1`, [DEMO_SHIP_EXCEPTION_ID]);
+  return result.rows[0] ? toIncident(result.rows[0]) : null;
+}
+
+/** A quick Tuesday reload should show the completed protection instead of
+ * spawning another run. This read intentionally accepts the now-voided linked
+ * shipment, but only for a recently completed synthetic incident. */
+export async function freshHandledDemoShipDayIncident(pg: Pool): Promise<ShipDayIncident | null> {
+  const result = await pg.query<IncidentRow>(`
+    SELECT r.customer_id, c.primary_name, s.shipment_code,
+           s.destination_city, s.label_cost_cents, r.received_at
+    FROM requests r
+    JOIN customers c ON c.id = r.customer_id
+    JOIN LATERAL (
+      SELECT replace(action, 'shipment:', '') AS shipment_code
+      FROM unnest(r.auto_actions) AS action
+      WHERE action LIKE 'shipment:%'
+      LIMIT 1
+    ) linked ON true
+    JOIN shipments s ON s.shipment_code = linked.shipment_code
+    WHERE r.request_code = $1
+      AND r.status = 'auto_handled'
+      AND r.resolved_at > now() - interval '15 minutes'
     LIMIT 1`, [DEMO_SHIP_EXCEPTION_ID]);
   return result.rows[0] ? toIncident(result.rows[0]) : null;
 }
@@ -88,7 +117,15 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
     FROM shipments s
     JOIN customers c ON c.id = s.customer_id
     WHERE s.status = 'purchased'
-    ORDER BY s.label_cost_cents DESC NULLS LAST, s.shipment_code
+      AND EXISTS (
+        SELECT 1 FROM orders o
+        WHERE o.shipment_id = s.id
+          AND o.status IN ('pending','paid','labeled')
+      )
+    ORDER BY s.purchased_at DESC NULLS LAST,
+             s.ship_week DESC,
+             s.label_cost_cents DESC NULLS LAST,
+             s.shipment_code
     LIMIT 1`, [nowIso]);
   const row = candidate.rows[0];
   if (!row) throw new Error("No purchased synthetic shipment is available for the ship-day demo");
@@ -97,7 +134,14 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
     `INSERT INTO requests
        (request_code, customer_id, kind, detail, status, auto_actions, received_at)
      VALUES ($1, $2, 'hold_next_week', $3, 'open', $4, $5)
-     ON CONFLICT (request_code) DO NOTHING`,
+     ON CONFLICT (request_code) DO UPDATE SET
+       customer_id = EXCLUDED.customer_id,
+       kind = EXCLUDED.kind,
+       detail = EXCLUDED.detail,
+       status = 'open',
+       auto_actions = EXCLUDED.auto_actions,
+       received_at = EXCLUDED.received_at,
+       resolved_at = NULL`,
     [DEMO_SHIP_EXCEPTION_ID, row.customer_id, REQUEST_SUMMARY,
       [`shipment:${row.shipment_code}`], nowIso],
   );
@@ -122,7 +166,7 @@ async function ensureEvent(ch: ClickHouseClient, type: string, eventId: string,
 }
 
 export async function recordShipDayDetection(ch: ClickHouseClient, incident: ShipDayIncident): Promise<void> {
-  await ensureEvent(ch, "request_received", `${incident.incidentId}:request`, incident, {
+  await ensureEvent(ch, "request_received", `${incident.incidentId}:${incident.shipmentId}:request`, incident, {
     requestId: incident.incidentId,
     kind: "delivery_day_change",
     shipmentId: incident.shipmentId,
@@ -154,9 +198,12 @@ export async function notifyPackingTeam(pg: Pool, ch: ClickHouseClient,
      SELECT 'notify-packing-team', 'auto', $1::jsonb, 'simulated-sms-sent'
      WHERE NOT EXISTS (
        SELECT 1 FROM action_log
-       WHERE task_id = 'notify-packing-team' AND payload->>'incidentId' = $2
-     )`, [JSON.stringify({ incidentId: incident.incidentId, shipmentId: incident.shipmentId }), incident.incidentId]);
-  await ensureEvent(ch, "packing_sms_sent", `${incident.incidentId}:sms`, incident, {
+       WHERE task_id = 'notify-packing-team'
+         AND payload->>'incidentId' = $2
+         AND payload->>'shipmentId' = $3
+     )`, [JSON.stringify({ incidentId: incident.incidentId, shipmentId: incident.shipmentId }),
+      incident.incidentId, incident.shipmentId]);
+  await ensureEvent(ch, "packing_sms_sent", `${incident.incidentId}:${incident.shipmentId}:sms`, incident, {
     requestId: incident.incidentId,
     shipmentId: incident.shipmentId,
     channel: "sms",
@@ -191,13 +238,15 @@ export async function voidShipDayLabel(pg: Pool, ch: ClickHouseClient,
      SELECT 'void-shipping-label', 'auto', $1::jsonb, 'label-voided-shipment-held'
      WHERE NOT EXISTS (
        SELECT 1 FROM action_log
-       WHERE task_id = 'void-shipping-label' AND payload->>'incidentId' = $2
+       WHERE task_id = 'void-shipping-label'
+         AND payload->>'incidentId' = $2
+         AND payload->>'shipmentId' = $3
      )`, [JSON.stringify({
       incidentId: incident.incidentId,
       shipmentId: incident.shipmentId,
       protectedCostCents: incident.protectedCostCents,
-    }), incident.incidentId]);
-  await ensureEvent(ch, "label_voided", `${incident.incidentId}:void`, incident, {
+    }), incident.incidentId, incident.shipmentId]);
+  await ensureEvent(ch, "label_voided", `${incident.incidentId}:${incident.shipmentId}:void`, incident, {
     requestId: incident.incidentId,
     shipmentId: incident.shipmentId,
     protectedCostCents: incident.protectedCostCents,

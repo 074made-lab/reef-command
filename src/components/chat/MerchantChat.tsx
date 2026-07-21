@@ -233,8 +233,8 @@ function AgentAnswer({ message }: { message: ReefMessage }) {
     );
   }, { dependencies: [visibleKey], scope: answerRef });
 
-  // Feature the first merge candidate (the signature shot); tuck the rest
-  // behind a compact affordance so the top of the answer stays on screen (m2).
+  // Feature the first merge candidate; tuck the rest behind a compact
+  // affordance so the top of the answer stays on screen.
   const merges = specs.filter((s) => s.kind === "merge_card");
   const others = specs.filter((s) => s.kind !== "merge_card");
   const restMerges = merges.slice(1);
@@ -471,6 +471,7 @@ export function MerchantChat() {
     shipAlertStartedRef.current = true;
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollCount = 0;
 
     const start = async () => {
       await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -480,14 +481,24 @@ export function MerchantChat() {
         const body = await response.json() as {
           ok: boolean;
           runId?: string;
+          reused?: boolean;
+          status?: ShipAlertStatus;
           incident?: Omit<ShipAlert, "runId" | "status">;
         };
-        if (!response.ok || !body.ok || !body.runId || !body.incident) throw new Error("start failed");
+        if (!response.ok || !body.ok || !body.incident) throw new Error("start failed");
+        if (body.reused && body.status === "protected") {
+          if (!cancelled) {
+            setShipAlert({ ...body.incident, runId: "reused", status: "protected" });
+          }
+          return;
+        }
+        if (!body.runId) throw new Error("run id missing");
         const base: ShipAlert = { ...body.incident, runId: body.runId, status: "request-detected" };
         if (!cancelled) setShipAlert(base);
 
         const poll = async () => {
           if (cancelled) return;
+          pollCount += 1;
           const statusResponse = await fetch(`/api/demo/ship-day-exception?runId=${encodeURIComponent(body.runId!)}`);
           const statusBody = await statusResponse.json() as { ok: boolean; metadata?: Record<string, unknown> };
           if (!statusResponse.ok || !statusBody.ok) throw new Error("poll failed");
@@ -504,11 +515,18 @@ export function MerchantChat() {
             } : current);
             if (status === "protected" || status === "failed") return;
           }
+          if (pollCount >= 60) {
+            setShipAlert((current) => current ? { ...current, status: "failed" } : current);
+            return;
+          }
           pollTimer = setTimeout(() => { void poll().catch(() => setShipAlert((current) => current ? { ...current, status: "failed" } : current)); }, 650);
         };
         await poll();
       } catch {
-        if (!cancelled) shipAlertStartedRef.current = false;
+        if (!cancelled) {
+          shipAlertStartedRef.current = false;
+          setShipAlert((current) => current ? { ...current, status: "failed" } : current);
+        }
       }
     };
     void start();
@@ -534,7 +552,7 @@ export function MerchantChat() {
       window.sessionStorage.setItem(DEMO_DAY_STORAGE_KEY, next);
       const day = demoDay(next);
       submit(
-        `Show me ${day.weekday}'s command brief. What are today's priorities, and what should you remind me not to miss?`,
+        `Show me ${day.weekday}'s three jobs and today's note.`,
         next,
       );
     };
@@ -633,7 +651,7 @@ export function MerchantChat() {
                   {currentDay.label}.
                 </h1>
                 <p className="mt-3 max-w-xl text-[17px] leading-relaxed text-dim">
-                  Start with one task. Teddy checks the live data and brings back the next decision.
+                  TIA Coral runs on a weekly auction-to-shipping rhythm. Start one of today&apos;s three jobs.
                 </p>
 
                 <div className="mt-8 text-left">
@@ -771,9 +789,8 @@ export function MerchantChat() {
             }}
             className="flex gap-2"
           >
-            {/* Never disabled: typing must survive a hung or slow run — only
-                SEND gates on in-flight state. A locked composer reads as a
-                broken product on camera. */}
+            {/* Never disabled: typing must survive a hung or slow run. Only
+                SEND gates on in-flight state. */}
             <input
               ref={inputRef}
               value={input}

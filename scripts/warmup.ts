@@ -1,7 +1,6 @@
 /**
- * Warm the exact demo queries before recording (Codex m4). Runs every read the
- * cockpit will make on camera so the first real query is hot — no cold-start
- * TLS reset, no first-take stall. Run once right before you hit record:
+ * Warm the operational queries before evaluation. Runs every primary cockpit
+ * read so the first query is hot and avoids a cold-start TLS reset:
  *
  *   npx tsx scripts/warmup.ts
  */
@@ -28,7 +27,7 @@ async function main() {
     await fn();
     console.log(`  warm · ${name.padEnd(14)} ${Date.now() - t0}ms`);
   }
-  console.log("\nAll demo queries warm.");
+  console.log("\nAll cockpit queries warm.");
   await ch.close();
   await pg.end();
   process.exit(0);

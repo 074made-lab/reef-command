@@ -120,8 +120,8 @@ async function dayBrief(message: string): Promise<ChatResponse> {
   const brief = firstOf(specs, "day_brief");
   return {
     verdict: brief
-      ? `Today is ${brief.weekday} — ${brief.label}. Start with “${brief.priorities[0]?.label}”; Teddy will keep the gate visible.`
-      : "Today's command brief is below.",
+      ? `Today is ${brief.weekday}: ${brief.label}. Start with “${brief.priorities[0]?.label}.”`
+      : "Today's three jobs are below.",
     components: specs,
   };
 }

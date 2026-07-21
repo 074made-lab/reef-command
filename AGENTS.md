@@ -12,13 +12,22 @@ the logic by reading it.
 
 ## What Reef Command is (30 seconds)
 
-A **merchant cockpit chat** for a live-coral store. You ask about the business
-and the answer is never a wall of text — it's a live component: an auction
-board, two orders merging into one shipping box, a reef-health report, a gated
-one-click action. Chat is the frame; interactive components are the answers
-(hackathon theme: *Beyond the Wall of Text*). All data is **synthetic**; the
-scenario is inspired by physical-commerce problems from TIA Coral
-(tiacoral.com), but its workflow and rules are invented public fixtures.
+A **shared operating layer** for a live-coral store. ClickHouse connects the
+store's operational events into one fast live picture; Trigger.dev turns those
+events into durable workflows with progress, automation, and human approval.
+The conversational cockpit lets a question become evidence, a staff task, an
+approval, and an audited outcome without losing context between systems. The
+answer is never a wall of text: it is a live component such as an auction
+board, two orders merging into one shipping box, a reef-health report, or a
+gated action.
+
+This is intended to continue beyond the hackathon as a mobile-first,
+role-protected surface for owners, managers, packing staff, and customer
+support. The public repository uses **synthetic data** to protect customers and
+commercially sensitive operating logic. The business problems and categories
+of work come from [TIA Coral, a Long Island live coral
+store](https://www.tiacoral.com/); public identities, amounts, timing,
+thresholds, and decision rules are invented fixtures.
 
 ## The two required tools, mapped to code
 
@@ -57,7 +66,7 @@ npm run build                                 # production build (pages don't hi
 npx tsx scripts/labelday-recovery-check.ts    # 4/4 — fault-injected recovery/idempotency of the label write loop
 npx tsx scripts/owner-auth-check.ts           # 12/12 — gated-action auth crypto (sign/verify/tamper/expiry/fail-closed)
 npx tsx scripts/routine-progress-check.ts     # task progress math + safe refresh recovery
-npx tsx scripts/demo-scenarios-check.ts       # MON/TUE + DOA public-demo contracts
+npx tsx scripts/workflow-contract-check.ts    # synthetic MON/TUE + DOA contracts
 ```
 
 These need **your own** service keys (we ship none — see Integrity). Without
@@ -66,6 +75,7 @@ them, read the assertions in each file to confirm the logic:
 ```bash
 npx tsx scripts/agent-check.ts     # 9 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
 npx tsx scripts/doa-resolution-check.ts # rollback-safe DOA integration; Postgres only, no CH writes
+npx tsx scripts/ship-day-exception-check.ts # rollback-safe stale-selection + replay integration
 npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel)
 npx tsx scripts/report-check.ts    # weekly report: platform mix, WoW/MoM, sparklines
 npx tsx scripts/tools-check.ts     # the read tools vs both live stores
@@ -132,7 +142,7 @@ attention feed (`src/app/api/shop/ask/route.ts` → `attentionFeed`).
 
 **Scalability & Impact (10% — deployable by real users?).** The brain is
 portable by design — `src/lib/agent-config.ts` has no Trigger.dev import, and
-the documented migration path (README "Architecture", `docs/DESIGN.md` §9)
+the documented migration path (README "Architecture", `docs/DESIGN.md` §8)
 targets the owner's real production stack. The underlying problem — combining
 multi-platform orders into one box and one fee — generalizes to any
 multi-channel merchant. The ship-day exception makes the impact concrete: one
@@ -176,7 +186,9 @@ We would rather tell you than have you "catch" us:
 - Label recovery is **sequential-idempotent, not strict exactly-once**: the
   ClickHouse guard is check-then-insert, so two concurrent identical approvals
   could double-emit (noted in `src/lib/label-day.ts`; a unique-key /
-  ReplacingMergeTree guard is future work).
+  ReplacingMergeTree guard is future work). The ship-day and DOA demo tasks use
+  the same check-then-insert pattern: sequential replay is safe, but concurrent
+  identical runs are not a strict exactly-once guarantee.
 - **Money is human-only.** The agent never refunds, charges, or buys — it
   refuses and routes to a human (proven by the refund probe in
   `scripts/agent-check.ts`). It never fabricates a number and never writes

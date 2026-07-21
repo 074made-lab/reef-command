@@ -13,9 +13,9 @@ import { Chip, SpecCard } from "./bits";
 type DayBriefSpec = Extract<ComponentSpec, { kind: "day_brief" }>;
 
 const CUE: Record<DayPriority["cue"], { label: string; tone: string }> = {
-  "do-now": { label: "DO NOW", tone: "border-teal/45 text-tealhi" },
-  watch: { label: "WATCH", tone: "border-warn/40 text-warn" },
-  "human-gate": { label: "HUMAN GATE", tone: "border-coral/45 text-coralhi" },
+  "do-now": { label: "ACTION", tone: "border-teal/45 text-tealhi" },
+  watch: { label: "MONITOR", tone: "border-warn/40 text-warn" },
+  "human-gate": { label: "APPROVAL", tone: "border-coral/45 text-coralhi" },
 };
 
 function askTeddy(detail: DemoChatPromptDetail) {
@@ -28,7 +28,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
 
   return (
     <SpecCard
-      tag="TODAY'S COMMAND"
+      tag="TODAY'S WORK"
       tone="coral"
       right={(
         <>
@@ -49,7 +49,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
       <div className="rounded-md border border-coral/25 bg-[linear-gradient(135deg,rgba(255,133,89,.07),rgba(79,227,207,.035))] px-3 py-2.5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-lg font-semibold text-ink">{spec.weekday}: {spec.label}</h3>
-          <span className="font-mono text-[13px] text-mute">SYNTHETIC · {spec.time}</span>
+          <span className="font-mono text-[13px] text-mute">SAMPLE DATA · {spec.time}</span>
         </div>
       </div>
 
@@ -93,7 +93,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
           className="mt-0.5 shrink-0 rounded-full ring-1 ring-teal/50"
         />
         <div>
-          <span className="font-mono text-[13px] tracking-[0.14em] text-teal uppercase">DON&apos;T MISS</span>
+          <span className="font-mono text-[13px] tracking-[0.14em] text-teal uppercase">TODAY&apos;S NOTE</span>
           <p className="text-[13px] leading-relaxed text-ink">{spec.reminder}</p>
         </div>
       </div>
@@ -101,7 +101,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
       <details className="group mt-2 rounded-sm border border-line/60 bg-abyss/25">
         <summary className="cursor-pointer list-none px-3 py-2 font-mono text-[13px] text-dim transition-colors hover:text-tealhi">
           <span className="inline-block transition-transform group-open:rotate-90">▸</span>{" "}
-          How {spec.weekday} works
+          Why these jobs matter
         </summary>
         <div className="space-y-2 border-t border-line/60 px-3 py-2.5 text-[13px] leading-relaxed text-dim">
           <p className="text-ink">{spec.goal}</p>

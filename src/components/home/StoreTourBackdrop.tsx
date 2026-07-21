@@ -35,13 +35,13 @@ export function StoreTourBackdrop() {
       muted
       loop
       playsInline
-      preload="metadata"
+      preload="auto"
       poster="/media/store-tour-poster.jpg"
       tabIndex={-1}
       aria-hidden="true"
-      className="h-full w-full scale-[1.02] object-cover object-center opacity-50"
+      className="h-full w-full scale-[1.01] object-cover object-center saturate-[1.08] contrast-[1.02]"
     >
-      <source src="/media/store-tour.mp4" type="video/mp4" />
+      <source src="/media/store-tour.mp4?v=2" type="video/mp4" />
     </video>
   );
 }

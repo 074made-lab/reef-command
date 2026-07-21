@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // The floating Next.js dev indicator sits bottom-left — exactly over the
-  // composer's first characters — and would show in every screen recording.
-  // Production builds never render it; disable it in dev too.
+  // The floating Next.js dev indicator sits over the composer's first
+  // characters. Production builds never render it; disable it in dev too.
   devIndicators: false,
 };
 

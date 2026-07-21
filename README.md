@@ -1,5 +1,8 @@
 # 🪸 Reef Command
 
+**Created by Xin Lin · [GitHub](https://github.com/074made-lab) ·
+[LinkedIn](https://www.linkedin.com/in/xin-lin-xl/).**
+
 **One week of a live-coral business, run from one chat window — where the
 answer is never a wall of text.**
 
@@ -11,22 +14,51 @@ interactive components are the answers.
 Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme:
 *Beyond the Wall of Text*).
 
-> **Inspired by the physical-commerce problems behind
-> [TIA Coral](https://tiacoral.com), a live-coral store in New York.** The
-> seven-day workflow, account links, customer bands, timing, economics, and
-> rules in this repository are invented **synthetic demo fixtures**, not the
-> store's operating playbook. No real customer, order, amount, or message
-> appears anywhere. See [`docs/DESIGN.md`](docs/DESIGN.md).
+> **Created from real small-business challenges at
+> [TIA Coral, a Long Island live coral store](https://www.tiacoral.com/).**
+> TIA Coral serves reef keepers through its Deer Park, New York store and its
+> online collections of WYSIWYG, SPS, LPS, soft corals, and other live corals.
+> Reef Command turns that physical-commerce context into a public-safe software
+> experiment. Every customer, order, amount, workflow rule, and message in this
+> repository is an invented synthetic fixture. See
+> [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ---
 
+## Why Reef Command exists
+
+A physical store does not run inside one system. Customer messages, auction
+activity, online orders, shipping decisions, staff handoffs, and reporting all
+move at different speeds. Before Reef Command, each tool could show one piece
+of the business, but no shared operating layer could connect the work as it
+happened.
+
+**ClickHouse gives the store a fast, shared view of operational events.
+Trigger.dev turns those events into durable workflows with automation, visible
+progress, and human approval where authority matters.** Reef Command brings
+both into one conversational cockpit, so a question can become live evidence,
+a staff task, an approval, and an auditable outcome without losing context
+between systems.
+
+This is not a dashboard migration or a fictional workflow built only for a
+competition. It is a working foundation for software we intend to keep using
+and developing with the store. The public hackathon build uses synthetic data
+because the repository is public and real customer records, internal policies,
+and commercially sensitive operating logic must remain private. The business
+problems and categories of work are real; the public identities, amounts,
+timing, thresholds, and decision rules are invented fixtures.
+
 ## The week it runs
 
-```
-MON  label day (merge, weigh, weather, approve) → TUE  ship + next preview
-WED  final ship + report     →  THU–FRI  ReefnBid live
-SAT  close + winner codes    →  SUN  one-fee add-ons across Shopify/eBay
-```
+| Day | Store rhythm | Three staff jobs |
+|---|---|---|
+| Monday | Label Day | Clear order issues, combine matching orders, prepare labels in bulk |
+| Tuesday | Ship + Preview | Check today's boxes, stop urgent changes, check the store pulse |
+| Wednesday | Ship + Report | Finish today's shipments, review the weekly report, set next week's priorities |
+| Thursday | Auction Opens | Check the live auction, verify the opening status, answer buyer questions |
+| Friday | Auction Momentum | Check bid movement, keep the board accurate, clear buyer questions |
+| Saturday | Close + Winners | Confirm final results, send winner next steps, watch add-on orders |
+| Sunday | Add-on Day | Watch new orders, combine matching orders, clear Monday blockers |
 
 Live-animal fulfillment is time-sensitive: a missed customer change can become
 wasted packing work, an avoidable carrier charge, or an incorrect shipment.
@@ -63,7 +95,7 @@ Sub-second analytics behind every component.
 shipments, cases). Every consequential write lands here first, then emits an
 event to ClickHouse.
 
-### OLTP + OLAP on camera (bonus category)
+### OLTP + OLAP closed loop (bonus category)
 
 The **label-day approval** is the loop shown executing end to end: one gated
 (owner-only) click completes the waitpoint → the durable task writes shipment
@@ -129,13 +161,9 @@ These are enforced by the system prompt and provable — see `agent-check.ts`.
 
 ## Run it
 
-Two ways to evaluate — **no secret of ours is needed or included** (`.env*` is
-gitignored):
-
-1. **Video (plus any hosted link in the submission)** — the whole flow with zero
-   setup. This is the primary path; the video opens with a live screen recording.
-2. **Run it locally** — clone and point it at *your own* external services
-   (below). You supply your own keys; you choose your own `REEF_OWNER_TOKEN`.
+Run it locally by cloning the repository and pointing it at *your own* external
+services. **No secret of ours is needed or included** (`.env*` is gitignored):
+you supply your own keys and choose your own `REEF_OWNER_TOKEN`.
 
 ### Prerequisites
 
@@ -169,7 +197,7 @@ Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
 - *"What needs my attention?"* — open cases, requests, unanswered messages
 - *"How's the auction going?"* — the live/closed board
 - *"Any orders to merge?"* — ReefnBid / Shopify / eBay orders flow like water
-  currents into one box (the signature shot)
+  currents into one box
 - *"Run label day"* — the manifest + a gated **Approve** chip (the waitpoint)
 - *"Weekly report"* — an interactive reef-health report with platform mix,
   synthetic channel movement, category movement, and funnel history
@@ -216,7 +244,7 @@ and only the synthetic "Approve & buy labels" action is disabled. Never commit
 `.env.local` or reuse a production credential.
 
 `/merchant` needs Terminal 1 running (the agent executes in the Trigger worker).
-Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.
+Run `npx tsx scripts/warmup.ts` once before evaluation to warm the queries.
 
 ### See it work without a browser (fastest verification)
 
@@ -228,8 +256,9 @@ npx tsx scripts/report-check.ts           # weekly report: platform mix, WoW/MoM
 npx tsx scripts/labelday-check.ts         # the MON label manifest (read-only; no purchase)
 npx tsx scripts/labelday-recovery-check.ts # fault-injected label recovery/idempotency (no network)
 npx tsx scripts/owner-auth-check.ts       # owner-session sign/verify/expiry (no network)
-npx tsx scripts/demo-scenarios-check.ts   # two public demo contracts (no network)
+npx tsx scripts/workflow-contract-check.ts # synthetic workflow contracts (no network)
 npx tsx scripts/doa-resolution-check.ts   # rollback-safe DOA writes; needs Postgres only
+npx tsx scripts/ship-day-exception-check.ts # rollback-safe stale-selection + replay gate
 npx tsx scripts/tools-check.ts            # all five tools vs both stores
 npx tsx scripts/ch-verify.ts              # the ClickHouse demo queries
 npx tsc --noEmit && npm run build         # types + production build
@@ -257,7 +286,26 @@ Trigger.dev  chat.agent()  ──tools──►  five live-store reads → compo
 The agent brain (`src/lib/agent-config.ts`: model, system prompt, tools) has no
 Trigger.dev dependency, and the schemas are mirrored from day one — the design
 is built to migrate off hackathon infrastructure onto the owner's own stack
-(SQLite event bus + launchd + Claude API direct). See `docs/DESIGN.md` §9.
+(SQLite event bus + launchd + Claude API direct). See `docs/DESIGN.md` §8.
+
+## Where it goes next
+
+Reef Command is designed to become a protected operating surface for the whole
+store, not an owner-only demo. The next product layer is:
+
+- a mobile-first staff experience that works where packing, customer service,
+  and order handling actually happen;
+- role-based access for owners, managers, packing staff, and customer-support
+  staff, with each person seeing only the data and actions needed for the job;
+- one shared attention stream with clear ownership, status, and handoff history;
+- protected approvals for money, policy exceptions, and other high-impact
+  decisions;
+- production adapters that connect the store's real systems while keeping
+  customer data and private operating logic out of the public repository.
+
+The long-term goal is simple: every staff member can safely participate in the
+same live operating picture from a phone, while sensitive decisions remain
+permissioned, attributable, and reviewable.
 
 ## Repo layout
 
@@ -271,7 +319,20 @@ src/components/specs/   one renderer per component kind — the "answers are com
 scripts/                init / backfill / seed + the live verification harnesses
 ```
 
+## The real business behind Reef Command
+
+Reef Command began with the operational reality of running
+[TIA Coral, an online live coral store in Long Island, New York](https://www.tiacoral.com/).
+TIA Coral offers collector corals, WYSIWYG pieces, aquacultured SPS, LPS,
+Goniopora, Zoanthids, soft corals, and mushrooms, with local pickup and
+nationwide overnight shipping. The business context is real; the public data
+and operating logic in this repository are intentionally synthetic.
+
+[Explore live corals at TIA Coral](https://www.tiacoral.com/)
+
 ## License
 
 MIT — see [LICENSE](LICENSE). All code written inside the 2026-07-17 → 07-23
-build window (git history is the evidence).
+build window (git history is the evidence). Project author: **Xin Lin**
+([GitHub](https://github.com/074made-lab) ·
+[LinkedIn](https://www.linkedin.com/in/xin-lin-xl/)).

@@ -1,22 +1,23 @@
 # Reef Command — Design (v3)
 
 > **Status:** Public-safe implementation guide, updated 2026-07-21. It records
-> only behavior shipped in the hackathon demo. Production TIA Coral identity,
+> only behavior shipped in the public synthetic build. Production TIA Coral identity,
 > customer-value, margin, buying, targeting, and fulfillment rules are not
 > included.
 >
 > Built for the ClickHouse × Trigger.dev Virtual Summer Hackathon 2026
 > ("Beyond the Wall of Text"). Designed from day one to migrate off hackathon
-> infrastructure onto the owner's own stack (§9).
+> infrastructure onto the owner's own stack (§8).
 
 ## 0. What this is
 
 **One week of a live-coral e-commerce business, run from one chat window.**
 
-The domain is inspired by **[TIA Coral](https://tiacoral.com)**, a live-coral
-store in New York. All data and operational rules in this repository are
-invented synthetic fixtures; they do not document the store's workflow. The
-compressed public-demo cycle:
+The domain is inspired by
+**[TIA Coral, a Long Island live coral store](https://www.tiacoral.com/)**.
+All data and operational rules in this repository are invented synthetic
+fixtures; they do not document the store's workflow. The compressed synthetic
+operating cycle:
 
 ```text
 THU  auction opens on the auction platform (ReefnBid-style)
@@ -39,6 +40,13 @@ The chat surface is the only entrance: every artifact the system produces is
 an interactive component in the conversation; every consequential action is a
 chip on a card. Chat is the frame, components are the answers — the hackathon
 theme, applied to a real operating rhythm.
+
+The product goal is larger than the public build. Reef Command is intended to
+become a mobile-first, role-protected operating surface shared by store owners,
+managers, packing staff, and customer-support staff. ClickHouse supplies the
+shared operational picture; Trigger.dev supplies durable coordination and
+human approval. Public fixtures prove the architecture without publishing real
+customer records or the store's private operating logic.
 
 ## 1. The four tasks
 
@@ -74,7 +82,7 @@ messages in the repository are simulated.
 
 This task carries the bonus-category story: every consequential write here
 lands in Postgres (transactional truth), emits events to ClickHouse, and the
-affected charts update live on screen — see §4 for the two on-camera loops
+affected charts update live on screen — see §4 for the two closed loops
 (order merge, label batch purchase).
 
 1. **Real-time monitoring + merge.** All three platforms' new orders stream
@@ -92,7 +100,7 @@ affected charts update live on screen — see §4 for the two on-camera loops
    → merchant approves the whole batch with one click → task resumes and
    purchases labels (simulated carrier), progress streaming live to the UI.
    Batch-approve (not fully unattended) is deliberate: label purchase spends
-   money, and the approval pause is Trigger.dev's native HITL on camera.
+   money, and the approval pause is Trigger.dev's native HITL control.
 3. **Autonomous ship-day exception.** One public-safe synthetic example proves
    the loop: a customer changes delivery timing before carrier handoff → a
    Trigger task immediately records the request → the packing team receives a
@@ -231,11 +239,10 @@ Trigger.dev event-generator scheduled task  │
   simulated carrier and message sender sit behind it, so real services are
   drop-ins later.
 
-### OLTP + OLAP on camera (bonus category)
+### OLTP + OLAP closed loop (bonus category)
 
 Postgres holds transactional truth; ClickHouse holds the append-only event
-stream and powers every visual. The label-day loop is demonstrated executing
-live end to end:
+stream and powers every visual. The label-day loop executes end to end:
 
 - Label manifest approved (owner-gated) → Postgres label rows + spend → label
   events → ClickHouse → ship-radar and cost components update, with recoverable
@@ -248,7 +255,7 @@ ClickHouse (deduped per customer+cycle). Not money, not physical — the orders
 consolidate into one labeled box at label day, like the real store.
 
 One click, both databases, visible consequence — that is the integration
-story told in a single camera move.
+contract.
 
 ## 5. Action tiers and boundaries
 
@@ -273,11 +280,11 @@ model text to customers; the agent never widens its own authority.
    varied synthetic order sizes, arbitrary demo bands, and generic exceptions.
    It is not calibrated to expose TIA Coral's distribution, identity logic,
    profitability, customer valuation, targeting, or species economics.
-3. **Deterministic demo seed.** An idempotent `seed-demo` script plants the
-   storyline: a full auction arc, winners who add on cross-platform, one
+3. **Deterministic synthetic seed.** An idempotent seed plants a full auction
+   arc, winners who add on cross-platform, one
    cold-destination shipment, one cancel-after-label request, one DOA claim,
    organic sales on every platform. Live low-volume inserts run on top for
-   ticking charts. Never rely on randomness during a recording.
+   ticking charts. Operational checks never rely on randomness.
 4. **Scale & depth:** 8–12 weeks of backfill at realistic volume (hundreds
    of thousands to millions of events — bids, pageviews, messages, orders,
    inventory moves) so ClickHouse's speed is visible rather than claimed,
@@ -287,38 +294,13 @@ model text to customers; the agent never widens its own authority.
 ## 7. Evaluation — the judge test
 
 A blind set of 20–30 questions (half owner-written, half builder-written;
-data / policy / definition / must-refuse categories; none from the demo
-script), run after build:
+data / policy / definition / must-refuse categories), run after build:
 
 - ✅ correct answer with correct component
 - ✅ honest refusal where data doesn't exist
 - ❌ fabricated number or policy → automatic fail, fix before submission
 
-## 8. Demo script (~5 min, chronological — one week, compressed)
-
-Narrative: *"This is one week of a real coral business, run from one chat
-window."*
-
-1. **TUE** — a synthetic customer changes delivery timing. Without an owner
-   prompt, the floating alert shows packing notified by simulated SMS and the
-   still-voidable label cancelled before handoff.
-2. **THU night** — live auction board ticking while bid events flood in
-   (ClickHouse ingest+query on camera; scale moment).
-3. **SUN** — a synthetic customer orders on two channels: **two order cards merge into
-   one combined order on screen** (the signature shot — computed live from the
-   OLTP scan; the human click writes an audited, deduplicated merge decision,
-   while physical consolidation remains part of Label Day).
-4. **MON** — label manifest: weights, weather flags (heat pack for the cold
-   destination), total cost → owner-gated one-click batch approve → labels
-   purchase live (waitpoint approval + run polling on camera; the OLTP→OLAP
-   loop that executes).
-5. **WED** — weekly report: platform mix and return-customer rate with
-   WoW/MoM deltas, six-category product table, auction→add-on funnel vs
-   previous weeks; one off-script question answered live.
-6. **Close (~45s)** — architecture: both tools' unique features, the
-   OLTP+OLAP loop, the two seams.
-
-## 9. Migration home
+## 8. Migration home
 
 Hackathon infrastructure is deliberately disposable; the seams are the
 escape hatch.
@@ -336,7 +318,12 @@ orchestration patterns · report query shapes · the judge-test set. Production
 identity, segmentation, campaign, margin, and fulfillment policies remain in
 the owner's private systems and are not migration artifacts from this repo.
 
-## 10. Shipped public scope
+The production path adds mobile-first staff access and role-based permissions:
+owners retain policy and money authority; managers coordinate exceptions;
+packing and customer-support roles receive only the views and actions required
+for their work. Every consequential action remains attributable and auditable.
+
+## 9. Shipped public scope
 
 - Trigger.dev `chat.agent()` with typed ClickHouse/Postgres read tools.
 - Three executable priorities per demo day with chat-lifecycle progress, a
@@ -349,7 +336,7 @@ the owner's private systems and are not migration artifacts from this repo.
 - No production campaign, identity-resolution, customer-valuation, buying,
   margin, species-profit, or fulfillment-policy implementation.
 
-## 11. Hackathon compliance
+## 10. Hackathon compliance
 
 - ClickHouse is the primary database; Postgres is the ClickHouse-managed
   optional addition (per rules).
@@ -359,7 +346,7 @@ the owner's private systems and are not migration artifacts from this repo.
   evidence). No proprietary code; no real customer data; secrets in `.env*`
   only, never committed.
 - MIT license; repo flips public at submission.
-- Attribution: README, video, and this document credit TIA Coral
-  (tiacoral.com) as the operational model, always paired with the
+- Attribution: README and this document credit
+  [TIA Coral](https://www.tiacoral.com/) as the business inspiration, always paired with the
   synthetic-data + simplified-details disclaimer. No real internal numbers,
   no real message templates, no "TIA currently does X" claims.

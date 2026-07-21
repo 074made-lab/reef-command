@@ -38,7 +38,7 @@ question entry points.
 ## Components read as a reef, not a BI suite
 
 - **Auction Board** → bid tags hanging on a coral rack.
-- **Merge Card** → two frags flowing into one shipping box (the signature shot).
+- **Merge Card** → two frags flowing into one shipping box.
 - **Weekly Report** → a *reef health report*.
 - **Attention Feed** → the anomalies that need to surface for handling.
 
@@ -79,13 +79,13 @@ spinners.
 
 - The header is a **selectable seven-day synthetic week**, never the evaluator's
   wall clock. It always states `TODAY IS MONDAY · LABEL DAY` (or the selected
-  equivalent), and keeps all seven weekdays visible for recording.
+  equivalent), and keeps all seven weekdays visible for quick operation.
 - Selecting any weekday sends its synthetic-day context into `chat.agent()`.
   Teddy must render the day's goal, three priorities, one reminder, and prompt
   chips for supported live components. Selection does not execute the work.
 - The empty cockpit shows only three compact priority bullets. Day briefs keep
   the same evidence but reveal explanations progressively so the default view
-  remains scannable on a recording and during store operations.
+  remains scannable during store operations.
 - Platform labels use the business names everywhere: **ReefnBid**, **Online
   Store (Shopify)**, and **eBay**.
 - Merge cards use layered water currents and moving particles to carry every
@@ -102,17 +102,5 @@ spinners.
 
 - Don't set everything in the usual Inter. Headings can be a touch warmer, with
   an editorial feel; numbers stay in a clear mono.
-- **Bump the smallest labels: current 10–11px loses legibility after video
-  compression — raise the floor to at least 12px.**
-
-## The video
-
-The star of the video is the **visual result**, not the chat box. The
-**Merge Card** is the signature shot: two platform orders swim into one box,
-Teddy beside it confirming "one box, one shipping fee."
-
-The demo sequence is a guided week, after the human introduction and business
-context: select **MON** for the label-day gate, **TUE/WED** for shipping and the
-report, **THU–SAT** for the auction arc, then **SUN** for add-ons and the merge
-shot. Each click begins with Teddy's day-aware command brief before opening the
-supporting live component.
+- **Keep the smallest labels at least 12px so secondary information remains
+  legible on compact screens.**

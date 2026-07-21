@@ -1,10 +1,21 @@
 import { runs } from "@trigger.dev/sdk";
 import { pgPool } from "@/lib/store/postgres";
-import { DEMO_SHIP_EXCEPTION_ID, stageDemoShipDayRequest } from "@/lib/ship-day-exception";
+import {
+  DEMO_SHIP_EXCEPTION_ID,
+  freshHandledDemoShipDayIncident,
+  stageDemoShipDayRequest,
+} from "@/lib/ship-day-exception";
 import { shipDayException } from "@/trigger/ship-day-exception";
 
 export async function POST() {
   try {
+    // Intentionally unauthenticated: this route only replays a deterministic,
+    // synthetic, non-money event. Fresh completed incidents are read back
+    // instead of spawning another Trigger run on every Tuesday reload.
+    const recent = await freshHandledDemoShipDayIncident(pgPool());
+    if (recent) {
+      return Response.json({ ok: true, reused: true, status: "protected", incident: recent });
+    }
     // Simulate an external customer request entering the system. From this
     // point onward the Trigger task acts without an owner prompt or click.
     const incident = await stageDemoShipDayRequest(pgPool());

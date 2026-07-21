@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/chat/Header";
 import { StoreTourBackdrop } from "@/components/home/StoreTourBackdrop";
+import {
+  PROJECT_AUTHOR,
+  PROJECT_GITHUB_URL,
+  PROJECT_LINKEDIN_URL,
+} from "@/lib/project-credit";
 
 const SURFACES = [
   {
     href: "/merchant",
     tag: "MERCHANT COCKPIT",
-    line: "Run the auction week from one conversation — attention, merges, labels, the report.",
+    line: "Run the auction week from one conversation: attention, merges, labels, and the report.",
     live: true,
   },
   {
@@ -22,8 +27,7 @@ export default function Home() {
     <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-abyss px-6">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <StoreTourBackdrop />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,18,25,.52),rgba(7,18,25,.28)_42%,rgba(7,18,25,.65))]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(7,18,25,.1)_0%,rgba(7,18,25,.46)_78%)]" />
+        <div className="absolute inset-0 bg-abyss/30" />
       </div>
 
       {/* sonar rings */}
@@ -37,11 +41,11 @@ export default function Home() {
         ))}
       </div>
 
-      <div className="relative flex flex-col items-center text-center drop-shadow-[0_2px_18px_rgba(2,10,14,.65)]">
+      <div className="relative flex flex-col items-center text-center drop-shadow-[0_3px_20px_rgba(2,10,14,.82)]">
         <p className="mb-4 font-mono text-[12px] tracking-[0.4em] text-mute uppercase">
           depth 04 · channel open
         </p>
-        {/* Teddy at the center of the sonar — the store's real reef dog */}
+        {/* Teddy at the center of the sonar, the store's real reef dog */}
         <img
           src="/teddy.jpg"
           alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
@@ -50,7 +54,7 @@ export default function Home() {
           className="coral-halo mb-6 rounded-full ring-2 ring-coral/70"
         />
         <Wordmark size="lg" />
-        <p className="mt-5 max-w-md text-[15px] leading-relaxed text-dim">
+        <p className="mt-5 max-w-xl text-[17px] font-medium leading-relaxed tracking-[-0.01em] text-ink drop-shadow-[0_2px_12px_rgba(2,10,14,.95)] sm:text-[19px]">
           One week of a coral business, run from one chat window.
         </p>
         <p className="mt-2 font-mono text-[12px] tracking-[0.24em] text-coral uppercase">
@@ -83,8 +87,29 @@ export default function Home() {
           ))}
         </div>
 
-        <p className="mt-12 font-mono text-[12px] tracking-[0.25em] text-mute uppercase">
+        <p className="mt-12 bg-abyss/55 px-4 py-2 font-mono text-[11px] tracking-[0.18em] text-ink/85 uppercase shadow-[0_8px_24px_rgba(2,10,14,.28)] backdrop-blur-[3px] sm:text-[12px]">
           ClickHouse × Trigger.dev · Beyond the Wall of Text
+        </p>
+        <p className="mt-2 font-mono text-[10px] tracking-[0.12em] text-ink/70 drop-shadow-[0_1px_8px_rgba(2,10,14,.95)] sm:text-[11px]">
+          Created by {PROJECT_AUTHOR}
+          <span aria-hidden> · </span>
+          <a
+            href={PROJECT_GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-coralhi focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/55"
+          >
+            GitHub
+          </a>
+          <span aria-hidden> · </span>
+          <a
+            href={PROJECT_LINKEDIN_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-coralhi focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/55"
+          >
+            LinkedIn
+          </a>
         </p>
       </div>
     </main>

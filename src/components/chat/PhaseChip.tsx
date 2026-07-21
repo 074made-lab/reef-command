@@ -1,6 +1,6 @@
 "use client";
 
-/** The recording controller for the synthetic operating week. The selected
+/** The controller for the synthetic operating week. The selected
  * day is the single source of truth; rendering a component never rewrites it. */
 
 import { useEffect, useState } from "react";
