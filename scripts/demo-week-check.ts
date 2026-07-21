@@ -14,17 +14,18 @@ import {
 } from "../src/lib/demo-clock";
 
 const expected = [
+  ["sunday", "Add-ons + Announcement"],
   ["monday", "Shipping Documents"],
   ["tuesday", "Ship + Listings"],
   ["wednesday", "Ship + Promotion"],
   ["thursday", "Auction Opens"],
   ["friday", "Auction Momentum"],
   ["saturday", "Closing Night + Winners"],
-  ["sunday", "Add-ons + Announcement"],
 ] as const;
 
 assert.equal(DEMO_DAYS.length, 7, "the synthetic-week controller must expose seven days");
 assert.equal(DEMO_DAY_STORAGE_KEY, "reef-command:demo-day");
+assert.equal(DEMO_DAYS[0]?.id, "sunday", "Sunday must be the first visible tab");
 assert.equal(isDemoDayId("thursday"), true);
 assert.equal(isDemoDayId("demo-day"), false);
 assert.deepEqual(DEMO_DAYS.map((day) => [day.id, day.label]), expected);

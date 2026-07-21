@@ -26,6 +26,16 @@ export type DemoDay = {
 
 export const DEMO_DAYS: DemoDay[] = [
   {
+    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-ons + Announcement",
+    goal: "Combine eligible add-ons and review the next-auction announcement before Monday's document work.",
+    priorities: [
+      { label: "Watch add-on orders", detail: "Keep orders from the auction, online store, and marketplace visible together.", cue: "watch", prompt: "How's business during the Sunday add-on window?" },
+      { label: "Combine eligible orders", detail: "Put each customer's eligible orders into one coordinated shipment.", cue: "do-now", prompt: "Any eligible orders to merge?" },
+      { label: "Review next announcement", detail: "Review the next-auction announcement before the new weekly cycle begins.", cue: "human-gate", prompt: "Review Sunday's next-auction announcement draft." },
+    ],
+    reminder: "The announcement remains a draft until approval; Monday starts shipping-document preparation.",
+  },
+  {
     id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Shipping Documents",
     goal: "Clear shipment issues, combine eligible orders, and prepare shipping documents for carrier review.",
     priorities: [
@@ -85,19 +95,9 @@ export const DEMO_DAYS: DemoDay[] = [
     ],
     reminder: "Every winner needs payment steps, an add-on code, and a ship date.",
   },
-  {
-    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-ons + Announcement",
-    goal: "Combine eligible add-ons and review the next-auction announcement before Monday's document work.",
-    priorities: [
-      { label: "Watch add-on orders", detail: "Keep orders from the auction, online store, and marketplace visible together.", cue: "watch", prompt: "How's business during the Sunday add-on window?" },
-      { label: "Combine eligible orders", detail: "Put each customer's eligible orders into one coordinated shipment.", cue: "do-now", prompt: "Any eligible orders to merge?" },
-      { label: "Review next announcement", detail: "Review the next-auction announcement before the new weekly cycle begins.", cue: "human-gate", prompt: "Review Sunday's next-auction announcement draft." },
-    ],
-    reminder: "The announcement remains a draft until approval; Monday starts shipping-document preparation.",
-  },
 ];
 
-export const DEFAULT_DEMO_DAY: DemoDayId = "monday";
+export const DEFAULT_DEMO_DAY: DemoDayId = "sunday";
 export const DEMO_DAY_EVENT = "reef:demo-day";
 export const DEMO_CHAT_PROMPT_EVENT = "reef:chat-prompt";
 export const DEMO_DAY_STORAGE_KEY = "reef-command:demo-day";

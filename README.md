@@ -52,13 +52,13 @@ timing, thresholds, and decision rules are invented fixtures.
 
 | Day | Store rhythm | Three staff jobs |
 |---|---|---|
+| Sunday | Add-ons + Announcement | Watch add-on orders, combine eligible orders, review the next-auction announcement |
 | Monday | Shipping Documents | Clear shipping blockers, combine eligible orders, prepare shipping docs |
 | Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
 | Wednesday | Ship + Promotion | Finish ready shipments, review the auction reminder, review the new-arrivals promotion |
 | Thursday | Auction Opens | Check the live auction, verify the opening status, answer buyer questions |
 | Friday | Auction Momentum | Check bid movement, review last-call ads, clear buyer questions |
 | Saturday | Closing Night + Winners | Confirm final results, review winner next steps, watch add-on orders |
-| Sunday | Add-ons + Announcement | Watch add-on orders, combine eligible orders, review the next-auction announcement |
 
 Tuesday's synthetic plan targets Thursday for ReefnBid publication and prepares
 new Shopify arrivals. Human staff verify physical inventory and update Shopify
