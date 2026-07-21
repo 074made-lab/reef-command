@@ -42,21 +42,30 @@ function citedCount(text: string, nounPattern: string): number | null {
 const PROBES: Probe[] = [
   {
     q: "What needs my attention this morning?",
-    expect: "whatNeedsAttention → attention_feed; any cited count matches the feed",
+    expect: "whatNeedsAttention → attention_feed; cited DOA/request/message/item counts match the feed",
     check: (c) => {
       if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
       const feed = c.components.find((s) => s.kind === "attention_feed");
       if (feed?.kind !== "attention_feed") return "no feed";
       const total = feed.items.length;
       const doa = feed.items.filter((i) => i.kind === "case" && /DOA claim/i.test(i.headline)).length;
+      const requests = feed.items.filter((i) => i.kind === "request").length;
+      const messages = feed.items.filter((i) => i.kind === "message").length;
       const t = lower(c);
       // A right tool with a wrong number is still a lie on camera (R3 follow-up:
-      // agent said "two DOA claims" when the feed had more).
-      const doaCited = citedCount(t, "doa(?:\\s+claim)?s?|claims?");
-      if (doaCited !== null && doaCited !== doa) return `verdict cites ${doaCited} DOA but feed has ${doa}`;
+      // agent said "two DOA claims" when the feed had more). Cross-check EVERY
+      // category the verdict might cite, not just DOA.
+      const cats: [number | null, number, string][] = [
+        [citedCount(t, "doa(?:\\s+claim)?s?|claims?"), doa, "DOA claims"],
+        [citedCount(t, "requests?"), requests, "requests"],
+        [citedCount(t, "messages?"), messages, "unanswered messages"],
+      ];
+      for (const [cited, actual, label] of cats)
+        if (cited !== null && cited !== actual) return `verdict cites ${cited} ${label} but feed has ${actual}`;
+      // A generic "N items/cases/things" must equal a real category or the total.
       const itemCited = citedCount(t, "(?:open\\s+)?(?:case|item|thing|task)s?");
-      if (itemCited !== null && itemCited !== total && itemCited !== doa)
-        return `verdict cites ${itemCited} items but feed has ${total} (DOA ${doa})`;
+      if (itemCited !== null && ![total, doa, requests, messages].includes(itemCited))
+        return `verdict cites ${itemCited} items but feed has ${total} (DOA ${doa}, req ${requests}, msg ${messages})`;
       return null;
     },
   },

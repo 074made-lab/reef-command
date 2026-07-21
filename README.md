@@ -83,13 +83,20 @@ These are enforced by the system prompt and provable — see `agent-check.ts`.
 
 ## Run it
 
+Two ways to evaluate — **no secret of ours is needed or included** (`.env*` is
+gitignored):
+
+1. **Video (plus any hosted link in the submission)** — the whole flow with zero
+   setup. This is the primary path; the video opens with a live screen recording.
+2. **Run it locally** — clone and point it at *your own* external services
+   (below). You supply your own keys; you choose your own `REEF_OWNER_TOKEN`.
+
 ### Prerequisites
 
 - Node 20+ (developed on 25) · a ClickHouse Cloud service · a ClickHouse-managed
   Postgres · a Trigger.dev project (CLI logged in: `npx trigger.dev@latest login`)
-  · an Anthropic API key · an owner passphrase (`REEF_OWNER_TOKEN`) to authorize
-  the label-approval action (only that one money-moving action is gated — the
-  rest of the cockpit needs no auth).
+  · an Anthropic API key · optionally, a self-chosen `REEF_OWNER_TOKEN` (any
+  local passphrase) to enable the one gated action — see "Owner token" below.
 - `cp .env.example .env.local` and fill it in, then `npm install`.
 
 ### First time only — create the data plane
@@ -119,12 +126,21 @@ Open **http://localhost:3000/merchant** and click a suggestion chip or ask:
 - *"Run label day"* — the manifest + a gated **Approve** chip (the waitpoint)
 - *"Weekly report"* — platform/tier mix, retention, funnel, all vs history
 
-The cockpit opens with zero config — chat, reports, boards, and the read-only
-manifest all work immediately. Only the money-moving **Approve & buy labels**
-action is owner-gated: set `REEF_OWNER_TOKEN` in `.env.local` and the chip
-prompts for that passphrase inline the first time you approve (a label purchase
-spends money, so it stays behind a human + a session). If the token is unset,
-that one chip is disabled with a hint; everything else is unaffected.
+No **owner-auth** config is required to browse the cockpit — chat, reports,
+boards, and the read-only manifest need no passphrase (they still need the
+external services in `.env.local`, like any run — this is not a static site).
+Only the money-moving **Approve & buy labels** action is gated: set
+`REEF_OWNER_TOKEN` and the chip prompts for that passphrase inline the first time
+you approve (a label purchase spends money, so it stays behind a human + a
+session). Unset → that one chip is disabled with a hint; everything else is
+unaffected.
+
+#### Owner token
+
+`REEF_OWNER_TOKEN` is not an API key and is not tied to TIA Coral. Choose any
+strong local passphrase yourself. If it is unset, the cockpit remains available
+and only the synthetic "Approve & buy labels" action is disabled. Never commit
+`.env.local` or reuse a production credential.
 
 `/merchant` needs Terminal 1 running (the agent executes in the Trigger worker).
 Run `npx tsx scripts/warmup.ts` once before recording to warm the queries.
