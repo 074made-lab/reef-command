@@ -75,7 +75,13 @@ async function tx<T>(pg: Pool, fn: (client: PoolClient) => Promise<T>): Promise<
 
 /** Reset only the named synthetic demo rows so the same judge flow can replay. */
 export async function stageDemoDoaReview(pg: Pool, nowIso: string): Promise<void> {
-  await tx(pg, async (db) => {
+  await tx(pg, (db) => stageDemoDoaReviewOn(db, nowIso));
+}
+
+/** The same staging on an existing connection — lets the rollback check stage
+ * INSIDE its own transaction, so the check leaves no durable rows behind. */
+export async function stageDemoDoaReviewOn(db: PoolClient, nowIso: string): Promise<void> {
+  {
     await db.query(
       `INSERT INTO customers
          (id, primary_email, primary_name, tier, total_orders, total_spent_cents,
@@ -176,7 +182,7 @@ export async function stageDemoDoaReview(pg: Pool, nowIso: string): Promise<void
       [DEMO_DOA_CASE_ID, DEMO_DOA_CUSTOMER_ID, DEMO_DOA_ORDER_ID,
         JSON.stringify(DEMO_DOA_REVIEW.evidence), nowIso],
     );
-  });
+  }
 }
 
 async function ensureEvent(

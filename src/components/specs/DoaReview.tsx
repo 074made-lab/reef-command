@@ -89,8 +89,18 @@ export function DoaReview({ plan, onResolved }: { plan: DoaReviewPlan; onResolve
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let reads = 0;
+    let polls = 0;
     const poll = async () => {
       if (!live) return;
+      // Healthy-but-stuck runs must fail visibly too (e.g. the Trigger worker
+      // is down and the run never executes): cap total polls, mirroring the
+      // ship-day alert and label-chip bounds.
+      polls += 1;
+      if (polls > 90) {
+        setStatus("failed");
+        setNote("The workflow did not report progress. Check the Trigger worker, then approve again.");
+        return;
+      }
       try {
         const response = await fetch(`/api/demo/doa-resolution?runId=${encodeURIComponent(runId)}`);
         const body = await response.json() as {

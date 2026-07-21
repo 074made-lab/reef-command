@@ -1,10 +1,11 @@
 /**
  * Rollback-safe integration check for the DOA write path.
  *
- * It stages the named public fixture, runs every post-approval Postgres write
- * inside one transaction, records ClickHouse inserts in memory, asserts the
- * final closed loop, then rolls the transaction back. No analytics event is
- * sent and no customer message is created.
+ * It stages the named public fixture AND runs every post-approval Postgres
+ * write inside one transaction, records ClickHouse inserts in memory, asserts
+ * the final closed loop, then rolls the transaction back — staging included,
+ * so the check leaves zero durable rows. No analytics event is sent and no
+ * customer message is created.
  */
 import assert from "node:assert/strict";
 import type { ClickHouseClient } from "@clickhouse/client";
@@ -20,7 +21,7 @@ import {
   purchaseDemoUpdatedLabel,
   rebuildDemoPackingList,
   recordDemoReplacements,
-  stageDemoDoaReview,
+  stageDemoDoaReviewOn,
   voidDemoDoaLabel,
 } from "../src/lib/doa-demo";
 import { pgPool } from "../src/lib/store/postgres";
@@ -32,7 +33,6 @@ type Inserted = { type: string; order_id: string; amount_cents: number; meta: st
 async function main() {
   const pg = pgPool();
   const now = new Date().toISOString();
-  await stageDemoDoaReview(pg, now);
 
   const db = await pg.connect();
   const inserted: Inserted[] = [];
@@ -43,6 +43,10 @@ async function main() {
   const approvalId = "DOA-ROLLBACK-CHECK";
   try {
     await db.query("BEGIN");
+    // Stage INSIDE the transaction: the check must leave no durable fixture
+    // rows behind (a committed staging would hand the Tuesday candidate query
+    // a live shipment and mutate the demo world from a "read-only" gate).
+    await stageDemoDoaReviewOn(db, now);
     const scopedPg = db as unknown as Pool;
     await decideDemoDoaClaim(scopedPg, fakeCh, approvalId, "simulator-check", now);
     await recordDemoReplacements(scopedPg, fakeCh, approvalId, "simulator-check");
