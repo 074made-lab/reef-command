@@ -74,6 +74,63 @@ async function existingIncident(pg: Pool): Promise<ShipDayIncident | null> {
   return result.rows[0] ? toIncident(result.rows[0]) : null;
 }
 
+/** Re-arm only the fixed public demo incident after its previous protection
+ * run has aged out. This never broadens selection to arbitrary voided
+ * shipments: the request id, linked shipment, and held order must all match
+ * the synthetic incident's completed state. */
+async function rearmHandledDemoShipDayIncident(
+  pg: Pool,
+  nowIso: string,
+): Promise<ShipDayIncident | null> {
+  const result = await pg.query<IncidentRow>(`
+    WITH candidate AS (
+      SELECT r.customer_id, c.primary_name, s.id AS shipment_id,
+             s.shipment_code, s.destination_city, s.label_cost_cents
+      FROM requests r
+      JOIN customers c ON c.id = r.customer_id
+      JOIN LATERAL (
+        SELECT replace(action, 'shipment:', '') AS shipment_code
+        FROM unnest(r.auto_actions) AS action
+        WHERE action LIKE 'shipment:%'
+        LIMIT 1
+      ) linked ON true
+      JOIN shipments s ON s.shipment_code = linked.shipment_code
+      WHERE r.request_code = $1
+        AND r.status = 'auto_handled'
+        AND s.status = 'voided'
+        AND EXISTS (
+          SELECT 1 FROM orders o
+          WHERE o.shipment_id = s.id AND o.status = 'held'
+        )
+      LIMIT 1
+    ), rearmed_shipment AS (
+      UPDATE shipments s
+      SET status = 'purchased', voided_at = NULL, void_reason = NULL
+      FROM candidate c
+      WHERE s.id = c.shipment_id
+      RETURNING s.id
+    ), rearmed_orders AS (
+      UPDATE orders o
+      SET status = 'labeled', updated_at = $2
+      FROM candidate c
+      WHERE o.shipment_id = c.shipment_id AND o.status = 'held'
+      RETURNING o.id
+    ), rearmed_request AS (
+      UPDATE requests r
+      SET status = 'open', received_at = $2, resolved_at = NULL,
+          auto_actions = ARRAY['shipment:' || c.shipment_code]::text[]
+      FROM candidate c
+      WHERE r.request_code = $1
+      RETURNING r.request_code
+    )
+    SELECT c.customer_id, c.primary_name, c.shipment_code,
+           c.destination_city, c.label_cost_cents, $2::timestamptz AS received_at
+    FROM candidate c
+    JOIN rearmed_shipment s ON true
+    JOIN rearmed_request r ON true`, [DEMO_SHIP_EXCEPTION_ID, nowIso]);
+  return result.rows[0] ? toIncident(result.rows[0]) : null;
+}
+
 /** A quick Tuesday reload should show the completed protection instead of
  * spawning another run. This read intentionally accepts the now-voided linked
  * shipment, but only for a recently completed synthetic incident. */
@@ -128,7 +185,11 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
              s.shipment_code
     LIMIT 1`, [nowIso]);
   const row = candidate.rows[0];
-  if (!row) throw new Error("No purchased synthetic shipment is available for the ship-day demo");
+  if (!row) {
+    const replay = await rearmHandledDemoShipDayIncident(pg, nowIso);
+    if (replay) return replay;
+    throw new Error("No purchased synthetic shipment is available for the ship-day demo");
+  }
 
   await pg.query(
     `INSERT INTO requests

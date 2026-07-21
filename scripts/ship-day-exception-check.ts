@@ -159,10 +159,32 @@ async function main() {
     assert.equal(fresh?.shipmentId, HOLDABLE_SHIPMENT,
       "a fresh completed incident should be reusable without another run");
 
+    await db.query(
+      `UPDATE requests SET resolved_at = now() - interval '1 hour'
+       WHERE request_code = $1`,
+      [DEMO_SHIP_EXCEPTION_ID],
+    );
+    const replay = await stageDemoShipDayRequest(scopedPg, new Date().toISOString());
+    assert.equal(replay.shipmentId, HOLDABLE_SHIPMENT,
+      "an aged-out deterministic incident should re-arm its own held shipment");
+    const replayState = await db.query<{ shipment_status: string; order_status: string; request_status: string }>(`
+      SELECT
+        (SELECT status FROM shipments WHERE shipment_code = $1) AS shipment_status,
+        (SELECT status FROM orders WHERE platform = 'web' AND external_id = $2) AS order_status,
+        (SELECT status FROM requests WHERE request_code = $3) AS request_status`,
+      [HOLDABLE_SHIPMENT, HOLDABLE_ORDER, DEMO_SHIP_EXCEPTION_ID],
+    );
+    assert.deepEqual(replayState.rows[0], {
+      shipment_status: "purchased",
+      order_status: "labeled",
+      request_status: "open",
+    }, "re-arming must restore only the deterministic demo starting state");
+
     console.log("✓ stale shipment rejected; latest purchased + holdable shipment selected");
     console.log("✓ request rebound; linked order actually held; label voided");
     console.log("✓ sequential replay: 1 SMS, 1 notify log, 1 void log, 3 CH events");
     console.log("✓ event ids are shipment-scoped; fresh completion is reusable");
+    console.log("✓ aged-out demo incident safely re-arms its own held shipment");
     console.log("\nALL PASS — ship-day exception integration (rolled back)");
   } finally {
     await db.query("ROLLBACK").catch(() => {});

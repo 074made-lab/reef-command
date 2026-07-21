@@ -57,12 +57,18 @@ assert.match(shipLogicSource, /o\.status IN \('pending','paid','labeled'\)/,
   "ship-day selection must require a holdable linked order");
 assert.match(shipLogicSource, /incident\.incidentId}:\$\{incident\.shipmentId}:request/,
   "ship-day event ids must be shipment-scoped");
+assert.match(shipLogicSource, /r\.request_code = \$1[\s\S]*r\.status = 'auto_handled'[\s\S]*s\.status = 'voided'[\s\S]*o\.status = 'held'/,
+  "only the fixed completed demo incident may re-arm its own held shipment");
 
 const merchantSource = readFileSync(new URL("../src/components/chat/MerchantChat.tsx", import.meta.url), "utf8");
 assert.match(merchantSource, /pollCount >= 60/,
   "ship-day alert polling must stop with a visible failure state");
 assert.match(merchantSource, /body\.reused && body\.status === "protected"/,
   "fresh completed Tuesday incidents must be reused without another run");
+assert.match(merchantSource, /setShipAlert\(PENDING_SHIP_ALERT\)/,
+  "Tuesday must show the inbound change before its durable workflow responds");
+assert.match(merchantSource, /demoDayId !== "tuesday"[\s\S]*shipAlertStartedRef\.current = false/,
+  "leaving Tuesday must reset the autonomous alert for the next visit");
 
 const routerSource = readFileSync(new URL("../src/lib/router.ts", import.meta.url), "utf8");
 assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,

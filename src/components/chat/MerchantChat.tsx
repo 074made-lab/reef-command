@@ -80,6 +80,16 @@ type ShipAlert = {
   requestSummary: string;
 };
 
+const PENDING_SHIP_ALERT: ShipAlert = {
+  runId: "pending",
+  status: "request-detected",
+  customerName: "Customer request",
+  shipmentId: "matching prepared shipment",
+  destination: "checking destination",
+  protectedCostCents: 0,
+  requestSummary: "Delivery-day change received before carrier handoff.",
+};
+
 function safeTraceValue(value: string): string {
   return value.replace(/[\]\n\r]/g, " ").trim();
 }
@@ -97,17 +107,20 @@ function shipTracePrompt(alert: ShipAlert): string {
   return `[SYNTHETIC SHIP TRACE: ${trace}]\nExplain this ship-day automation trace.`;
 }
 
-function ShipDayAlert({ alert, busy, onReview, onDismiss }: {
+function ShipDayAlert({ alert, busy, onReview, onDismiss, onRetry }: {
   alert: ShipAlert;
   busy: boolean;
   onReview: () => void;
   onDismiss: () => void;
+  onRetry: () => void;
 }) {
   const protectedUsd = new Intl.NumberFormat("en-US", {
     style: "currency", currency: "USD",
   }).format(alert.protectedCostCents / 100);
   const done = alert.status === "protected";
   const failed = alert.status === "failed";
+  const matching = alert.runId === "pending";
+  const packingNotified = alert.status === "packing-notified" || done;
   return (
     <aside
       role="status"
@@ -129,14 +142,18 @@ function ShipDayAlert({ alert, busy, onReview, onDismiss }: {
             {failed ? "Ship-day protection needs review" : done ? "Shipment protected" : "Ship-day change detected"}
           </h2>
           <p className="mt-1 hidden text-[14px] leading-snug text-dim sm:block">
-            {alert.customerName} changed delivery timing for <span className="font-mono text-ink">{alert.shipmentId}</span>.
+            {failed
+              ? "The request was detected, but the local workflow connection is unavailable."
+              : matching
+              ? "A customer asked to change delivery timing. Matching the prepared shipment now."
+              : <>{alert.customerName} changed delivery timing for <span className="font-mono text-ink">{alert.shipmentId}</span>.</>}
           </p>
           <div className="mt-3 hidden space-y-1.5 border-l border-line pl-3 text-[13px] sm:block">
-            <p className={alert.status === "request-detected" ? "text-mute" : "text-ok"}>
-              {alert.status === "request-detected" ? "○" : "✓"} Packing team notified · synthetic SMS
+            <p className={packingNotified ? "text-ok" : "text-mute"}>
+              {packingNotified ? "✓ Packing team notified · synthetic SMS" : failed ? "○ Packing notification not confirmed" : "○ Notifying packing team · synthetic SMS"}
             </p>
             <p className={done ? "text-ok" : "text-mute"}>
-              {done ? "✓" : "○"} Carrier label {done ? "voided" : "being checked"}
+              {done ? "✓ Carrier label voided" : failed ? "○ Carrier label status unchanged" : "○ Carrier label being checked"}
             </p>
           </div>
           {done ? (
@@ -155,7 +172,18 @@ function ShipDayAlert({ alert, busy, onReview, onDismiss }: {
               </button>
             </div>
           ) : null}
-          {failed ? <p className="mt-3 text-[13px] text-danger">Automation stopped safely. No additional action was claimed.</p> : null}
+          {failed ? (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-danger/20 pt-3">
+              <p className="text-[13px] text-danger">Stopped safely. No action was claimed.</p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="shrink-0 rounded-md border border-danger/45 px-3 py-1.5 text-[12px] font-semibold text-danger transition-colors hover:bg-danger/10"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </aside>
@@ -302,6 +330,7 @@ export function MerchantChat() {
   const [demoDayId, setDemoDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
   const [showJump, setShowJump] = useState(false);
   const [shipAlert, setShipAlert] = useState<ShipAlert | null>(null);
+  const [shipAlertAttempt, setShipAlertAttempt] = useState(0);
   const [traceFollowupPending, setTraceFollowupPending] = useState(false);
   const [routineProgress, setRoutineProgress] = useState<RoutineProgressState>(createEmptyRoutineProgress);
   const [routineProgressReady, setRoutineProgressReady] = useState(false);
@@ -467,14 +496,24 @@ export function MerchantChat() {
   }, [beginRoutine, finishRoutine, sendMessage, streaming, traceFollowupPending, waiting]);
 
   useEffect(() => {
-    if (demoDayId !== "tuesday" || shipAlertStartedRef.current) return;
+    if (demoDayId !== "tuesday") {
+      shipAlertStartedRef.current = false;
+      setShipAlert(null);
+      return;
+    }
+    if (shipAlertStartedRef.current) return;
     shipAlertStartedRef.current = true;
+    // The alert is the inbound event, so show it before waiting on the durable
+    // workflow. This keeps the autonomous signal visible even when a local
+    // dependency is unavailable; the card then fails closed instead of
+    // disappearing.
+    setShipAlert(PENDING_SHIP_ALERT);
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let pollCount = 0;
 
     const start = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 700));
       if (cancelled) return;
       try {
         const response = await fetch("/api/demo/ship-day-exception", { method: "POST" });
@@ -534,7 +573,7 @@ export function MerchantChat() {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [demoDayId]);
+  }, [demoDayId, shipAlertAttempt]);
 
   useEffect(() => {
     const onDay = (event: Event) => {
@@ -606,6 +645,10 @@ export function MerchantChat() {
             setShipAlert(null);
           }}
           onDismiss={() => setShipAlert(null)}
+          onRetry={() => {
+            shipAlertStartedRef.current = false;
+            setShipAlertAttempt((attempt) => attempt + 1);
+          }}
         />
       ) : null}
       {/* stream */}
