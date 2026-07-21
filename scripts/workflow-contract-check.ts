@@ -59,6 +59,16 @@ assert.match(shipLogicSource, /incident\.incidentId}:\$\{incident\.shipmentId}:r
   "ship-day event ids must be shipment-scoped");
 assert.match(shipLogicSource, /r\.request_code = \$1[\s\S]*r\.status = 'auto_handled'[\s\S]*s\.status = 'voided'[\s\S]*o\.status = 'held'/,
   "only the fixed completed demo incident may re-arm its own held shipment");
+assert.ok((shipLogicSource.match(/ship_week <> 'DEMO-TOMORROW'/g) ?? []).length >= 4,
+  "every Tuesday selection path must exclude the DOA demo fixture (ship_week DEMO-TOMORROW)");
+assert.match(shipLogicSource, /stageSelfContainedShipDayFixture/,
+  "an empty pool must self-stage an isolated deterministic Tuesday fixture, never throw");
+assert.match(shipSource, /payload\.incident \?\?/,
+  "task retries must reuse the staged incident, never re-select a shipment mid-incident");
+
+const doaReviewSource = readFileSync(new URL("../src/components/specs/DoaReview.tsx", import.meta.url), "utf8");
+assert.match(doaReviewSource, /polls > 90/,
+  "DOA workflow polling must stop with a visible failure state when the run never progresses");
 
 const merchantSource = readFileSync(new URL("../src/components/chat/MerchantChat.tsx", import.meta.url), "utf8");
 assert.match(merchantSource, /pollCount >= 60/,

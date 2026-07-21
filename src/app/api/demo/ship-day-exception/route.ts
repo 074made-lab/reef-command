@@ -19,7 +19,9 @@ export async function POST() {
     // Simulate an external customer request entering the system. From this
     // point onward the Trigger task acts without an owner prompt or click.
     const incident = await stageDemoShipDayRequest(pgPool());
-    const handle = await shipDayException.trigger({ incidentId: DEMO_SHIP_EXCEPTION_ID });
+    // Pass the staged incident into the run: retries must reuse it, never
+    // re-select a different shipment mid-incident.
+    const handle = await shipDayException.trigger({ incidentId: DEMO_SHIP_EXCEPTION_ID, incident });
     return Response.json({ ok: true, runId: handle.id, incident });
   } catch (error) {
     return Response.json({

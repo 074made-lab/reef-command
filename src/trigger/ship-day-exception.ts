@@ -13,17 +13,22 @@ import {
   recordShipDayDetection,
   stageDemoShipDayRequest,
   voidShipDayLabel,
+  type ShipDayIncident,
 } from "../lib/ship-day-exception";
 
 export const shipDayException = task({
   id: "ship-day-exception",
   maxDuration: 120,
   retry: { maxAttempts: 3 },
-  run: async (payload: { incidentId: string }) => {
+  run: async (payload: { incidentId: string; incident?: ShipDayIncident }) => {
     const pg = pgPool();
     const ch = chClient();
     try {
-      const incident = await stageDemoShipDayRequest(pg);
+      // The route stages the incident once and passes it in, so a mid-run
+      // retry re-handles the SAME shipment instead of selecting (and voiding)
+      // a second one after the first void already landed. Staging here is only
+      // the fallback for a run fired without a payload (e.g. the dashboard).
+      const incident = payload.incident ?? await stageDemoShipDayRequest(pg);
       metadata.set("status", "request-detected");
       metadata.set("incidentId", payload.incidentId);
       metadata.set("customerName", incident.customerName);

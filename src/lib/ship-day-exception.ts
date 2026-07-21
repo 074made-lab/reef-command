@@ -14,6 +14,14 @@ import { insertEvents, queryRows } from "./store/clickhouse";
 
 export const DEMO_SHIP_EXCEPTION_ID = "DEMO-SHIP-CHANGE-001";
 
+/** Isolated deterministic fixture identifiers. The Tuesday story must never
+ * share a shipment with the DOA demo (its rows live in ship_week
+ * 'DEMO-TOMORROW', excluded from every selection below) and must still work on
+ * a fresh clone, where seeded shipments carry no linked orders. */
+export const DEMO_SHIP_CUSTOMER_ID = 900_003;
+export const DEMO_SHIP_SHIPMENT_CODE = "SHP-DEMO-TUE-001";
+export const DEMO_SHIP_ORDER_ID = "WEB-DEMO-TUE-001";
+
 export type ShipDayIncident = {
   incidentId: string;
   customerId: number;
@@ -65,6 +73,7 @@ async function existingIncident(pg: Pool): Promise<ShipDayIncident | null> {
     JOIN shipments s ON s.shipment_code = linked.shipment_code
     WHERE r.request_code = $1
       AND s.status = 'purchased'
+      AND s.ship_week <> 'DEMO-TOMORROW'
       AND EXISTS (
         SELECT 1 FROM orders o
         WHERE o.shipment_id = s.id
@@ -98,6 +107,7 @@ async function rearmHandledDemoShipDayIncident(
       WHERE r.request_code = $1
         AND r.status = 'auto_handled'
         AND s.status = 'voided'
+        AND s.ship_week <> 'DEMO-TOMORROW'
         AND EXISTS (
           SELECT 1 FROM orders o
           WHERE o.shipment_id = s.id AND o.status = 'held'
@@ -150,8 +160,55 @@ export async function freshHandledDemoShipDayIncident(pg: Pool): Promise<ShipDay
     WHERE r.request_code = $1
       AND r.status = 'auto_handled'
       AND r.resolved_at > now() - interval '15 minutes'
+      AND s.ship_week <> 'DEMO-TOMORROW'
     LIMIT 1`, [DEMO_SHIP_EXCEPTION_ID]);
   return result.rows[0] ? toIncident(result.rows[0]) : null;
+}
+
+/** Create (or repair) the isolated deterministic Tuesday fixture: its own
+ * synthetic customer, one purchased shipment, and one linked labeled order —
+ * never a seeded row, never the DOA demo's world. Runs only when no eligible
+ * shipment exists and the completed incident cannot be re-armed, so a fresh
+ * clone gets a working autonomous story with zero setup. */
+async function stageSelfContainedShipDayFixture(pg: Pool, nowIso: string): Promise<IncidentRow> {
+  await pg.query(
+    `INSERT INTO customers (id, primary_email, primary_name, tier)
+     VALUES ($1, 'tide_runner_88@example.test', 'tide_runner_88', 3)
+     ON CONFLICT (id) DO UPDATE SET primary_name = EXCLUDED.primary_name`,
+    [DEMO_SHIP_CUSTOMER_ID],
+  );
+  await pg.query(
+    `INSERT INTO shipments
+       (shipment_code, customer_id, ship_week, status, items, weight_lb,
+        destination_city, pack, label_cost_cents, purchased_at)
+     VALUES ($1, $2, 'DEMO-TUESDAY', 'purchased', 3, 3.4, 'Columbus, OH', 'none', 3260, $3)
+     ON CONFLICT (shipment_code) DO UPDATE SET
+       status = 'purchased', purchased_at = EXCLUDED.purchased_at,
+       label_cost_cents = EXCLUDED.label_cost_cents,
+       voided_at = NULL, void_reason = NULL`,
+    [DEMO_SHIP_SHIPMENT_CODE, DEMO_SHIP_CUSTOMER_ID, nowIso],
+  );
+  await pg.query(
+    `INSERT INTO orders
+       (platform, external_id, customer_id, status, total_cents,
+        destination_city, shipment_id, ordered_at, updated_at)
+     VALUES ('web', $1, $2, 'labeled', 14200, 'Columbus, OH',
+       (SELECT id FROM shipments WHERE shipment_code = $3),
+       $4::timestamptz - interval '1 day', $4)
+     ON CONFLICT (platform, external_id) DO UPDATE SET
+       status = 'labeled',
+       shipment_id = EXCLUDED.shipment_id,
+       updated_at = EXCLUDED.updated_at`,
+    [DEMO_SHIP_ORDER_ID, DEMO_SHIP_CUSTOMER_ID, DEMO_SHIP_SHIPMENT_CODE, nowIso],
+  );
+  return {
+    customer_id: String(DEMO_SHIP_CUSTOMER_ID),
+    primary_name: "tide_runner_88",
+    shipment_code: DEMO_SHIP_SHIPMENT_CODE,
+    destination_city: "Columbus, OH",
+    label_cost_cents: "3260",
+    received_at: new Date(nowIso),
+  };
 }
 
 /** Stage the synthetic inbound customer event. The owner never clicks an
@@ -174,6 +231,9 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
     FROM shipments s
     JOIN customers c ON c.id = s.customer_id
     WHERE s.status = 'purchased'
+      -- the DOA demo's fixture rows live in ship_week 'DEMO-TOMORROW'; the two
+      -- public stories must never share (or void) the same shipment
+      AND s.ship_week <> 'DEMO-TOMORROW'
       AND EXISTS (
         SELECT 1 FROM orders o
         WHERE o.shipment_id = s.id
@@ -184,11 +244,11 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
              s.label_cost_cents DESC NULLS LAST,
              s.shipment_code
     LIMIT 1`, [nowIso]);
-  const row = candidate.rows[0];
+  let row = candidate.rows[0];
   if (!row) {
     const replay = await rearmHandledDemoShipDayIncident(pg, nowIso);
     if (replay) return replay;
-    throw new Error("No purchased synthetic shipment is available for the ship-day demo");
+    row = await stageSelfContainedShipDayFixture(pg, nowIso);
   }
 
   await pg.query(
