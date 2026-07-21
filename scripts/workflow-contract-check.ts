@@ -126,6 +126,10 @@ assert.doesNotMatch(phaseSource, /block truncate text-\[13px\]/,
 assert.match(phaseSource, /text-balance break-words whitespace-normal/,
   "demo-day labels must use balanced dynamic wrapping");
 
+const routineProgressSource = readFileSync(new URL("../src/components/chat/RoutineProgress.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(routineProgressSource, /numberRef|<span ref=\{numberRef\}>/,
+  "the routine progress ring must remain visually clean without a misaligned percentage label");
+
 const agentSource = readFileSync(new URL("../src/lib/agent-config.ts", import.meta.url), "utf8");
 assert.match(agentSource, /structured_component_required=true[\s\S]*Call the matching live tool/,
   "routine retries must require a fresh structured tool call");

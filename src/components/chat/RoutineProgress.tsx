@@ -96,42 +96,26 @@ export function RoutineProgressRing({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<SVGCircleElement>(null);
-  const numberRef = useRef<HTMLSpanElement>(null);
-  const lastPercentRef = useRef(0);
   const percent = routinePercent(tasks);
   const complete = tasks.filter((task) => task.status === "complete").length;
   const running = tasks.some((task) => task.status === "running");
 
   useGSAP(() => {
     const ring = ringRef.current;
-    const number = numberRef.current;
-    if (!ring || !number) return;
+    if (!ring) return;
 
-    const from = lastPercentRef.current;
-    lastPercentRef.current = percent;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (reduceMotion) {
       gsap.set(ring, { strokeDashoffset: 100 - percent });
-      number.textContent = String(percent);
       return;
     }
 
-    const counter = { value: from };
     gsap.to(ring, {
       strokeDashoffset: 100 - percent,
       duration: 0.42,
       ease: "power2.out",
       overwrite: "auto",
-    });
-    gsap.to(counter, {
-      value: percent,
-      duration: 0.42,
-      ease: "power2.out",
-      overwrite: "auto",
-      onUpdate: () => {
-        number.textContent = String(Math.round(counter.value));
-      },
     });
     if (percent === 100) {
       gsap.fromTo(
@@ -170,9 +154,6 @@ export function RoutineProgressRing({
             strokeDashoffset="100"
           />
         </svg>
-        <span className="absolute inset-0 grid place-items-center font-mono text-[12px] font-semibold tabular-nums text-ink">
-          <span ref={numberRef}>0</span>%
-        </span>
       </div>
       {!compact ? (
         <div className="min-w-0 text-left">
