@@ -1,8 +1,9 @@
 # Reef Command — Design (v3)
 
-> **Status:** Approved by the team 2026-07-19. This version supersedes v2's
-> capability-stack framing with a sharper spine: **the auction week**. Build
-> starts against this document.
+> **Status:** Public-safe implementation guide, updated 2026-07-21. It records
+> only behavior shipped in the hackathon demo. Production TIA Coral identity,
+> customer-value, margin, buying, targeting, and fulfillment rules are not
+> included.
 >
 > Built for the ClickHouse × Trigger.dev Virtual Summer Hackathon 2026
 > ("Beyond the Wall of Text"). Designed from day one to migrate off hackathon
@@ -12,28 +13,27 @@
 
 **One week of a live-coral e-commerce business, run from one chat window.**
 
-The business is modeled on the real weekly operations of
-**[TIA Coral](https://tiacoral.com)**, a live-coral store in New York. All
-data in this repository is synthetic; operational details are simplified for
-the demo. The weekly multi-platform cycle:
+The domain is inspired by **[TIA Coral](https://tiacoral.com)**, a live-coral
+store in New York. All data and operational rules in this repository are
+invented synthetic fixtures; they do not document the store's workflow. The
+compressed public-demo cycle:
 
 ```text
 THU  auction opens on the auction platform (ReefnBid-style)
 SAT  auction closes → winners get payment instructions + discount codes
      for the web store (Shopify-style) and marketplace (eBay-style)
-SUN–MON  winners add on: one shipping fee, more corals; add-on margin
-     beats auction margin — win-win
+SUN–MON  eligible synthetic orders consolidate into one coordinated shipment
 MON  label day: product labels + shipping labels (weight calc, weather
      check, batch purchase)
 TUE–WED  combined shipping (live animals ship Tue/Wed only)
-WED  weekly report closes the cycle and retargets next week's campaigns
+WED  synthetic report closes the compressed demo cycle
 ```
 
-Coral shipping is expensive; customers want one shipping fee to cover as many
-corals as possible. Combining an auction win with add-on orders from other
-platforms is the store's core economic move — and coordinating it across
-three platforms is the store's hardest operational problem. That coordination
-is what Reef Command automates, visualizes, and gates.
+Live-animal fulfillment has little room for missed handoffs: a customer change
+can affect packing, carrier state, and the merchant at once. The public demo
+uses an invented seven-day scenario to show how one cockpit coordinates those
+systems. The weekdays, routing, account links, bands, economics, and rules are
+synthetic fixtures, not a description of TIA Coral's current process.
 
 The chat surface is the only entrance: every artifact the system produces is
 an interactive component in the conversation; every consequential action is a
@@ -44,44 +44,31 @@ theme, applied to a real operating rhythm.
 
 ### Task 1 — Unified customer store (customer 360)
 
-Not just a contact list — one store holds *everything the business knows
-about a customer*, and every platform and every task reads and writes it at
-any time:
+The synthetic data plane keeps one pre-linked customer record available to
+every demo task. The repository intentionally does not publish how the real
+store resolves identity or values customers:
 
 ```text
-customer
-├── identity      name, emails[], phones[], platform accounts
-│                 (auction / web store / marketplace, matched by
-│                 email → phone → name)
-├── tier          1–4 dossier tier (tier 4 = first-time customers, so the
-│                 new-customer rate falls out of the tier mix automatically)
-├── preferences   favored categories (zoas, euphyllia, …), contact prefs
-├── orders        every order on every platform, incl. combined orders
-├── products      every coral ever bought (derived from order items)
-├── messages      campaign sends + inbound/outbound conversation log
-└── requests      cancels, holds, address changes, claims, cases
+synthetic customer
+├── pre-linked platform references
+├── arbitrary demo band (visualization only)
+├── synthetic orders and shipment state
+├── synthetic messages and requests
+└── public-safe action audit
 ```
 
 Implementation: normalized Postgres tables (`customers`,
-`customer_identities`, `orders`, `order_items`, `messages`, `requests`),
-served as one `getCustomer()` profile read through Seam A — every task and
-both chat surfaces see the same customer instantly. Every change streams
-into ClickHouse, so analytics always sees the current identity graph and
-purchase history.
+`customer_identities`, `orders`, `order_items`, `messages`, `requests`) use
+invented records generated for the demo. Every operational change emits an
+event into ClickHouse. The generator's linking and bands are test fixtures,
+not TIA Coral methods and not production recommendations.
 
 ### Task 2 — Campaigns and communication (advertising + operational, one system)
 
-Driven by the durable week-cycle task (§4):
-
-- **TUE** auction announcement + product previews
-- **WED–THU** previews, countdowns, opening reminders
-- **THU (live)** price updates and closing-time nudges while bids stream in
-- **SAT** winner notifications: payment instructions, cross-platform discount
-  codes, add-on tutorial, shipping schedule
-- Audience selection per send = a ClickHouse query over tier × preference ×
-  platform. Every send is logged as an event, so campaign performance is live.
-- **Demo sends are simulated** (rendered previews + send log; no real e-mail/
-  SMS service from a public repo). The seam makes the real sender a drop-in.
+The public build stores synthetic send events so the data layer can demonstrate
+communication history. It deliberately publishes no production schedule,
+audience-selection, preference, margin, or channel strategy. All outbound
+messages in the repository are simulated.
 
 ### Task 3 — Combined orders (the core — and the OLTP+OLAP showcase)
 
@@ -106,16 +93,20 @@ affected charts update live on screen — see §4 for the two on-camera loops
    purchases labels (simulated carrier), progress streaming live to the UI.
    Batch-approve (not fully unattended) is deliberate: label purchase spends
    money, and the approval pause is Trigger.dev's native HITL on camera.
-3. **Pre-ship request watch.** Inbound customer requests are classified:
-   cancel this week / hold to next week / address change / last-second
-   add-on. For cancels and address changes affecting purchased labels, the
-   system **auto-voids the label first** (avoid carrier charges), **then**
-   reports to the merchant with a request card.
+3. **Autonomous ship-day exception.** One public-safe synthetic example proves
+   the loop: a customer changes delivery timing before carrier handoff → a
+   Trigger task immediately records the request → the packing team receives a
+   simulated SMS hold → a still-voidable demo label is voided → Postgres and
+   ClickHouse retain the trace → a floating alert tells the merchant what was
+   protected. This is a generic demo policy, not TIA Coral's routing logic.
 4. **After-sales first response.** Codified templates answer immediately,
    then report: condition concern → reassurance (shipping stress is normal,
    give it time); DOA → support-ticket link; thank-you → acknowledgment.
    Anything beyond the templates escalates as a case card. Auto-replies are
    template-only — the model never freestyles customer-facing text.
+   The public `/shop` proof intentionally implements only a synthetic DOA-link
+   example. It demonstrates robot routing versus human decision authority
+   without publishing the real store's policy corpus or response playbook.
 
 ### Task 4 — Weekly report (WED, after the last ship day)
 
@@ -124,23 +115,16 @@ history**: every headline number carries a week-over-week and
 month-over-month delta plus a sparkline, so the report reads as a
 trajectory, not a snapshot.
 
-- **Customer analysis:** platform mix, tier mix, share of sales per tier,
-  new-customer rate (= tier-4 share), and **retention through two lenses**:
-  - *Snapshot* — **return customer rate**: customers with ≥2 lifetime
-    orders ÷ all paying customers, as of the report date;
-  - *Weekly flow* — this week's revenue split between returning and
-    brand-new customers (the leading health indicator; it moves weeks
-    before the snapshot does).
-
-  Segments feed Task 2's targeting directly — the report is a control, not
-  a rear-view mirror.
-- **Product analysis:** six categories — zoas, euphyllia, goni, mushroom,
-  sps, other — with unit price, share of sales, and WoW movement, to steer
-  next week's stocking.
+- **Channel analysis:** synthetic platform mix with order and revenue movement.
+  The public report deliberately omits customer-value, first-purchase,
+  profitability, identity-resolution, and targeting analysis.
+- **Product analysis:** invented categories show share and WoW movement as a
+  ClickHouse query proof. The public UI remains descriptive and emits no
+  stocking, buying, species-margin, or customer-profit recommendation.
 - **Auction top 10:** the week's ten highest hammer prices — item, category,
   winner handle, hammer price, vs its base price — the fastest read on what
   the market wants more of next week.
-- **Cycle funnel:** auction win → discount code → cross-platform add-on
+- **Cycle funnel:** auction winner → add-on discount code issued → add-on order using that code
   conversion (`windowFunnel` over the event stream) — the weekly economic
   thesis, quantified in one query and compared against previous weeks.
 - **History mechanics:** ClickHouse retains the full event stream, so any
@@ -167,19 +151,19 @@ alternatives (spreadsheets/local DB; generic workflow builders) do not.
 
 | Unique capability | Used for |
 |---|---|
-| **Durable multi-day tasks** (`wait.until`, survives restarts, costs nothing while sleeping) | **The auction week is literally one task**: wakes TUE to announce, THU to run the live auction watch, SAT to notify winners, MON for label day, WED for the report |
-| **Human-in-the-loop waitpoints** | Label-manifest batch approval; campaign send confirmation |
+| **Durable event-driven tasks** | Ship-day customer change → packing notification → label void → audited outcome |
+| **Human-in-the-loop waitpoints** | Label-manifest batch approval |
 | `chat.agent()` with tool approvals | The chat surface itself — the agent runtime |
 | Run metadata + polling | Labels purchasing one by one on screen — the approve chip polls the run's metadata to completion (a Realtime subscription is a later step) |
-| Code-first TypeScript tasks | Merge logic, weight calc, tier rules as tested, typed code |
+| Code-first TypeScript tasks | Synthetic merge fixtures, weight calculation, and typed orchestration |
 
 ## 3. Chat surface and component protocol
 
 The agent never answers with prose alone. Tools return typed data; the agent
 composes `ComponentSpec`s the frontend renders inline in the chat stream
-(full width, no separate canvas). Two routes: `/merchant` (the cockpit) and
-`/shop` (customer-facing order tracking + requests, same brain, same policy
-sources; out-of-authority requests become cases in the merchant feed).
+(full width, no separate canvas). Two routes: `/merchant` (the live cockpit)
+and `/shop` (a deliberately narrow public-safe proof: one synthetic DOA route,
+plus a human-handoff message that appears in the merchant feed).
 
 ```ts
 type ChatResponse = {
@@ -228,10 +212,9 @@ type ActionChip = {
 Next.js chat UI (/merchant, /shop)
         │  ComponentSpec JSON + run-metadata polling
 Trigger.dev chat.agent() ── tools ──────────┐
-Trigger.dev AuctionWeek durable task        │
-  (TUE announce → THU live → SAT winners    │   seam A: DataStore
-   → MON labels [waitpoint] → WED report)   │
-Trigger.dev event-generator scheduled tasks │
+Trigger.dev label-day task [waitpoint]      │   seam A: DataStore
+Trigger.dev ship-day exception task         │
+Trigger.dev event-generator scheduled task  │
         ┌───────────────────────────────────┴──────┐
         │ ClickHouse Cloud — OLAP: event stream,   │
         │ materialized views, funnels, reports     │
@@ -272,9 +255,8 @@ story told in a single camera move.
 | Action | Tier |
 |---|---|
 | Order merge (same-customer detection) | auto, with visible card + undo |
-| Campaign send | gated (one click per campaign) |
 | Label batch purchase | gated (one click per manifest) |
-| Label void on cancel/address change | auto **then** report (avoids carrier charges) |
+| Synthetic ship-day timing change | auto: packing hold + demo label void + report |
 | After-sales first response | auto, codified templates only |
 | Refunds, payments, anything money-moving beyond the above | human-only; agent files a case |
 
@@ -287,11 +269,10 @@ model text to customers; the agent never widens its own authority.
 1. **Zero row-level real data.** No real order, customer, e-mail, or amount
    enters this repo or any third-party service. (Public repo + hackathon
    rules + owner's data-sovereignty stance.)
-2. **Real shape.** The generator is calibrated from aggregate statistics of
-   the real operation: three-platform mix, price bands, the weekly rhythm
-   (THU–SAT auction arc, SUN–MON add-on wave, TUE/WED ship days), six-way
-   product taxonomy, tier distribution, typical anomaly rates (address
-   typos, cancels, DOA claims).
+2. **Plausible public shape.** The generator creates an invented weekly rhythm,
+   varied synthetic order sizes, arbitrary demo bands, and generic exceptions.
+   It is not calibrated to expose TIA Coral's distribution, identity logic,
+   profitability, customer valuation, targeting, or species economics.
 3. **Deterministic demo seed.** An idempotent `seed-demo` script plants the
    storyline: a full auction arc, winners who add on cross-platform, one
    cold-destination shipment, one cancel-after-label request, one DOA claim,
@@ -318,23 +299,23 @@ script), run after build:
 Narrative: *"This is one week of a real coral business, run from one chat
 window."*
 
-1. **TUE** — campaign card: audience breakdown by tier, message preview,
-   one-click approve → simulated sends stream into the log.
+1. **TUE** — a synthetic customer changes delivery timing. Without an owner
+   prompt, the floating alert shows packing notified by simulated SMS and the
+   still-voidable label cancelled before handoff.
 2. **THU night** — live auction board ticking while bid events flood in
    (ClickHouse ingest+query on camera; scale moment).
-3. **SAT** — winners notified: payment + discount codes + add-on tutorial.
-4. **SUN** — a winner orders on the web store: **two order cards merge into
+3. **SUN** — a synthetic customer orders on two channels: **two order cards merge into
    one combined order on screen** (the signature shot — computed live from the
-   OLTP scan; the one-click execute is gated/not-yet-wired).
-5. **MON** — label manifest: weights, weather flags (heat pack for the cold
+   OLTP scan; the human click writes an audited, deduplicated merge decision,
+   while physical consolidation remains part of Label Day).
+4. **MON** — label manifest: weights, weather flags (heat pack for the cold
    destination), total cost → owner-gated one-click batch approve → labels
    purchase live (waitpoint approval + run polling on camera; the OLTP→OLAP
-   loop that executes). A cancel request arrives: label auto-voids, request
-   card reports it.
-6. **WED** — weekly report: tier/platform mix and return-customer rate with
+   loop that executes).
+5. **WED** — weekly report: platform mix and return-customer rate with
    WoW/MoM deltas, six-category product table, auction→add-on funnel vs
    previous weeks; one off-script question answered live.
-7. **Close (~60s)** — architecture: both tools' unique features, the
+6. **Close (~45s)** — architecture: both tools' unique features, the
    OLTP+OLAP loop, the two seams.
 
 ## 9. Migration home
@@ -350,22 +331,23 @@ escape hatch.
 | Trigger.dev `chat.agent()` | Claude API direct |
 | Simulated carrier / message sender | real label pipeline / real e-mail+SMS services |
 
-**What migrates untouched:** UI + component protocol · the week-cycle
-orchestration design · CRM identity matching rules · label-day flow ·
-codified after-sales templates · report definitions · the judge-test set.
+**What migrates untouched:** UI + component protocol · label-day and exception
+orchestration patterns · report query shapes · the judge-test set. Production
+identity, segmentation, campaign, margin, and fulfillment policies remain in
+the owner's private systems and are not migration artifacts from this repo.
 
-## 10. Build sequence (4 days remain)
+## 10. Shipped public scope
 
-- **7/19** — lock design; retune generator to the weekly cycle + six-way
-  taxonomy + tiers; protocol v3 types; Postgres + ClickHouse schemas.
-- **7/20** — data plane live (tables, materialized views, CRM identity
-  matching); chat cockpit shell; Task 1 + Task 3.1 (merge on screen).
-  *Risk floor: merge + attention feed + auction board is submittable.*
-- **7/21** — AuctionWeek durable task; Task 2 campaigns (simulated sender);
-  Task 3.2 label day with waitpoint approval.
-- **7/22** — Task 3.3 requests + auto-void; Task 3.4 after-sales templates;
-  Task 4 report; judge test run; seed-demo polish.
-- **7/23** — video, README, flip repo public, submit before midnight AoE.
+- Trigger.dev `chat.agent()` with typed ClickHouse/Postgres read tools.
+- Three executable priorities per demo day with chat-lifecycle progress, a
+  persistent session checklist, and a compact live progress dock.
+- Trigger.dev label-day task with a human waitpoint and progress metadata.
+- Trigger.dev autonomous ship-day exception task with synthetic SMS, label
+  void, audit log, and ClickHouse events.
+- Scheduled synthetic live tick, interactive merge, attention, auction, label,
+  and report components.
+- No production campaign, identity-resolution, customer-valuation, buying,
+  margin, species-profit, or fulfillment-policy implementation.
 
 ## 11. Hackathon compliance
 

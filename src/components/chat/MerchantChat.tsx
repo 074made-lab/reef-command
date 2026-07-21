@@ -11,6 +11,7 @@
  * surface uses the real LLM agent.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useChat } from "@ai-sdk/react";
 import { useGSAP } from "@gsap/react";
 import { gsap } from "gsap";
@@ -23,13 +24,26 @@ import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import type { ComponentSpec, DemoDayId } from "@/lib/protocol";
 import { SpecRenderer } from "@/components/specs/SpecRenderer";
 import {
+  createEmptyRoutineProgress,
+  restoreRoutineProgress,
+  RoutineProgressDock,
+  RoutineProgressProvider,
+  RoutineProgressRing,
+  RoutineTaskMark,
+  type RoutineProgressState,
+  type RoutineTaskProgress,
+} from "@/components/chat/RoutineProgress";
+import {
   DEFAULT_DEMO_DAY,
   DEMO_CHAT_PROMPT_EVENT,
   DEMO_DAYS,
   DEMO_DAY_EVENT,
+  DEMO_DAY_STORAGE_KEY,
   demoDay,
+  isDemoDayId,
   stripDemoDayContext,
   withDemoDayContext,
+  type DemoChatPromptDetail,
 } from "@/lib/demo-clock";
 
 gsap.registerPlugin(useGSAP);
@@ -44,6 +58,109 @@ const GENERAL_SUGGESTIONS = [
   "How's business?",
 ];
 const DRAFT_KEY = "reef-command:merchant-draft";
+const ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v1";
+
+type RoutineTarget = {
+  dayId: DemoDayId;
+  priorityIndex: number;
+};
+
+type ActiveRoutine = RoutineTarget & {
+  token: number;
+};
+
+type ShipAlertStatus = "request-detected" | "packing-notified" | "protected" | "failed";
+type ShipAlert = {
+  runId: string;
+  status: ShipAlertStatus;
+  customerName: string;
+  shipmentId: string;
+  destination: string;
+  protectedCostCents: number;
+  requestSummary: string;
+};
+
+function safeTraceValue(value: string): string {
+  return value.replace(/[\]\n\r]/g, " ").trim();
+}
+
+function shipTracePrompt(alert: ShipAlert): string {
+  const trace = [
+    `status=${alert.status}`,
+    `customer=${safeTraceValue(alert.customerName)}`,
+    `shipment=${safeTraceValue(alert.shipmentId)}`,
+    `request=${safeTraceValue(alert.requestSummary)}`,
+    `packing_sms=${alert.status === "request-detected" ? "pending" : "sent"}`,
+    `carrier_label=${alert.status === "protected" ? "voided" : "checking"}`,
+    `protected_cents=${alert.protectedCostCents}`,
+  ].join("; ");
+  return `[SYNTHETIC SHIP TRACE: ${trace}]\nExplain this ship-day automation trace.`;
+}
+
+function ShipDayAlert({ alert, busy, onReview, onDismiss }: {
+  alert: ShipAlert;
+  busy: boolean;
+  onReview: () => void;
+  onDismiss: () => void;
+}) {
+  const protectedUsd = new Intl.NumberFormat("en-US", {
+    style: "currency", currency: "USD",
+  }).format(alert.protectedCostCents / 100);
+  const done = alert.status === "protected";
+  const failed = alert.status === "failed";
+  return (
+    <aside
+      role="status"
+      aria-live="polite"
+      className="anim-rise fixed right-3 bottom-24 left-3 z-30 w-auto overflow-hidden rounded-xl border border-coral/45 bg-panel/96 shadow-[0_24px_70px_rgba(2,10,14,.48)] backdrop-blur-md sm:top-44 sm:right-4 sm:bottom-auto sm:left-auto sm:w-[min(390px,calc(100vw-2rem))]"
+    >
+      <div className="flex items-start gap-2.5 p-3 sm:gap-3 sm:p-4">
+        <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border font-mono text-[14px] sm:h-9 sm:w-9 sm:text-[15px] ${failed ? "border-danger/50 bg-danger/10 text-danger" : done ? "border-ok/45 bg-ok/10 text-ok" : "border-coral/55 bg-coral/10 text-coralhi"}`}>
+          {failed ? "!" : done ? "✓" : "↗"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[11px] font-semibold tracking-[0.07em] text-coral uppercase sm:text-[12px] sm:tracking-[0.08em]">
+              Automated by Trigger.dev
+            </span>
+            <button type="button" onClick={onDismiss} aria-label="Dismiss ship-day alert" className="-mt-1 text-[18px] leading-none text-mute transition-colors hover:text-ink">×</button>
+          </div>
+          <h2 className="mt-0.5 text-[16px] font-semibold tracking-[-0.01em] text-ink sm:mt-1 sm:text-[17px]">
+            {failed ? "Ship-day protection needs review" : done ? "Shipment protected" : "Ship-day change detected"}
+          </h2>
+          <p className="mt-1 hidden text-[14px] leading-snug text-dim sm:block">
+            {alert.customerName} changed delivery timing for <span className="font-mono text-ink">{alert.shipmentId}</span>.
+          </p>
+          <div className="mt-3 hidden space-y-1.5 border-l border-line pl-3 text-[13px] sm:block">
+            <p className={alert.status === "request-detected" ? "text-mute" : "text-ok"}>
+              {alert.status === "request-detected" ? "○" : "✓"} Packing team notified · synthetic SMS
+            </p>
+            <p className={done ? "text-ok" : "text-mute"}>
+              {done ? "✓" : "○"} Carrier label {done ? "voided" : "being checked"}
+            </p>
+          </div>
+          {done ? (
+            <div className="mt-2 flex items-end justify-between gap-3 border-t border-coral/20 pt-2 sm:mt-3 sm:pt-3">
+              <div>
+                <p className="text-[11px] font-medium tracking-[0.06em] text-mute uppercase">Charge protected</p>
+                <p className="mt-0.5 font-mono text-[18px] tabular-nums text-coralhi sm:text-[20px]">{protectedUsd}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onReview}
+                disabled={busy}
+                className="rounded-md border border-coral bg-coral px-3 py-2 text-[12px] font-semibold text-abyss transition-[background-color,transform] hover:bg-coralhi active:scale-[0.98] disabled:opacity-45"
+              >
+                Ask Teddy about trace
+              </button>
+            </div>
+          ) : null}
+          {failed ? <p className="mt-3 text-[13px] text-danger">Automation stopped safely. No additional action was claimed.</p> : null}
+        </div>
+      </div>
+    </aside>
+  );
+}
 
 function CoralPulseSkeleton({ innerRef }: { innerRef?: React.Ref<HTMLDivElement> }) {
   return (
@@ -184,7 +301,14 @@ export function MerchantChat() {
   const [draftReady, setDraftReady] = useState(false);
   const [demoDayId, setDemoDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
   const [showJump, setShowJump] = useState(false);
+  const [shipAlert, setShipAlert] = useState<ShipAlert | null>(null);
+  const [traceFollowupPending, setTraceFollowupPending] = useState(false);
+  const [routineProgress, setRoutineProgress] = useState<RoutineProgressState>(createEmptyRoutineProgress);
+  const [routineProgressReady, setRoutineProgressReady] = useState(false);
   const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
+  const shipAlertStartedRef = useRef(false);
+  const activeRoutineRef = useRef<ActiveRoutine | null>(null);
+  const routineTokenRef = useRef(0);
   const streamRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -199,6 +323,35 @@ export function MerchantChat() {
   const showWorking = waiting || (
     streaming && (!newestAnswer || (!newestAnswer.verdict && newestAnswer.specs.length === 0))
   );
+
+  const updateRoutine = useCallback((
+    target: RoutineTarget,
+    next: RoutineTaskProgress | ((current: RoutineTaskProgress) => RoutineTaskProgress),
+  ) => {
+    setRoutineProgress((current) => {
+      const dayTasks = current[target.dayId] ?? [];
+      const existing = dayTasks[target.priorityIndex] ?? { status: "idle", progress: 0 };
+      const updated = typeof next === "function" ? next(existing) : next;
+      const tasks = dayTasks.map((task, index) => index === target.priorityIndex ? updated : task);
+      return { ...current, [target.dayId]: tasks };
+    });
+  }, []);
+
+  const beginRoutine = useCallback((target: RoutineTarget): ActiveRoutine => {
+    const active = { ...target, token: ++routineTokenRef.current };
+    activeRoutineRef.current = active;
+    updateRoutine(target, { status: "running", progress: 8 });
+    return active;
+  }, [updateRoutine]);
+
+  const finishRoutine = useCallback((active: ActiveRoutine, status: "complete" | "failed") => {
+    if (activeRoutineRef.current?.token !== active.token) return;
+    updateRoutine(active, {
+      status,
+      progress: status === "complete" ? 100 : 0,
+    });
+    activeRoutineRef.current = null;
+  }, [updateRoutine]);
 
   const scrollToLatest = useCallback((force = false) => {
     if (!force && !followAnswerRef.current) return;
@@ -249,6 +402,13 @@ export function MerchantChat() {
   useEffect(() => {
     const draft = window.sessionStorage.getItem(DRAFT_KEY);
     if (draft) setInput(draft);
+    const storedDay = window.sessionStorage.getItem(DEMO_DAY_STORAGE_KEY);
+    if (isDemoDayId(storedDay)) {
+      demoDayRef.current = storedDay;
+      setDemoDayId(storedDay);
+    }
+    setRoutineProgress(restoreRoutineProgress(window.sessionStorage.getItem(ROUTINE_PROGRESS_KEY)));
+    setRoutineProgressReady(true);
     setDraftReady(true);
     if (window.matchMedia("(pointer: fine)").matches) {
       window.requestAnimationFrame(() => inputRef.current?.focus());
@@ -261,14 +421,102 @@ export function MerchantChat() {
     else window.sessionStorage.removeItem(DRAFT_KEY);
   }, [draftReady, input]);
 
-  const submit = useCallback((text: string, dayOverride?: DemoDayId) => {
-    const message = text.trim();
+  useEffect(() => {
+    if (!routineProgressReady) return;
+    window.sessionStorage.setItem(ROUTINE_PROGRESS_KEY, JSON.stringify(routineProgress));
+  }, [routineProgress, routineProgressReady]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!active) return;
+    if (waiting) {
+      updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, 24) }));
+      return;
+    }
+    if (streaming) {
+      const progress = newestAnswer?.specs.length ? 88 : newestAnswer?.verdict ? 72 : 52;
+      updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, progress) }));
+    }
+  }, [newestAnswer?.specs.length, newestAnswer?.verdict, streaming, updateRoutine, waiting]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!error || !active) return;
+    finishRoutine(active, "failed");
+  }, [error, finishRoutine]);
+
+  const submit = useCallback((text: string, dayOverride?: DemoDayId, routine?: RoutineTarget) => {
+    let message = text.trim();
     if (!message || waiting || streaming) return;
+    if (traceFollowupPending) {
+      if (/^(?:yes|yes please|yep|yeah|sure|okay|ok)\b/i.test(message)) {
+        message = "Yes. Show me all other things that need my attention.";
+      }
+      setTraceFollowupPending(false);
+    }
     followAnswerRef.current = true;
     setShowJump(false);
     setInput("");
-    void sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
-  }, [sendMessage, streaming, waiting]);
+    const active = routine ? beginRoutine(routine) : null;
+    const request = sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
+    if (active) {
+      void request.then(() => finishRoutine(active, "complete")).catch(() => finishRoutine(active, "failed"));
+    } else {
+      void request;
+    }
+  }, [beginRoutine, finishRoutine, sendMessage, streaming, traceFollowupPending, waiting]);
+
+  useEffect(() => {
+    if (demoDayId !== "tuesday" || shipAlertStartedRef.current) return;
+    shipAlertStartedRef.current = true;
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const start = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      if (cancelled) return;
+      try {
+        const response = await fetch("/api/demo/ship-day-exception", { method: "POST" });
+        const body = await response.json() as {
+          ok: boolean;
+          runId?: string;
+          incident?: Omit<ShipAlert, "runId" | "status">;
+        };
+        if (!response.ok || !body.ok || !body.runId || !body.incident) throw new Error("start failed");
+        const base: ShipAlert = { ...body.incident, runId: body.runId, status: "request-detected" };
+        if (!cancelled) setShipAlert(base);
+
+        const poll = async () => {
+          if (cancelled) return;
+          const statusResponse = await fetch(`/api/demo/ship-day-exception?runId=${encodeURIComponent(body.runId!)}`);
+          const statusBody = await statusResponse.json() as { ok: boolean; metadata?: Record<string, unknown> };
+          if (!statusResponse.ok || !statusBody.ok) throw new Error("poll failed");
+          const status = statusBody.metadata?.status;
+          if (typeof status === "string" && ["request-detected", "packing-notified", "protected", "failed"].includes(status)) {
+            setShipAlert((current) => current ? {
+              ...current,
+              status: status as ShipAlertStatus,
+              customerName: String(statusBody.metadata?.customerName ?? current.customerName),
+              shipmentId: String(statusBody.metadata?.shipmentId ?? current.shipmentId),
+              destination: String(statusBody.metadata?.destination ?? current.destination),
+              protectedCostCents: Number(statusBody.metadata?.protectedCostCents ?? current.protectedCostCents),
+              requestSummary: String(statusBody.metadata?.requestSummary ?? current.requestSummary),
+            } : current);
+            if (status === "protected" || status === "failed") return;
+          }
+          pollTimer = setTimeout(() => { void poll().catch(() => setShipAlert((current) => current ? { ...current, status: "failed" } : current)); }, 650);
+        };
+        await poll();
+      } catch {
+        if (!cancelled) shipAlertStartedRef.current = false;
+      }
+    };
+    void start();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [demoDayId]);
 
   useEffect(() => {
     const onDay = (event: Event) => {
@@ -283,6 +531,7 @@ export function MerchantChat() {
       }
       demoDayRef.current = next;
       setDemoDayId(next);
+      window.sessionStorage.setItem(DEMO_DAY_STORAGE_KEY, next);
       const day = demoDay(next);
       submit(
         `Show me ${day.weekday}'s command brief. What are today's priorities, and what should you remind me not to miss?`,
@@ -290,8 +539,22 @@ export function MerchantChat() {
       );
     };
     const onPrompt = (event: Event) => {
-      const prompt = (event as CustomEvent<string>).detail;
-      if (typeof prompt === "string") submit(prompt);
+      const detail = (event as CustomEvent<string | DemoChatPromptDetail>).detail;
+      if (typeof detail === "string") {
+        submit(detail);
+        return;
+      }
+      if (
+        detail &&
+        typeof detail.prompt === "string" &&
+        isDemoDayId(detail.dayId) &&
+        Number.isInteger(detail.priorityIndex)
+      ) {
+        submit(detail.prompt, detail.dayId, {
+          dayId: detail.dayId,
+          priorityIndex: detail.priorityIndex,
+        });
+      }
     };
     window.addEventListener(DEMO_DAY_EVENT, onDay);
     window.addEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
@@ -302,13 +565,31 @@ export function MerchantChat() {
   }, [streaming, submit, waiting]);
 
   const currentDay = demoDay(demoDayId);
+  const currentProgress = routineProgress[demoDayId];
+  const hasRoutineProgress = currentProgress.some((task) => task.status !== "idle" || task.progress > 0);
   const suggestions = [
-    ...currentDay.priorities.flatMap((priority) => priority.prompt ? [priority.prompt] : []),
-    ...GENERAL_SUGGESTIONS,
-  ].filter((suggestion, index, all) => all.indexOf(suggestion) === index).slice(0, 3);
+    ...currentDay.priorities.flatMap((priority, index) => priority.prompt ? [{
+      prompt: priority.prompt,
+      routine: { dayId: demoDayId, priorityIndex: index } satisfies RoutineTarget,
+    }] : []),
+    ...GENERAL_SUGGESTIONS.map((prompt) => ({ prompt, routine: undefined })),
+  ].filter((suggestion, index, all) => all.findIndex((item) => item.prompt === suggestion.prompt) === index).slice(0, 3);
 
   return (
+    <RoutineProgressProvider value={routineProgress} busy={waiting || streaming}>
     <div className="flex min-h-0 flex-1 flex-col">
+      {shipAlert ? (
+        <ShipDayAlert
+          alert={shipAlert}
+          busy={waiting || streaming}
+          onReview={() => {
+            submit(shipTracePrompt(shipAlert));
+            setTraceFollowupPending(true);
+            setShipAlert(null);
+          }}
+          onDismiss={() => setShipAlert(null)}
+        />
+      ) : null}
       {/* stream */}
       <div
         ref={streamRef}
@@ -316,39 +597,80 @@ export function MerchantChat() {
         onWheel={pauseAnswerFollow}
         onTouchMove={pauseAnswerFollow}
       >
-        <div className="mx-auto max-w-4xl space-y-5 px-4 py-5">
+        <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
+          {messages.length > 0 && hasRoutineProgress ? (
+            <RoutineProgressDock
+              weekday={currentDay.weekday}
+              priorities={currentDay.priorities}
+              tasks={currentProgress}
+              busy={waiting || streaming}
+              onStart={(index) => {
+                const priority = currentDay.priorities[index];
+                submit(
+                  priority.prompt ?? priority.label,
+                  demoDayId,
+                  { dayId: demoDayId, priorityIndex: index },
+                );
+              }}
+            />
+          ) : null}
           {messages.length === 0 && status === "ready" ? (
-            <div className="pt-4 text-center">
-              {/* Teddy — the real reef dog behind the store. The first frame a
-                  judge sees: a face, not a terminal. */}
-              <img
-                src="/teddy.jpg"
-                alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
-                width={96}
-                height={96}
-                className="coral-halo mx-auto rounded-full ring-2 ring-coral/70"
-              />
-              <p className="mt-3 font-mono text-[13px] tracking-[0.22em] text-teal uppercase">
-                {currentDay.weekday} · {currentDay.label}
-              </p>
-              <p className="mt-1.5 text-[15px] text-dim">
-                Teddy&apos;s ready. Pick a focus or ask what needs attention.
-              </p>
-              <div className="mx-auto mt-4 max-w-2xl rounded-lg border border-coral/30 bg-panel/75 p-3.5 text-left shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-sm">
-                <div className="flex items-center justify-between gap-3 font-mono text-[13px] tracking-[0.14em] uppercase">
-                  <span className="text-coral">Today&apos;s focus</span>
-                  <span className="text-mute">{currentDay.short} · {currentDay.time}</span>
+            <section className="max-w-3xl py-5 md:py-10">
+              <div className="text-left">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/teddy-avatar.jpg"
+                    alt="Teddy, the reef co-pilot"
+                    width={42}
+                    height={42}
+                    className="rounded-lg ring-1 ring-coral/55"
+                  />
+                  <p className="text-[13px] font-semibold tracking-[0.08em] text-coral uppercase">
+                    {currentDay.weekday} / {currentDay.time}
+                  </p>
                 </div>
-                <ul className="mt-2.5 grid gap-2 sm:grid-cols-3">
+                <h1 className="mt-5 max-w-[12ch] text-[40px] leading-[1.02] font-semibold tracking-[-0.045em] text-ink sm:text-[52px]">
+                  {currentDay.label}.
+                </h1>
+                <p className="mt-3 max-w-xl text-[17px] leading-relaxed text-dim">
+                  Start with one task. Teddy checks the live data and brings back the next decision.
+                </p>
+
+                <div className="mt-8 text-left">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[14px] font-semibold tracking-[0.06em] text-ink uppercase">Today&apos;s focus</h2>
+                      <p className="mt-1 text-[13px] text-mute">Live routine progress</p>
+                    </div>
+                    <RoutineProgressRing tasks={currentProgress} />
+                  </div>
+                  <ul className="mt-2 border-y border-line/80">
                   {currentDay.priorities.map((priority, index) => (
-                    <li key={priority.label} className="flex items-start gap-2 rounded-md bg-abyss/45 px-2.5 py-2">
-                      <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${index === 0 ? "bg-coral shadow-[0_0_10px_rgba(255,133,89,0.38)]" : "bg-tealhi/70"}`} />
-                      <span className="text-[13px] leading-snug text-ink">{priority.label}</span>
+                    <li key={priority.label} className="border-b border-line/65 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => submit(
+                          priority.prompt ?? priority.label,
+                          demoDayId,
+                          { dayId: demoDayId, priorityIndex: index },
+                        )}
+                        disabled={waiting || streaming}
+                        aria-label={`Start routine: ${priority.label}`}
+                        className="group flex min-h-14 w-full items-center gap-3 px-1 py-3 text-left transition-[color,background-color,transform] hover:bg-coral/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/35 active:translate-x-0.5 disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <RoutineTaskMark task={currentProgress[index]} index={index} />
+                        <span className="min-w-0 flex-1 text-[16px] leading-snug text-ink">{priority.label}</span>
+                        <span className={`text-[12px] font-semibold ${currentProgress[index].status === "complete" ? "text-ok" : currentProgress[index].status === "running" ? "text-coralhi" : currentProgress[index].status === "failed" ? "text-danger" : "text-mute"}`}>
+                          {currentProgress[index].status === "complete" ? "DONE" : currentProgress[index].status === "running" ? "RUNNING" : currentProgress[index].status === "failed" ? "RETRY" : "START"}
+                        </span>
+                        <span aria-hidden className="translate-x-0 text-[18px] text-mute transition-[color,transform] group-hover:translate-x-1 group-hover:text-coral">→</span>
+                      </button>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </div>
               </div>
-            </div>
+            </section>
           ) : null}
 
           {messages.map((m, i) => {
@@ -381,7 +703,7 @@ export function MerchantChat() {
               <SpecRenderer
                 spec={{
                   kind: "verdict_card",
-                  verdict: "The agent hit an error — showing it, not a guess.",
+                  verdict: "The agent hit an error. Showing it, not a guess.",
                   confidence: "low",
                   evidence: [{ label: "error", detail: error.message }],
                 }}
@@ -392,8 +714,8 @@ export function MerchantChat() {
       </div>
 
       {/* composer */}
-      <div className="border-t border-line/80 bg-[linear-gradient(180deg,rgba(4,9,14,.88),rgba(4,9,14,.98))] backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-4 pt-2.5 pb-4">
+      <div className="border-t border-line/80 bg-abyss/95 backdrop-blur-sm">
+        <div className="mx-auto max-w-6xl px-4 pt-2.5 pb-4 sm:px-6">
           {showJump ? (
             <div className="mb-2 flex justify-center">
               <button
@@ -410,19 +732,19 @@ export function MerchantChat() {
             </div>
           ) : null}
           <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {suggestions.map((s, index) => (
+            {suggestions.map((suggestion, index) => (
               <button
-                key={s}
+                key={suggestion.prompt}
                 type="button"
-                onClick={() => submit(s)}
+                onClick={() => submit(suggestion.prompt, demoDayId, suggestion.routine)}
                 disabled={waiting || streaming}
-                className={`rounded-full border px-3 py-1 font-mono text-[13px] transition-[color,background-color,border-color,transform] active:scale-[0.98] disabled:opacity-50 ${
+                className={`rounded-full border px-3 py-1.5 text-[13px] font-medium transition-[color,background-color,border-color,transform] active:scale-[0.98] disabled:opacity-50 ${
                   index === 0
                     ? "border-coral/45 bg-coral/[0.06] text-coralhi hover:border-coral/75 hover:bg-coral/10"
                     : "border-line text-dim hover:border-teal/60 hover:text-tealhi"
                 }`}
               >
-                {s}
+                {suggestion.prompt}
               </button>
             ))}
             {waiting || streaming ? (
@@ -431,7 +753,11 @@ export function MerchantChat() {
               // without it the composer would wait forever with no exit.
               <button
                 type="button"
-                onClick={() => void stop()}
+                onClick={() => {
+                  const active = activeRoutineRef.current;
+                  if (active) finishRoutine(active, "failed");
+                  void stop();
+                }}
                 className="rounded-full border border-coral/70 px-3 py-1 font-mono text-[13px] text-coralhi transition-colors hover:bg-coral/15"
               >
                 ◼ STOP
@@ -454,18 +780,19 @@ export function MerchantChat() {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask Teddy about attention, orders, auction, or the report…"
               aria-label="Message"
-              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[14px] text-ink placeholder:text-mute transition-[border-color,box-shadow] focus:border-coral/70 focus:shadow-[0_0_0_3px_rgba(255,133,89,0.08)] focus:outline-none"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-4 py-3 text-[15px] text-ink placeholder:text-mute transition-[border-color,box-shadow] focus:border-coral/70 focus:shadow-[0_0_0_3px_rgba(255,133,89,0.08)] focus:outline-none"
             />
             <button
               type="submit"
               disabled={waiting || streaming || !input.trim()}
-              className="rounded-md border border-coral bg-coral px-4 font-mono text-[13px] font-bold tracking-widest text-abyss shadow-[0_0_22px_rgba(255,133,89,0.14)] transition-colors hover:bg-coralhi disabled:border-coral/35 disabled:bg-coral/10 disabled:text-coralhi disabled:shadow-none disabled:opacity-50"
+              className="rounded-lg border border-coral bg-coral px-5 text-[13px] font-semibold text-abyss transition-[background-color,transform] hover:bg-coralhi active:scale-[0.98] disabled:border-coral/35 disabled:bg-coral/10 disabled:text-coralhi disabled:opacity-50"
             >
-              SEND ▸
+              Send
             </button>
           </form>
         </div>
       </div>
     </div>
+    </RoutineProgressProvider>
   );
 }

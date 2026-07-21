@@ -15,6 +15,7 @@ import type {
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
 import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment } from "./demo-clock";
+import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);                 // a Thursday — cycle anchor
@@ -70,6 +71,43 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
   const items: AttentionItem[] = [];
   const now = Date.now();
 
+  // The one deliberately composed support demo: enough context to make a
+  // human decision and a complete downstream plan, without exposing any real
+  // store policy, customer-value logic, or identity-matching method.
+  const demoDoaItem: AttentionItem = {
+    id: DEMO_DOA_CASE_ID,
+    kind: "case",
+    headline: "3-item DOA review · tomorrow's shipment can take the replacements",
+    ageMinutes: 12,
+    customerName: DEMO_DOA_REVIEW.customer.displayName,
+    customerEmail: "reef_keeper_17@example.test",
+    detail: "Three synthetic coral items were reported as DOA. Evidence and customer history are assembled for a human decision.",
+    photoHref: "/mock-doa-coral.svg",
+    doaReview: DEMO_DOA_REVIEW,
+  };
+
+  // Recently auto-handled operational exceptions lead the feed as evidence,
+  // but are marked handled so they do not inflate the owner's open count.
+  const handledReqs = await pg.query(`SELECT request_code, kind, detail,
+      received_at, auto_actions, c.primary_name
+    FROM requests JOIN customers c ON c.id = requests.customer_id
+    WHERE requests.status = 'auto_handled'
+      AND received_at > now() - interval '1 day'
+    ORDER BY received_at DESC LIMIT 3`);
+  const handledItems: AttentionItem[] = handledReqs.rows.map((r) => {
+    const actions = (r.auto_actions as string[]).filter((a) => !a.startsWith("shipment:"));
+    return {
+      id: r.request_code,
+      kind: "system" as const,
+      headline: `${r.primary_name}'s delivery change was protected automatically`,
+      ageMinutes: Math.max(0, Math.round((now - r.received_at.getTime()) / 60_000)),
+      customerName: r.primary_name,
+      detail: `${r.detail} Packing was paused by synthetic SMS and the prepared label was voided before handoff.`,
+      status: "handled" as const,
+      autoActions: actions,
+    };
+  });
+
   const cases = await pg.query(`SELECT case_code, kind, cases.created_at, cases.summary,
       c.primary_name, c.primary_email,
       coalesce((SELECT m.preview FROM messages m
@@ -77,7 +115,8 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
           AND (m.intent = cases.kind OR cases.kind = 'other') AND m.at <= cases.created_at
         ORDER BY m.at DESC LIMIT 1), cases.summary) AS customer_text
     FROM cases JOIN customers c ON c.id = cases.customer_id
-    WHERE cases.status = 'open' ORDER BY cases.created_at DESC LIMIT 5`);
+    WHERE cases.status = 'open' AND cases.kind <> 'doa_claim'
+    ORDER BY cases.created_at DESC LIMIT 4`);
   for (const r of cases.rows) items.push({
     id: r.case_code, kind: "case",
     headline: `${r.kind === "doa_claim" ? "DOA claim" : r.kind} from ${r.primary_name} — evidence ready, needs your decision`,
@@ -150,7 +189,7 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
   items.push(...msgItems.filter((m) => m.ageMinutes > 15).slice(0, 6));
 
   items.sort((a, b) => b.ageMinutes - a.ageMinutes);
-  return [{ kind: "attention_feed", items: [...freshMsgs, ...items].slice(0, 10) }];
+  return [{ kind: "attention_feed", items: [demoDoaItem, ...handledItems, ...freshMsgs, ...items].slice(0, 10) }];
 }
 
 // ---------------------------------------------------------------- auction
@@ -230,27 +269,6 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
       WHERE hour >= {start:DateTime} AND hour < {end:DateTime}`, win))[0];
   const [cur, prev, prev4] = await Promise.all([rev(w), rev(w1), rev(w4)]);
 
-  // retention lenses — computed for this cycle AND its WoW / MoM comparators
-  const snapRate = async (win: { end: string }) =>
-    Number((await queryRows<{ rate: number }>(ch, `
-      SELECT round(countIf(lifetime >= 2) / count(), 3) AS rate FROM (
-        SELECT customer_id, sum(orders) AS lifetime FROM mv_customer_daily
-        WHERE day < toDate({end:DateTime}) GROUP BY customer_id)`, win))[0]?.rate ?? 0);
-  const newShare = async (win: { start: string; end: string }) => {
-    const f = (await queryRows<{ ret: string; neu: string }>(ch, `
-      WITH firsts AS (SELECT customer_id, min(day) AS first_day FROM mv_customer_daily GROUP BY customer_id)
-      SELECT sumIf(d.spend_cents, f.first_day <  toDate({start:DateTime})) AS ret,
-             sumIf(d.spend_cents, f.first_day >= toDate({start:DateTime})) AS neu
-      FROM mv_customer_daily d JOIN firsts f USING (customer_id)
-      WHERE d.day >= toDate({start:DateTime}) AND d.day < toDate({end:DateTime})`, win))[0];
-    const n = Number(f?.neu ?? 0), r = Number(f?.ret ?? 0);
-    return n + r > 0 ? Math.round((n / (n + r)) * 100) : 0;
-  };
-  const [snapW, snap1, snap4, flowW, flow1, flow4] = await Promise.all([
-    snapRate(w), snapRate({ end: w1.end }), snapRate({ end: w4.end }),
-    newShare(w), newShare(w1), newShare(w4),
-  ]);
-
   // sparklines: weekly revenue + orders across the trailing 6 cycles (one query,
   // bucketed in JS by cycle-week — cycles are Thursday-anchored, not calendar).
   const sparkStart = fmt(ANCHOR + (wi - 5) * WEEK_MS);
@@ -267,16 +285,17 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
 
   const curRev = Number(cur?.rev ?? 0), curOrders = Number(cur?.orders ?? 0);
   const headline: ReportSection = {
-    kind: "metrics", title: "The week in numbers — every headline against history",
+    kind: "metrics", title: "The week in numbers",
     metrics: [
       { label: "Revenue", value: usd(curRev), unit: "$", spark: revSpark,
         deltaWoW: pctDelta(curRev, Number(prev?.rev ?? 0)), deltaMoM: pctDelta(curRev, Number(prev4?.rev ?? 0)) },
       { label: "Orders", value: curOrders, unit: "orders", spark: ordSpark,
         deltaWoW: pctDelta(curOrders, Number(prev?.orders ?? 0)), deltaMoM: pctDelta(curOrders, Number(prev4?.orders ?? 0)) },
-      { label: "Return customer rate", value: Math.round(snapW * 100), unit: "%",
-        deltaWoW: pctDelta(snapW, snap1), deltaMoM: pctDelta(snapW, snap4) },
-      { label: "New-customer revenue", value: flowW, unit: "%",
-        deltaWoW: pctDelta(flowW, flow1), deltaMoM: pctDelta(flowW, flow4) },
+      { label: "Avg order", value: curOrders ? usd(curRev / curOrders) : 0, unit: "$",
+        deltaWoW: pctDelta(curOrders ? curRev / curOrders : 0,
+          Number(prev?.orders ?? 0) ? Number(prev?.rev ?? 0) / Number(prev?.orders ?? 0) : 0),
+        deltaMoM: pctDelta(curOrders ? curRev / curOrders : 0,
+          Number(prev4?.orders ?? 0) ? Number(prev4?.rev ?? 0) / Number(prev4?.orders ?? 0) : 0) },
     ],
   };
 
@@ -295,26 +314,6 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
     rows: platRows.map((p) => [p.platform, Number(p.ord), usd(Number(p.rev)),
       Math.round((Number(p.rev) / platTotal) * 100),
       pctDelta(Number(p.rev), prevByPlat.get(p.platform) ?? 0) ?? "—"]),
-  };
-
-  // tier mix — tier lives in Postgres; share of sales per tier, tier 4 = new
-  const tierRes = await pg.query<{ tier: number; customers: string; rev: string }>(`
-    SELECT c.tier, count(DISTINCT o.customer_id) AS customers, coalesce(sum(o.total_cents),0) AS rev
-    FROM orders o JOIN customers c ON c.id = o.customer_id
-    WHERE o.ordered_at >= $1 AND o.ordered_at < $2
-      AND o.status IN ('paid','labeled','shipped','delivered')
-    GROUP BY c.tier ORDER BY c.tier`,
-    [w.start.replace(" ", "T") + "Z", w.end.replace(" ", "T") + "Z"]);
-  const tierTotal = tierRes.rows.reduce((s, r) => s + Number(r.rev), 0) || 1;
-  // Group by the customer's current dossier tier. Note: this is NOT the
-  // new-customer rate — that's the first-order-based "New-customer revenue"
-  // headline metric above. Labeling tier 4 "first-time" would contradict it,
-  // so the table is plainly the tier mix.
-  const tierMix: ReportSection = {
-    kind: "table", title: "Customer tier mix — share of sales",
-    columns: ["dossier tier", "customers", "revenue $", "share %"],
-    rows: tierRes.rows.map((r) => [`tier ${r.tier}`,
-      Number(r.customers), usd(Number(r.rev)), Math.round((Number(r.rev) / tierTotal) * 100)]),
   };
 
   // six-category product analysis with WoW movement
@@ -342,7 +341,7 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
     FROM events WHERE type = 'auction_won' AND ts >= {start:DateTime} AND ts < {end:DateTime}
     ORDER BY amount_cents DESC LIMIT 10`, w);
   const top10: ReportSection = {
-    kind: "table", title: "Auction top 10 — highest hammer prices",
+    kind: "table", title: "Auction top 10 by hammer price",
     columns: ["coral", "category", "winner", "hammer $", "vs base"],
     rows: top.map((t) => {
       const item = bySku.get(t.sku);
@@ -362,15 +361,25 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
         GROUP BY customer_id) WHERE level > 0 GROUP BY level`, win);
     const at = (k: number) => lv.filter((r) => Number(r.level) >= k).reduce((s, r) => s + Number(r.n), 0);
     return [
-      { label: "auction win", count: at(1) },
-      { label: "code issued", count: at(2), conversionFromPrev: at(1) ? at(2) / at(1) : 0 },
-      { label: "cross-platform add-on", count: at(3), conversionFromPrev: at(2) ? at(3) / at(2) : 0 },
+      { label: "auction winners", count: at(1) },
+      {
+        label: "add-on discount codes issued",
+        count: at(2),
+        conversionFromPrev: at(1) ? at(2) / at(1) : 0,
+        rateLabel: "winner coverage",
+      },
+      {
+        label: "add-on orders using code",
+        count: at(3),
+        conversionFromPrev: at(2) ? at(3) / at(2) : 0,
+        rateLabel: "code conversion",
+      },
     ];
   };
   const [steps, fPrev, fPrev2] = await Promise.all([funnelFor(w), funnelFor(w1), funnelFor(weekWindow(wi - 2))]);
   const overall = (s: FunnelStep[]) => (s[0]?.count ? (s[2]?.count ?? 0) / s[0].count : 0);
   const funnel: ReportSection = {
-    kind: "funnel", title: "Auction → add-on funnel (72h window)", steps,
+    kind: "funnel", title: "Auction-to-add-on conversion (72h)", steps,
     prevWeeks: [
       { week: `W${wi - 1}`, overall: Math.round(overall(fPrev) * 100) / 100 },
       { week: `W${wi - 2}`, overall: Math.round(overall(fPrev2) * 100) / 100 },
@@ -378,5 +387,5 @@ export async function weeklyReport(ch: ClickHouseClient, pg: Pool, weekIndex?: n
   };
 
   return [{ kind: "report", weekLabel: `W${wi}`,
-    sections: [headline, platformMix, tierMix, products, top10, funnel] }];
+    sections: [headline, platformMix, products, top10, funnel] }];
 }

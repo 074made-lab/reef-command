@@ -11,7 +11,7 @@
 
 import { Pool, type PoolClient } from "pg";
 import type { CoralCategory, CustomerRef, OrderSummary, Platform } from "../protocol";
-import type { Customer360, MatchResult } from "../datastore";
+import type { Customer360 } from "../datastore";
 
 let pool: Pool | null = null;
 
@@ -21,56 +21,6 @@ export function pgPool(): Pool {
   if (!url) throw new Error("POSTGRES_URL is not set (.env.local)");
   pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, max: 5 });
   return pool;
-}
-
-// ---------------------------------------------------------------- matching
-
-/** Match priority (strongest first): exact email → phone → name.
- *  Checks BOTH customers.primary_* and customer_identities.external_*. */
-export async function matchCustomer(
-  db: Pool | PoolClient,
-  contact: { email?: string; phone?: string; name?: string },
-): Promise<MatchResult | null> {
-  const email = contact.email?.trim().toLowerCase() || null;
-  const phone = contact.phone?.replace(/[^+\d]/g, "") || null;
-  const name = contact.name?.trim().toLowerCase() || null;
-
-  // 0 matches → try the next-weaker field; ≥2 matches → AMBIGUOUS: stop the
-  // whole cascade and hand to a human (falling through could bind an
-  // unrelated customer via a weaker field — Codex M8)
-  const lookup = async (sql: string, arg: string): Promise<number | "ambiguous" | null> => {
-    const r = await db.query(sql, [arg]);
-    if (r.rows.length === 1) return Number(r.rows[0].id);
-    return r.rows.length > 1 ? "ambiguous" : null;
-  };
-  if (email) {
-    const id = await lookup(
-      `SELECT DISTINCT c.id FROM customers c
-       LEFT JOIN customer_identities i ON i.customer_id = c.id
-       WHERE lower(c.primary_email) = $1 OR lower(i.external_email) = $1
-       LIMIT 2`, email);
-    if (id === "ambiguous") return null;
-    if (id) return { customerId: id, confidence: 1.0, matchedOn: "email" };
-  }
-  if (phone) {
-    const id = await lookup(
-      `SELECT DISTINCT c.id FROM customers c
-       LEFT JOIN customer_identities i ON i.customer_id = c.id
-       WHERE c.primary_phone = $1 OR i.external_phone = $1
-       LIMIT 2`, phone);
-    if (id === "ambiguous") return null;
-    if (id) return { customerId: id, confidence: 0.9, matchedOn: "phone" };
-  }
-  if (name && name.length >= 4) {
-    const id = await lookup(
-      `SELECT DISTINCT c.id FROM customers c
-       LEFT JOIN customer_identities i ON i.customer_id = c.id
-       WHERE lower(c.primary_name) = $1 OR lower(i.external_name) = $1
-       LIMIT 2`, name);
-    if (id === "ambiguous") return null;
-    if (id) return { customerId: id, confidence: 0.6, matchedOn: "name" };
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------- customer 360

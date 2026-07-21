@@ -27,50 +27,50 @@ export type DemoDay = {
 export const DEMO_DAYS: DemoDay[] = [
   {
     id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Label Day",
-    goal: "Lock the combined shipment plan, then buy the right labels once — with a human checkpoint.",
+    goal: "Monday is shipping prep: review every open order, combine eligible purchases, then prepare one label batch for owner approval.",
     priorities: [
-      { label: "Clear exceptions before spend", detail: "Resolve holds, address changes, late add-ons, and ambiguous customer matches before labels are purchased.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Collapse every eligible order", detail: "Confirm ReefnBid, Shopify, and eBay orders are flowing into one customer box and one shipping fee.", cue: "do-now", prompt: "Any orders to merge?" },
-      { label: "Build and approve the batch", detail: "Calculate weights, weather packs, product labels, and shipping labels; carrier spend waits for the owner click.", cue: "human-gate", prompt: "Run label day" },
+      { label: "Validate orders before labels", detail: "Review holds, address changes, late add-ons, and other exceptions before any shipping-label purchase.", cue: "do-now", prompt: "Show me urgent customer messages, holds, address changes, and order exceptions to clear before label approval. Do not prepare the label manifest yet." },
+      { label: "Find orders to combine", detail: "Check eligible synthetic orders across sales platforms so one customer receives one box and one shipping fee.", cue: "do-now", prompt: "Check for orders we can combine across platforms." },
+      { label: "Prepare the label batch", detail: "Calculate shipment weights and weather packs, then prepare shipping labels for one owner-approved bulk purchase.", cue: "human-gate", prompt: "Run label day: prepare today's shipping-label batch for bulk approval." },
     ],
-    reminder: "Do not approve the label batch until merge and address exceptions are clear.",
+    reminder: "Winner notifications show the exact ship date, include an add-on discount code, and explain that eligible purchases combine into one box.",
   },
   {
     id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Preview",
-    goal: "Move the first live-coral boxes safely while opening the next ReefnBid story.",
+    goal: "Move prepared boxes safely while catching customer changes before carrier handoff.",
     priorities: [
-      { label: "Ship the ready combined boxes", detail: "Verify product labels, shipping labels, weather packs, and the Tuesday handoff queue.", cue: "do-now" },
+      { label: "Ship the ready combined boxes", detail: "Verify product labels, shipping labels, weather packs, and the Tuesday handoff queue.", cue: "do-now", prompt: "What needs my attention?" },
       { label: "Catch last-minute exceptions", detail: "Handle address, hold, or cancellation requests before a box leaves; replacement label spend remains human-gated.", cue: "watch", prompt: "What needs my attention?" },
-      { label: "Start the next auction preview", detail: "Segment previews by dossier tier, coral preference, and home platform while shipping continues.", cue: "do-now" },
+      { label: "Keep the next cycle moving", detail: "Monitor the next synthetic sales cycle without exposing any production targeting or campaign rules.", cue: "do-now", prompt: "How's business?" },
     ],
     reminder: "Shipping the old cycle and previewing the new auction happen in parallel today.",
   },
   {
     id: "wednesday", phase: "report", short: "WED", weekday: "Wednesday", time: "18:15", label: "Ship + Report",
-    goal: "Close the shipping cycle, learn from it, and turn the evidence into next week's stock plan.",
+    goal: "Close the shipping cycle and turn synthetic history into a clear operational review.",
     priorities: [
       { label: "Finish the final ship queue", detail: "Clear the remaining eligible boxes and isolate anything that must hold to next week.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Close the reef-health report", detail: "Review platform mix, dossier tiers, product economics, return rate, and the ReefnBid-to-add-on funnel.", cue: "do-now", prompt: "Weekly report" },
-      { label: "Translate insight into buying", detail: "Protect core categories, lean into demand, and buy laggards shallower for the coming cycle.", cue: "watch" },
+      { label: "Close the reef-health report", detail: "Review synthetic platform mix, customer continuity, category movement, and the cross-channel funnel.", cue: "do-now", prompt: "Weekly report" },
+      { label: "Record the operational signal", detail: "Keep the evidence visible without publishing a production buying, margin, or customer-value model.", cue: "watch", prompt: "Weekly report" },
     ],
-    reminder: "The report is only useful when its category signals change next week's stock depth.",
+    reminder: "The public report demonstrates analytical depth; production decisions remain outside this repository.",
   },
   {
     id: "thursday", phase: "auction_live", short: "THU", weekday: "Thursday", time: "20:45", label: "Auction Opens",
-    goal: "Open ReefnBid with a live view of demand and keep targeted customers engaged.",
+    goal: "Open the synthetic auction with a truthful live view of demand and incoming questions.",
     priorities: [
       { label: "Watch the live board", detail: "Track leaders, bid depth, soft lots, and the true close state without inventing urgency.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Send targeted opening nudges", detail: "Use tier, preference, and platform history instead of one generic blast.", cue: "watch" },
+      { label: "Confirm the opening state", detail: "Keep the board and customer-facing timing consistent with the real event state.", cue: "watch", prompt: "How's the auction going?" },
       { label: "Triage inbound questions", detail: "Keep buyer questions and operational exceptions from aging while bids stream.", cue: "watch", prompt: "What needs my attention?" },
     ],
     reminder: "Use live bid evidence for urgency; never describe a closed board as live.",
   },
   {
     id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "18:30", label: "Auction Momentum",
-    goal: "Strengthen the middle of the auction without spamming the whole customer base.",
+    goal: "Watch the auction's middle without inventing urgency or publishing targeting logic.",
     priorities: [
-      { label: "Find demand gaps", detail: "Compare leading lots with soft categories and decide which customers should see which coral.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Nudge the right audience", detail: "Target messages by coral preference and dossier tier; keep every simulated send in the event history.", cue: "watch" },
+      { label: "Read the live movement", detail: "Compare current bids with the opening state using only synthetic event history.", cue: "do-now", prompt: "How's the auction going?" },
+      { label: "Keep outreach bounded", detail: "The public demo records simulated sends but contains no production timing or audience-selection method.", cue: "watch", prompt: "How's the auction going?" },
       { label: "Protect response time", detail: "Answer buyer questions before the Saturday close creates a larger queue.", cue: "watch", prompt: "What needs my attention?" },
     ],
     reminder: "Friday is for precise nudges, not a louder version of Thursday.",
@@ -80,26 +80,37 @@ export const DEMO_DAYS: DemoDay[] = [
     goal: "Close ReefnBid truthfully, then turn winners into a clear two-day add-on journey.",
     priorities: [
       { label: "Confirm the final board", detail: "Use the closed state and final hammer prices; never call the auction live after the close.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Guide every winner", detail: "Send payment instructions, cross-platform discount codes, add-on steps, and the shipping schedule.", cue: "do-now" },
-      { label: "Open the add-on watch", detail: "Prepare identity matching and order monitoring across Shopify and eBay for the Sunday wave.", cue: "watch" },
+      { label: "Guide every winner", detail: "Send payment instructions, cross-platform discount codes, add-on steps, and the shipping schedule.", cue: "do-now", prompt: "How's the auction going?" },
+      { label: "Open the order watch", detail: "Monitor pre-linked synthetic customer references for new cross-channel orders.", cue: "watch", prompt: "Any orders to merge?" },
     ],
     reminder: "A winner notification should explain payment, add-ons, and shipping in one calm path.",
   },
   {
     id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-on Day",
-    goal: "Help winners add higher-margin coral while keeping one customer, one box, and one shipping fee.",
+    goal: "Keep eligible synthetic orders together so one customer receives one coordinated shipment.",
     priorities: [
-      { label: "Watch every incoming order", detail: "Separate organic Shopify/eBay sales from winner add-ons without losing either stream.", cue: "watch", prompt: "How's business?" },
-      { label: "Merge across platforms", detail: "Match identities carefully and combine only unambiguous ReefnBid, Shopify, and eBay orders.", cue: "do-now", prompt: "Any orders to merge?" },
+      { label: "Watch every incoming order", detail: "Keep independent synthetic order streams visible without publishing production attribution rules.", cue: "watch", prompt: "How's business?" },
+      { label: "Merge across platforms", detail: "Combine only pre-linked synthetic references that are unambiguous in the demo dataset.", cue: "do-now", prompt: "Any orders to merge?" },
       { label: "Protect Monday readiness", detail: "Surface holds, address changes, and late-add-on questions before Label Day locks the batch.", cue: "watch", prompt: "What needs my attention?" },
     ],
-    reminder: "The customer value is one shipping fee; the business value is a stronger add-on basket.",
+    reminder: "The public value is fewer duplicate shipments and a clearer customer handoff; no margin model is included.",
   },
 ];
 
 export const DEFAULT_DEMO_DAY: DemoDayId = "monday";
 export const DEMO_DAY_EVENT = "reef:demo-day";
 export const DEMO_CHAT_PROMPT_EVENT = "reef:chat-prompt";
+export const DEMO_DAY_STORAGE_KEY = "reef-command:demo-day";
+
+export type DemoChatPromptDetail = {
+  prompt: string;
+  dayId: DemoDayId;
+  priorityIndex: number;
+};
+
+export function isDemoDayId(value: string | null): value is DemoDayId {
+  return DEMO_DAYS.some((day) => day.id === value);
+}
 
 /**
  * Stable ClickHouse cycle used by the selectable recording week. W28 has the
@@ -154,7 +165,9 @@ export function withDemoDayContext(dayId: DemoDayId, message: string): string {
 }
 
 export function stripDemoDayContext(message: string): string {
-  return message.replace(/^\[SYNTHETIC DEMO TODAY:[^\]]+\]\s*/i, "");
+  return message
+    .replace(/^\[SYNTHETIC DEMO TODAY:[^\]]+\]\s*/i, "")
+    .replace(/^\[SYNTHETIC SHIP TRACE:[^\]]+\]\s*/i, "");
 }
 
 export function parseDemoDayContext(message: string): DemoDayId | undefined {

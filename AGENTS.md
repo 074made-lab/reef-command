@@ -17,14 +17,15 @@ and the answer is never a wall of text — it's a live component: an auction
 board, two orders merging into one shipping box, a reef-health report, a gated
 one-click action. Chat is the frame; interactive components are the answers
 (hackathon theme: *Beyond the Wall of Text*). All data is **synthetic**; the
-workflow is modeled on the real weekly operations of TIA Coral (tiacoral.com).
+scenario is inspired by physical-commerce problems from TIA Coral
+(tiacoral.com), but its workflow and rules are invented public fixtures.
 
 ## The two required tools, mapped to code
 
 **ClickHouse — the primary database (OLAP).** ~1.9M synthetic events; analytics
 behind every component.
 - Client + insert/query: `src/lib/store/clickhouse.ts`
-- Schema: `db/clickhouse/0001_events.sql` (events table + **3 materialized views**)
+- Schema: `db/clickhouse/0001_events.sql` (events table + **2 materialized views**)
 - `windowFunnel` (auction→code→add-on conversion in one query) and the WoW/MoM
   window comparisons: `src/lib/tools.ts` (see `weeklyReport`)
 
@@ -35,6 +36,12 @@ behind every component.
   `src/trigger/label-day.ts`
 - **Scheduled task** ticking one minute of events into both stores:
   `src/trigger/live-tick.ts`
+- **Autonomous ship-day exception** (customer event → simulated packing SMS
+  → label void → ClickHouse audit trail): `src/trigger/ship-day-exception.ts`
+  and `src/lib/ship-day-exception.ts`
+- **Human-approved DOA closed loop** (3 replacements → old label void →
+  updated five-item packing list + label → unsent reply draft):
+  `src/trigger/doa-resolution.ts` and `src/lib/doa-demo.ts`
 
 **Postgres — the OLTP truth** (customers, orders, shipments, cases):
 `src/lib/store/postgres.ts`, schema `db/postgres/0001_initial.sql`.
@@ -49,15 +56,18 @@ npx tsc --noEmit                              # whole repo typechecks
 npm run build                                 # production build (pages don't hit a store at build)
 npx tsx scripts/labelday-recovery-check.ts    # 4/4 — fault-injected recovery/idempotency of the label write loop
 npx tsx scripts/owner-auth-check.ts           # 12/12 — gated-action auth crypto (sign/verify/tamper/expiry/fail-closed)
+npx tsx scripts/routine-progress-check.ts     # task progress math + safe refresh recovery
+npx tsx scripts/demo-scenarios-check.ts       # MON/TUE + DOA public-demo contracts
 ```
 
 These need **your own** service keys (we ship none — see Integrity). Without
 them, read the assertions in each file to confirm the logic:
 
 ```bash
-npx tsx scripts/agent-check.ts     # 8 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
-npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel, retention)
-npx tsx scripts/report-check.ts    # weekly report: platform/tier mix, WoW/MoM, sparklines
+npx tsx scripts/agent-check.ts     # 9 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
+npx tsx scripts/doa-resolution-check.ts # rollback-safe DOA integration; Postgres only, no CH writes
+npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel)
+npx tsx scripts/report-check.ts    # weekly report: platform mix, WoW/MoM, sparklines
 npx tsx scripts/tools-check.ts     # the read tools vs both live stores
 ```
 
@@ -68,18 +78,25 @@ criterion — claims first, file to verify second, known limits stated. We would
 rather you confirm than discover.
 
 **Use of ClickHouse & Trigger.dev (25% — depth, creativity, correctness).**
-ClickHouse is the primary store, not a bolt-on: 3 materialized views roll up on
+ClickHouse is the primary analytical store, not a bolt-on: 2 materialized views roll up on
 insert (`db/clickhouse/0001_events.sql`), `windowFunnel` computes the
 auction→code→add-on funnel in one query and every WoW/MoM delta is a
 full-history window comparison (`src/lib/tools.ts`), a scheduled task ingests
 live events every minute (`src/trigger/live-tick.ts`), and the auction board is
-time-bounded per selected demo day. Trigger.dev supplies four primitives used
-materially: the durable `chat.agent()` itself (`src/trigger/reef-chat.ts`), a
+time-bounded per selected demo day. Trigger.dev supplies five primitives used
+materially: the durable `chat.agent()` itself (`src/trigger/reef-chat.ts`), an
+event-driven ship-day protection task (`src/trigger/ship-day-exception.ts`), a
 human waitpoint gating real money (`src/trigger/label-day.ts`,
-createToken→forToken→completeToken), the scheduled tick, and run-metadata
+createToken→forToken→completeToken), the owner-approved DOA resolution task
+(`src/trigger/doa-resolution.ts`), the scheduled tick, and run-metadata
 progress via the runs API. Known limit: progress is surfaced by polling run
 metadata, not a Realtime subscription — a deliberate v1 (the run already
 publishes metadata; a Realtime subscribe is the drop-in next step).
+The three visible routines for every selected day also expose the durable chat
+lifecycle as live task progress: submitted, streaming, component returned, and
+complete (`src/components/chat/RoutineProgress.tsx`). Completion persists only
+for the browser session, and label preparation never claims that the gated
+purchase has happened.
 
 **Problem Fit (20% — "if your agent's best answer is a paragraph, you've missed
 the brief").** The constraint is enforced, not aspired to: the system prompt
@@ -94,17 +111,18 @@ money-moving loop is recoverable-idempotent with an ordered state machine and a
 fault-injection gate (`src/lib/label-day.ts` + `scripts/labelday-recovery-check.ts`,
 4/4 offline). The gated action sits behind fail-closed HMAC owner auth
 (`src/lib/owner-auth.ts` + `scripts/owner-auth-check.ts`, 12/12 offline). The
-LLM layer has an asserting behavior gate — wrong tool, fabricated figure,
+DOA state machine is verified under rollback (`scripts/doa-resolution-check.ts`).
+The LLM layer has an asserting behavior gate — wrong tool, fabricated figure,
 money claim, closed-auction-described-as-live, or a count that contradicts the
-rendered component all exit non-zero (`scripts/agent-check.ts`, 8 probes).
+rendered component all exit non-zero (`scripts/agent-check.ts`, 9 probes).
 Unwired actions return honest 501s. Limits admitted: sequential idempotency is
 not strict exactly-once under concurrent approvals; no conventional unit-test
 framework beyond the gates; the client does not yet re-hydrate a refreshed
 session.
 
-**Innovation (20% — genuinely new?).** The domain is a real business, not a
-demo dataset: a live-coral store's actual weekly auction cycle (modeled on TIA
-Coral, all data synthetic). Original pieces: cross-platform orders visually
+**Innovation (20% — genuinely new?).** The domain comes from a real physical
+business problem while the public workflow remains invented and synthetic.
+Original pieces: cross-platform orders visually
 merging into one shipping box; a human money-gate living INSIDE a chat
 component (waitpoint + inline unlock); a selectable seven-day synthetic week
 (`src/lib/demo-clock.ts`) so the story is stable on any judge's wall clock; and
@@ -117,8 +135,11 @@ portable by design — `src/lib/agent-config.ts` has no Trigger.dev import, and
 the documented migration path (README "Architecture", `docs/DESIGN.md` §9)
 targets the owner's real production stack. The underlying problem — combining
 multi-platform orders into one box and one fee — generalizes to any
-multi-channel merchant. Limits admitted: single-tenant demo; platform adapters
-are simulated.
+multi-channel merchant. The ship-day exception makes the impact concrete: one
+late delivery change pauses packing, voids a synthetic label, protects an
+avoidable carrier charge, and leaves one trace across the cockpit, Postgres,
+and ClickHouse before the owner opens chat. Limits admitted: single-tenant
+demo; SMS, carrier, and platform adapters are simulated.
 
 **Bonus — OLTP + OLAP integration.** One gated click drives both stores with
 integrity semantics, not just dual writes: Postgres rows commit first, the
@@ -172,6 +193,10 @@ We would rather tell you than have you "catch" us:
   anywhere. See `docs/DESIGN.md`.
 - **No secrets in the repo.** `.env*` is gitignored; `.env.example` holds only
   placeholders. If you clone this, you supply your own keys.
+- **No production operating playbook.** Identity resolution, customer value,
+  profitability, buying, campaign targeting/timing, species economics, and
+  fulfillment policies are absent. Any bands, account links, sends, and
+  exceptions in this repo are arbitrary synthetic fixtures.
 
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know

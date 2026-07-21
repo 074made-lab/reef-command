@@ -81,6 +81,14 @@ const PROBES: Probe[] = [
     },
   },
   {
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me the order exceptions to clear before we purchase shipping labels.",
+    expect: "whatNeedsAttention → attention_feed; never a label manifest",
+    check: (c) => {
+      if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
+      return has(c, "label_manifest") ? "rendered a label manifest for an exception-review request" : null;
+    },
+  },
+  {
     q: "How's business this cycle?",
     expect: "revenuePulse → metric_row",
     check: (c) => (called(c, "revenuePulse") && has(c, "metric_row") ? null : "wrong tool/component"),

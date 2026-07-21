@@ -1,5 +1,5 @@
-/** A campaign send: who it reaches (tier × platform × criteria), the exact
- *  rendered message, when it goes — sends are simulated and human-gated. */
+/** Synthetic communication fixture. Bands, recipients, and timing are
+ * arbitrary UI data, not a production campaign or targeting method. */
 
 import type { ComponentSpec } from "@/lib/protocol";
 import { ActionRow } from "./ActionChips";
@@ -35,7 +35,7 @@ export function CampaignCard({ spec }: { spec: CampaignSpec }) {
             {tiers.map(([t, n]) => (
               <div key={t} className="flex items-center gap-2">
                 <span className="w-8 font-mono text-[10px] text-mute">
-                  {t === "4" ? "NEW" : `T${t}`}
+                  {`B${t}`}
                 </span>
                 <div className="h-3 flex-1 overflow-hidden rounded-sm bg-raise/60">
                   <div

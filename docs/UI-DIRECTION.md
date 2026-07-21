@@ -18,11 +18,22 @@ question entry points.
 
 ## Palette
 
-- Keep the deep-ocean blue base.
-- Primary accents: **coral orange (`#FF8559`, tint `#FFB89E`)**,
-  **bioluminescent teal/cyan**.
-- Secondary: a little **beach off-white / sand**.
+- Keep the deep-ocean blue base and warm off-white text.
+- Use **coral orange (`#FF8559`, tint `#FFC1AA`)** for brand, selected state,
+  alerts, and primary action.
+- Reserve restrained blue-green for data and status. It is supporting contrast,
+  not a second competing brand color.
 - **No generic AI purple.** No purple-gradient-on-dark.
+
+## Product-first composition
+
+- Public TIA Coral photography carries the first impression and the weekly
+  auction summary. Captions stay short and all report values remain synthetic.
+- The selected day and one task list lead the home state. Product imagery gets
+  more area than explanatory copy, following the portfolio-first rhythm seen
+  in SCAD's graphic-design work pages.
+- Remove terminal ornament, neon glow, and decorative diagrams when a coral
+  image or one number communicates the point faster.
 
 ## Components read as a reef, not a BI suite
 
@@ -79,10 +90,10 @@ spinners.
   Store (Shopify)**, and **eBay**.
 - Merge cards use layered water currents and moving particles to carry every
   source order into one combined shipping box.
-- The weekly reef-health report is tabbed. Platform revenue appears as three
-  currents feeding one reef; product and auction rows generate deterministic,
-  evidence-backed next-week stocking guidance. Dossier tiers include their
-  synthetic percentile definition and do not masquerade as new-customer rate.
+- The weekly reef-health report is tabbed. The default view is aggregate and
+  the auction view leads with three product images before offering the full
+  table. The public demo contains no production stocking, customer-value,
+  profitability, identity-resolution, or targeting method.
 - Attention rows expand in place. DOA cases reveal the original synthetic text
   and a clearly marked mock photo; messages reveal an editable template draft.
   Approve and Send remain explicit simulations: no refund or external message.

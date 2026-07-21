@@ -1,7 +1,7 @@
 /**
  * Proof that the weekly report now meets its own definition: platform mix,
- * tier mix / share of sales, WoW+MoM on every headline metric (incl. return
- * rate and new-customer share), sparklines. Live CH + PG (Codex M7).
+ * platform mix, WoW+MoM on every public-safe headline metric, and sparklines.
+ * Live CH + PG (Codex M7).
  *
  * Run: npx tsx scripts/report-check.ts
  */
@@ -31,7 +31,7 @@ async function main() {
       );
     }
   }
-  for (const kind of ["Platform mix", "Tier mix"]) {
+  for (const kind of ["Platform mix"]) {
     const sec = report.sections.find((s) => s.title.startsWith(kind));
     if (sec && sec.kind === "table") {
       console.log(`\n${sec.title}\n  ${sec.columns.join(" | ")}`);

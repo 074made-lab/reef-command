@@ -16,7 +16,7 @@ async function main() {
   if (args.includes("--truncate")) {
     // NB: truncating the source table does NOT clear materialized-view targets —
     // each MV accumulates independently, so clear all of them for a clean slate.
-    for (const t of ["events", "mv_revenue_hourly", "mv_category_daily", "mv_customer_daily"]) {
+    for (const t of ["events", "mv_revenue_hourly", "mv_category_daily"]) {
       await client.command({ query: `TRUNCATE TABLE ${t}` });
     }
     console.log("truncated events + 3 materialized views");

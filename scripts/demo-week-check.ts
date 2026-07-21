@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   DEMO_DAYS,
   DEMO_AUCTION_WEEK_INDEX,
+  DEMO_DAY_STORAGE_KEY,
   demoAuctionMoment,
   dayBriefSpec,
+  isDemoDayId,
   parseDemoDayContext,
   stripDemoDayContext,
   withDemoDayContext,
@@ -21,12 +23,19 @@ const expected = [
 ] as const;
 
 assert.equal(DEMO_DAYS.length, 7, "the recording controller must expose seven days");
+assert.equal(DEMO_DAY_STORAGE_KEY, "reef-command:demo-day");
+assert.equal(isDemoDayId("thursday"), true);
+assert.equal(isDemoDayId("demo-day"), false);
 assert.deepEqual(DEMO_DAYS.map((day) => [day.id, day.label]), expected);
 assert.equal(new Set(DEMO_DAYS.map((day) => day.id)).size, 7, "weekday ids must be unique");
 
 for (const day of DEMO_DAYS) {
   assert.equal(day.priorities.length, 3, `${day.weekday} must have three priorities`);
-  assert.ok(day.priorities.some((priority) => priority.prompt), `${day.weekday} needs a supported next prompt`);
+  assert.ok(day.priorities.every((priority) => priority.prompt), `${day.weekday} focus cards must all start a supported routine`);
+  assert.ok(
+    day.priorities.every((priority) => /attention|exception|combine|merge|label|business|auction|report/i.test(priority.prompt ?? "")),
+    `${day.weekday} focus cards must map to a supported agent tool`,
+  );
   assert.ok(day.goal.length > 40, `${day.weekday} needs a meaningful goal`);
   assert.ok(day.reminder.length > 30, `${day.weekday} needs a meaningful reminder`);
 
@@ -47,5 +56,11 @@ for (const day of DEMO_DAYS) {
   );
   console.log(`✓ ${day.short} ${day.weekday.padEnd(9)} → ${day.label}`);
 }
+
+const traceMessage = withDemoDayContext(
+  "tuesday",
+  "[SYNTHETIC SHIP TRACE: status=protected; shipment=SHP-DEMO]\nExplain this ship-day automation trace.",
+);
+assert.equal(stripDemoDayContext(traceMessage), "Explain this ship-day automation trace.");
 
 console.log("\nALL PASS — seven-day demo-week contract");

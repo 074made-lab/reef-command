@@ -33,14 +33,14 @@ export type Evidence = {
 export type CustomerRef = {
   customerId: number;
   displayName: string;    // synthetic handle
-  tier: 1 | 2 | 3 | 4;    // 4 = first-time
+  tier: 1 | 2 | 3 | 4;    // arbitrary synthetic display band only
   platforms: Platform[];
 };
 
 // ---------- week cycle ----------
 
 export type WeekPhase =
-  | "announce"            // TUE–WED  campaign cadence
+  | "announce"            // synthetic pre-event phase label
   | "auction_live"        // THU–SAT  bids streaming
   | "winners"             // SAT      close + codes
   | "addon_window"        // SUN–MON  cross-platform add-ons
@@ -85,6 +85,40 @@ export type AttentionItem = {
   detail?: string;        // original synthetic customer text / request detail
   draft?: string;         // deterministic template draft for unanswered messages
   photoHref?: string;     // synthetic evidence asset (DOA demo only)
+  status?: "open" | "handled";
+  autoActions?: string[]; // concise public-safe action evidence
+  doaReview?: DoaReviewPlan; // deterministic public-demo workflow, never production policy
+};
+
+export type DoaReviewPlan = {
+  caseId: string;
+  reviewWindow: string;
+  customer: {
+    displayName: string;
+    band: 1 | 2 | 3 | 4; // arbitrary synthetic display context only
+    platforms: Platform[];
+  };
+  claimedItems: string[];
+  history: {
+    orders: number;
+    coralItems: number;
+    priorDoa: number;
+    priorRefunds: number;
+    priorCredits: number;
+    priorReplacements: number;
+  };
+  evidence: Evidence[];
+  shipment: {
+    orderId: string;
+    shipWhen: string;
+    destination: string;
+    existingItems: number;
+    currentLabelId: string;
+    currentLabelCostCents: number;
+    updatedLabelId: string;
+    updatedLabelCostCents: number;
+  };
+  replyDraft: string;
 };
 
 export type OrderLine = { sku: string; name: string; category: CoralCategory; qty: number; priceCents: number };
@@ -157,9 +191,10 @@ export type LotPrice = {
 };
 
 export type FunnelStep = {
-  label: string;          // "auction win" → "code issued" → "add-on order"
+  label: string;          // "auction winner" → "add-on discount code issued" → "add-on order using code"
   count: number;
   conversionFromPrev?: number;  // 0–1
+  rateLabel?: string;     // e.g. "winner coverage" or "code conversion"
 };
 
 export type CoralCategory = "zoas" | "euphyllia" | "goni" | "mushroom" | "sps" | "other";
@@ -178,7 +213,7 @@ export type AudienceBreakdown = {
   total: number;
   byTier: Record<"1" | "2" | "3" | "4", number>;
   byPlatform: Partial<Record<Platform, number>>;
-  criteria: string;       // human-readable selection, e.g. "tier ≤ 2 AND prefers euphyllia"
+  criteria: string;       // public-safe synthetic demo filter
 };
 
 export type MessagePreview = {

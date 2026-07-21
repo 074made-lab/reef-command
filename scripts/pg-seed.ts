@@ -103,7 +103,7 @@ async function main() {
             JSON.stringify([{ label: "auto first response", detail: String(m.autoFirstResponse ?? "") }]), e.ts]);
           break;
         case "campaign_sent":
-          campaigns.push([m.campaignId, m.phase, "tier ≤ 3, active customers", m.recipients ?? 0,
+          campaigns.push([m.campaignId, m.phase, "arbitrary synthetic recipients", m.recipients ?? 0,
             JSON.stringify({ body: m.preview ?? "" }), e.ts, e.ts]);
           break;
         case "message_out":

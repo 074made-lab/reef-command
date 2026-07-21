@@ -47,23 +47,11 @@ FROM events
 WHERE type = 'inventory_move' AND JSONExtractString(meta, 'reason') = 'sale'
 GROUP BY day, category;
 
--- per-customer daily spend (drives tiers, retention lenses, audience selection)
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_customer_daily
-ENGINE = SummingMergeTree
-ORDER BY (day, customer_id)
-AS SELECT
-  toDate(ts)        AS day,
-  customer_id,
-  sum(amount_cents) AS spend_cents,
-  count()           AS orders
-FROM events
-WHERE type = 'order_placed' AND customer_id > 0
-GROUP BY day, customer_id;
-
 -- ---------- reference queries (documentation; used by the DataStore impl) ----------
 
 -- The weekly cycle funnel (Task 4): auction win → code issued → add-on redeemed,
--- within 72h, per customer. One query quantifies the store's core economic move.
+-- within an arbitrary 72h demo window. This proves sequence analytics; it is
+-- not a production conversion or economics rule.
 --
 --   SELECT level, count() AS customers FROM (
 --     SELECT customer_id,
@@ -75,30 +63,6 @@ GROUP BY day, customer_id;
 --     WHERE ts >= {weekStart} AND ts < {weekEnd} AND customer_id > 0
 --     GROUP BY customer_id
 --   ) GROUP BY level ORDER BY level;
-
--- Return-customer rate, snapshot lens (≥2 lifetime orders ÷ paying customers):
---
---   SELECT
---     countIf(lifetime_orders >= 2) / count() AS repeat_rate
---   FROM (
---     SELECT customer_id, sum(orders) AS lifetime_orders
---     FROM mv_customer_daily
---     WHERE day <= {asOf}
---     GROUP BY customer_id
---   );
-
--- Weekly flow lens (this week's revenue: returning vs first-time customers):
---
---   WITH firsts AS (
---     SELECT customer_id, min(day) AS first_day
---     FROM mv_customer_daily GROUP BY customer_id
---   )
---   SELECT
---     sumIf(d.spend_cents, f.first_day <  {weekStart}) AS returning_cents,
---     sumIf(d.spend_cents, f.first_day >= {weekStart}) AS new_cents
---   FROM mv_customer_daily d
---   JOIN firsts f USING (customer_id)
---   WHERE d.day >= {weekStart} AND d.day < {weekEnd};
 
 -- WoW / MoM deltas: run the same aggregate over (week-1) and (week-4) windows —
 -- full history is in the stream, so no snapshot pipeline is required.

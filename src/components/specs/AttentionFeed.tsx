@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { AttentionItem } from "@/lib/protocol";
 import { PlatformChip, SpecCard } from "./bits";
+import { DoaReview } from "./DoaReview";
 import { age, ageTone } from "./format";
 
 function KindIcon({ kind }: { kind: AttentionItem["kind"] }) {
@@ -28,7 +29,7 @@ const KIND_TONE: Record<AttentionItem["kind"], string> = {
   case: "text-danger", message: "text-dim", system: "text-mute",
 };
 
-function DoaDetail({ item, approved, onApprove }: { item: AttentionItem; approved: boolean; onApprove: () => void }) {
+function DoaDetail({ item }: { item: AttentionItem }) {
   return (
     <div className="grid gap-3 border-t border-line/60 bg-danger/[0.025] p-3 md:grid-cols-[1fr_220px]">
       <div>
@@ -41,17 +42,7 @@ function DoaDetail({ item, approved, onApprove }: { item: AttentionItem; approve
           <dt className="font-mono text-mute">email</dt><dd className="text-dim">{item.customerEmail ?? "synthetic@example.test"}</dd>
           <dt className="font-mono text-mute">case</dt><dd className="font-mono text-dim">{item.id}</dd>
         </dl>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={approved}
-            onClick={onApprove}
-            className="rounded-sm border border-coral/65 bg-coral/10 px-3 py-1.5 font-mono text-[13px] tracking-wide text-coralhi hover:bg-coral/20 disabled:border-ok/40 disabled:bg-ok/[0.06] disabled:text-ok"
-          >
-            {approved ? "✓ APPROVED IN DEMO" : "APPROVE CLAIM"}
-          </button>
-          <span className="text-[12px] text-mute">human decision · synthetic state only · no refund issued</span>
-        </div>
+        <p className="mt-4 text-[12px] text-warn">Evidence only. Open the structured demo review for an executable resolution.</p>
       </div>
       <a href={item.photoHref ?? "/mock-doa-coral.svg"} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-md border border-line bg-abyss">
         <img src={item.photoHref ?? "/mock-doa-coral.svg"} alt="Synthetic mock DOA evidence" className="aspect-[8/5] w-full object-cover transition-transform group-hover:scale-[1.02]" />
@@ -113,19 +104,19 @@ export function AttentionFeed({ items }: { items: AttentionItem[] }) {
   const [approved, setApproved] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(items.map((i) => [i.id, i.draft ?? ""])));
-  const resolvedCount = items.filter((item) => approved[item.id] || sent[item.id]).length;
+  const resolvedCount = items.filter((item) => item.status === "handled" || approved[item.id] || sent[item.id]).length;
   const remaining = items.length - resolvedCount;
 
   return (
     <SpecCard tag="ATTENTION" right={<span className="font-mono text-[13px] text-mute">{remaining} open{resolvedCount ? ` · ${resolvedCount} handled` : ""}</span>}>
       {items.length === 0 ? (
-        <p className="py-2 text-center font-mono text-xs text-mute">feed clear — nothing needs you</p>
+        <p className="py-2 text-center text-[13px] text-mute">All clear. Nothing needs you.</p>
       ) : (
         <ul className="divide-y divide-line/50">
           {items.map((item) => {
-            const expandable = (item.kind === "case" && !!item.photoHref) || item.kind === "message" || !!item.detail;
+            const expandable = !!item.doaReview || (item.kind === "case" && !!item.photoHref) || item.kind === "message" || !!item.detail;
             const expanded = !!open[item.id];
-            const handled = !!approved[item.id] || !!sent[item.id];
+            const handled = item.status === "handled" || !!approved[item.id] || !!sent[item.id];
             return (
               <li key={item.id} className={`overflow-hidden transition-opacity ${handled ? "opacity-65" : ""}`}>
                 <button
@@ -142,8 +133,11 @@ export function AttentionFeed({ items }: { items: AttentionItem[] }) {
                   <span className={`w-10 shrink-0 text-right font-mono text-[12px] tabular-nums ${ageTone(item.ageMinutes)}`}>{age(item.ageMinutes)}</span>
                   {expandable ? <span className={`text-[13px] text-teal transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden>⌄</span> : null}
                 </button>
-                {expanded && item.kind === "case" && item.photoHref ? (
-                  <DoaDetail item={item} approved={!!approved[item.id]} onApprove={() => setApproved((s) => ({ ...s, [item.id]: true }))} />
+                {expanded && item.doaReview ? (
+                  <DoaReview plan={item.doaReview} onResolved={() => setApproved((s) => ({ ...s, [item.id]: true }))} />
+                ) : null}
+                {expanded && item.kind === "case" && item.photoHref && !item.doaReview ? (
+                  <DoaDetail item={item} />
                 ) : null}
                 {expanded && item.kind === "message" ? (
                   <MessageDetail
@@ -155,7 +149,18 @@ export function AttentionFeed({ items }: { items: AttentionItem[] }) {
                   />
                 ) : null}
                 {expanded && item.kind !== "case" && item.kind !== "message" && item.detail ? (
-                  <p className="border-t border-line/60 bg-raise/30 p-3 text-[13px] text-dim">{item.detail}</p>
+                  <div className="border-t border-line/60 bg-raise/30 p-3">
+                    <p className="text-[13px] leading-relaxed text-dim">{item.detail}</p>
+                    {item.autoActions?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {item.autoActions.map((action) => (
+                          <span key={action} className="rounded-sm border border-ok/30 bg-ok/[0.05] px-2 py-1 font-mono text-[12px] text-ok">
+                            ✓ {action.replace(/_/g, " ").replace(/:/g, " · ")}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </li>
             );

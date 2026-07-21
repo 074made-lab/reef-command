@@ -8,12 +8,12 @@ function Tile({ m }: { m: Metric }) {
   const prefix = m.unit === "$" ? "$" : "";
   const suffix = m.unit && m.unit !== "$" ? m.unit : "";
   return (
-    <div className="min-w-[150px] flex-1 rounded-sm border border-line/70 bg-raise/50 px-3 py-2.5">
-      <p className="font-mono text-[12px] tracking-[0.16em] text-mute uppercase">
+    <div className="min-w-[150px] flex-1 rounded-lg bg-raise/55 px-4 py-3">
+      <p className="text-[12px] font-medium tracking-[0.07em] text-mute uppercase">
         {m.label}
       </p>
       <div className="mt-1 flex items-end justify-between gap-2">
-        <p className="font-mono text-[26px] leading-none font-medium text-ink tabular-nums">
+        <p className="font-mono text-[28px] leading-none font-medium text-ink tabular-nums">
           {prefix}
           {num(m.value)}
           {suffix ? (

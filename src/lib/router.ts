@@ -17,7 +17,7 @@ import {
   weeklyReport,
 } from "./tools";
 import type { ChatResponse, ComponentSpec } from "./protocol";
-import { dayBriefSpec, parseDemoDayContext } from "./demo-clock";
+import { dayBriefSpec, parseDemoDayContext, stripDemoDayContext } from "./demo-clock";
 
 const ch = chClient();
 const pg = pgPool();
@@ -35,17 +35,14 @@ function firstOf<K extends ComponentSpec["kind"]>(
 }
 
 async function attention(): Promise<ChatResponse> {
-  const [feed, pulse] = await Promise.all([
-    attentionFeed(ch, pg),
-    revenuePulse(ch),
-  ]);
+  const feed = await attentionFeed(ch, pg);
   const n = firstOf(feed, "attention_feed")?.items.length ?? 0;
   return {
     verdict:
       n === 0
-        ? "Feed clear — nothing needs you; revenue is ticking."
-        : `${plural(n, "thing")} need${n === 1 ? "s" : ""} you; revenue is ticking.`,
-    components: [...feed, ...pulse],
+        ? "Feed clear. Nothing needs you."
+        : `${plural(n, "thing")} need${n === 1 ? "s" : ""} your attention.`,
+    components: feed,
   };
 }
 
@@ -131,11 +128,19 @@ async function dayBrief(message: string): Promise<ChatResponse> {
 
 /** message → ChatResponse. Deterministic, ordered keyword rules. */
 export async function routeChat(message: string): Promise<ChatResponse> {
-  const q = message.toLowerCase();
+  const raw = message.toLowerCase();
+  const q = stripDemoDayContext(message).toLowerCase();
   try {
+    if (/\[synthetic ship trace:/.test(raw)) {
+      return {
+        verdict: "Packing was notified and the label was handled before carrier handoff. Want to see everything else that needs attention?",
+        components: [],
+      };
+    }
     if (/command brief|today'?s (?:work )?priorit|remind me not to miss/.test(q))
       return await dayBrief(message);
-    if (/attention|morning|needs? my|need me/.test(q)) return await attention();
+    if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
+      return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
       return await report();
     if (/auction|bids?|board/.test(q)) return await auction(message);

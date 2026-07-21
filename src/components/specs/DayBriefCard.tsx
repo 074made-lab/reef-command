@@ -1,7 +1,13 @@
 "use client";
 
 import type { ComponentSpec, DayPriority } from "@/lib/protocol";
-import { DEMO_CHAT_PROMPT_EVENT, DEMO_DAYS } from "@/lib/demo-clock";
+import { DEMO_CHAT_PROMPT_EVENT, DEMO_DAYS, type DemoChatPromptDetail } from "@/lib/demo-clock";
+import {
+  RoutineProgressRing,
+  RoutineTaskMark,
+  useDayRoutineProgress,
+  useRoutineBusy,
+} from "@/components/chat/RoutineProgress";
 import { Chip, SpecCard } from "./bits";
 
 type DayBriefSpec = Extract<ComponentSpec, { kind: "day_brief" }>;
@@ -12,16 +18,24 @@ const CUE: Record<DayPriority["cue"], { label: string; tone: string }> = {
   "human-gate": { label: "HUMAN GATE", tone: "border-coral/45 text-coralhi" },
 };
 
-function askTeddy(prompt: string) {
-  window.dispatchEvent(new CustomEvent(DEMO_CHAT_PROMPT_EVENT, { detail: prompt }));
+function askTeddy(detail: DemoChatPromptDetail) {
+  window.dispatchEvent(new CustomEvent(DEMO_CHAT_PROMPT_EVENT, { detail }));
 }
 
 export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
+  const tasks = useDayRoutineProgress(spec.dayId);
+  const busy = useRoutineBusy();
+
   return (
     <SpecCard
       tag="TODAY'S COMMAND"
       tone="coral"
-      right={<Chip className="border-coral/45 text-coralhi">{spec.weekday.toUpperCase()} · {spec.label.toUpperCase()}</Chip>}
+      right={(
+        <>
+          <Chip className="hidden border-coral/45 text-coralhi sm:inline-flex">{spec.weekday.toUpperCase()} · {spec.label.toUpperCase()}</Chip>
+          <RoutineProgressRing tasks={tasks} compact />
+        </>
+      )}
     >
       <div className="mb-4 grid grid-cols-7 gap-1" aria-label="Weekly position">
         {DEMO_DAYS.map((day) => (
@@ -34,7 +48,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
 
       <div className="rounded-md border border-coral/25 bg-[linear-gradient(135deg,rgba(255,133,89,.07),rgba(79,227,207,.035))] px-3 py-2.5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-lg font-semibold text-ink">Today is {spec.weekday} — {spec.label}</h3>
+          <h3 className="text-lg font-semibold text-ink">{spec.weekday}: {spec.label}</h3>
           <span className="font-mono text-[13px] text-mute">SYNTHETIC · {spec.time}</span>
         </div>
       </div>
@@ -42,21 +56,26 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
       <ol className="mt-3 divide-y divide-line/60 overflow-hidden rounded-md border border-line/80 bg-abyss/35">
         {spec.priorities.map((priority, index) => {
           const cue = CUE[priority.cue];
+          const task = tasks[index];
           return (
             <li key={priority.label} className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:grid-cols-[auto_1fr_auto]">
-              <span className={`flex h-6 w-6 items-center justify-center rounded-full border font-mono text-[13px] ${index === 0 ? "border-coral/50 bg-coral/[0.08] text-coralhi" : "border-line text-mute"}`}>
-                {index + 1}
-              </span>
+              <RoutineTaskMark task={task} index={index} />
               <h4 className="text-[14px] font-semibold text-ink">{priority.label}</h4>
               <div className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-auto">
                 <Chip className={cue.tone}>{cue.label}</Chip>
                 {priority.prompt ? (
                   <button
                     type="button"
-                    onClick={() => askTeddy(priority.prompt!)}
-                    className="rounded-full border border-teal/40 px-2.5 py-1 font-mono text-[13px] tracking-wide text-tealhi transition-[background-color,transform] hover:bg-teal/10 active:scale-[0.98]"
+                    onClick={() => askTeddy({
+                      prompt: priority.prompt!,
+                      dayId: spec.dayId,
+                      priorityIndex: index,
+                    })}
+                    disabled={busy}
+                    aria-label={`Ask Teddy: ${priority.label}`}
+                    className={`rounded-md border px-2.5 py-1 text-[12px] font-semibold tracking-[0.03em] transition-[background-color,transform] focus-visible:outline-none focus-visible:ring-2 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 ${task.status === "complete" ? "border-ok/45 text-ok hover:bg-ok/10 focus-visible:ring-ok/45" : task.status === "failed" ? "border-danger/45 text-danger hover:bg-danger/10 focus-visible:ring-danger/45" : "border-teal/40 text-tealhi hover:bg-teal/10 focus-visible:ring-teal/45"}`}
                   >
-                    ASK ▸
+                    {task.status === "complete" ? "RUN AGAIN" : task.status === "running" ? "RUNNING" : task.status === "failed" ? "RETRY" : "START"}
                   </button>
                 ) : null}
               </div>
@@ -82,7 +101,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
       <details className="group mt-2 rounded-sm border border-line/60 bg-abyss/25">
         <summary className="cursor-pointer list-none px-3 py-2 font-mono text-[13px] text-dim transition-colors hover:text-tealhi">
           <span className="inline-block transition-transform group-open:rotate-90">▸</span>{" "}
-          Context and details
+          How {spec.weekday} works
         </summary>
         <div className="space-y-2 border-t border-line/60 px-3 py-2.5 text-[13px] leading-relaxed text-dim">
           <p className="text-ink">{spec.goal}</p>
