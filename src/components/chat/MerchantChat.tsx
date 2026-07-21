@@ -44,6 +44,13 @@ function CoralPulseSkeleton() {
   return (
     <div className="anim-rise space-y-2.5" aria-label="thinking">
       <div className="flex items-center gap-1.5 pl-0.5">
+        <img
+          src="/teddy-avatar.jpg"
+          alt=""
+          width={20}
+          height={20}
+          className="mr-1 rounded-full ring-1 ring-teal/40"
+        />
         {[0, 1, 2].map((i) => (
           <span
             key={i}
@@ -52,7 +59,7 @@ function CoralPulseSkeleton() {
           />
         ))}
         <span className="ml-1 font-mono text-[12px] tracking-widest text-mute">
-          READING THE REEF…
+          TEDDY&apos;S READING THE REEF…
         </span>
       </div>
       <div className="skeleton-bar h-16 rounded-md border border-line/50" />
@@ -102,12 +109,21 @@ function AgentAnswer({
   return (
     <div ref={innerRef} className="anim-rise space-y-3">
       {verdict ? (
-        <p className="flex items-baseline gap-2 border-l-2 border-tealhi/70 pl-2.5 text-[14px] leading-snug text-ink">
-          <span className="shrink-0 font-mono text-[12px] tracking-[0.2em] text-teal">
-            REEF»
-          </span>
-          {verdict}
-        </p>
+        <div className="flex items-start gap-2.5 border-l-2 border-tealhi/70 pl-2.5">
+          <img
+            src="/teddy-avatar.jpg"
+            alt=""
+            width={26}
+            height={26}
+            className="mt-px shrink-0 rounded-full ring-1 ring-teal/50"
+          />
+          <p className="text-[14px] leading-snug text-ink">
+            <span className="mr-2 font-mono text-[12px] tracking-[0.2em] text-teal">
+              TEDDY»
+            </span>
+            {verdict}
+          </p>
+        </div>
       ) : null}
 
       {merges.length ? <SpecRenderer spec={merges[0]} /> : null}
@@ -203,13 +219,25 @@ export function MerchantChat() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl space-y-5 px-4 py-5">
           {messages.length === 0 && status === "ready" ? (
-            <div className="pt-16 text-center">
-              <p className="font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
+            <div className="pt-10 text-center">
+              {/* Teddy — the real reef dog behind the store. The first frame a
+                  judge sees: a face, not a terminal. */}
+              <img
+                src="/teddy.jpg"
+                alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
+                width={112}
+                height={112}
+                className="mx-auto rounded-full ring-2 ring-coral/60 shadow-[0_0_46px_rgba(232,86,43,0.28)]"
+              />
+              <p className="mt-4 font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
                 channel open · today is {currentDay.weekday} · {currentDay.label}
               </p>
               <p className="mt-2 text-sm text-dim">
-                Choose a day above. Teddy will brief that day's priorities,
-                reminders, and the next component to open.
+                Teddy&apos;s watching the reef. Choose a day above — he&apos;ll brief the
+                priorities and open the right component.
+              </p>
+              <p className="mt-1.5 font-mono text-[11px] tracking-[0.24em] text-coralhi/85 uppercase">
+                happy reefing
               </p>
             </div>
           ) : null}
@@ -288,7 +316,7 @@ export function MerchantChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={waiting || streaming}
-              placeholder="Ask the reef — attention, revenue, auction, merges, report…"
+              placeholder="Ask Teddy — attention, revenue, auction, merges, report…"
               aria-label="Message"
               className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none disabled:opacity-50"
             />

@@ -65,9 +65,18 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
         })}
       </ol>
 
-      <div className="mt-3 flex items-start gap-2 rounded-sm border border-teal/30 bg-teal/[0.045] px-3 py-2">
-        <span className="font-mono text-[10px] tracking-[0.16em] text-teal uppercase">TEDDY REMINDER</span>
-        <p className="text-[11px] leading-relaxed text-ink">{spec.reminder}</p>
+      <div className="mt-3 flex items-start gap-2.5 rounded-sm border border-teal/30 bg-teal/[0.045] px-3 py-2">
+        <img
+          src="/teddy-avatar.jpg"
+          alt=""
+          width={24}
+          height={24}
+          className="mt-0.5 shrink-0 rounded-full ring-1 ring-teal/50"
+        />
+        <div>
+          <span className="font-mono text-[10px] tracking-[0.16em] text-teal uppercase">TEDDY REMINDER</span>
+          <p className="text-[11px] leading-relaxed text-ink">{spec.reminder}</p>
+        </div>
       </div>
     </SpecCard>
   );
