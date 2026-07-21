@@ -98,15 +98,24 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
     ageMinutes: Math.round((now - r.received_at.getTime()) / 60_000),
   });
 
-  const unanswered = await queryRows<{ id: string; preview: string; platform: string; age_min: string; customer_id: string }>(ch, `
+  // Two complementary message reads: the AGING queue (oldest unanswered — the
+  // missed-replies pain point) and FRESH arrivals (last 15 min — e.g. the live
+  // concierge intake on /shop, which must surface the moment it lands). One
+  // combined query can't serve both: either LIMIT starves the other end.
+  type MsgRow = { id: string; preview: string; platform: string; age_min: string; customer_id: string };
+  const msgSelect = `
     SELECT JSONExtractString(meta,'id') AS id, JSONExtractString(meta,'preview') AS preview,
            platform, toString(round((now() - ts)/60)) AS age_min, toString(customer_id) AS customer_id
     FROM events WHERE type = 'message_in' AND ts > now() - INTERVAL 2 DAY
       AND JSONExtractString(meta,'id') != ''
       AND JSONExtractString(meta,'id') NOT IN (
         SELECT JSONExtractString(meta,'id') FROM events
-        WHERE type = 'message_answered' AND ts > now() - INTERVAL 3 DAY)
-    ORDER BY ts ASC LIMIT 6`);
+        WHERE type = 'message_answered' AND ts > now() - INTERVAL 3 DAY)`;
+  const [aging, freshRows] = await Promise.all([
+    queryRows<MsgRow>(ch, `${msgSelect} ORDER BY ts ASC LIMIT 6`),
+    queryRows<MsgRow>(ch, `${msgSelect} AND ts > now() - INTERVAL 15 MINUTE ORDER BY ts DESC LIMIT 3`),
+  ]);
+  const unanswered = [...freshRows, ...aging.filter((a) => !freshRows.some((f) => f.id === a.id))];
   const messageCustomerIds = [...new Set(unanswered.map((m) => Number(m.customer_id)).filter(Boolean))];
   const messageCustomers = messageCustomerIds.length
     ? await pg.query<{ id: string; primary_name: string; primary_email: string }>(
@@ -125,17 +134,23 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
       return "Yes — we can combine eligible add-on orders with your ReefnBid win so the corals travel in one box with one shipping fee. I’m checking the order match now.";
     return "Thanks for reaching out. I’ve reviewed your message and will confirm the next step shortly.";
   };
-  for (const m of unanswered) items.push({
-    id: m.id, kind: "message", platform: m.platform as AttentionItem["platform"],
+  const msgItems: AttentionItem[] = unanswered.map((m) => ({
+    id: m.id, kind: "message" as const, platform: m.platform as AttentionItem["platform"],
     headline: `unanswered: “${m.preview}”`, ageMinutes: Number(m.age_min),
     customerName: customerById.get(Number(m.customer_id))?.primary_name,
     customerEmail: customerById.get(Number(m.customer_id))?.primary_email,
     detail: m.preview,
     draft: replyDraft(m.preview),
-  });
+  }));
+  // Fresh arrivals (≤15 min — e.g. a live concierge question) lead the feed so
+  // "it just landed" is visible without scrolling; the aged queue keeps its
+  // oldest-first shape (max 6, as before) underneath.
+  const freshMsgs = msgItems.filter((m) => m.ageMinutes <= 15)
+    .sort((a, b) => a.ageMinutes - b.ageMinutes).slice(0, 3);
+  items.push(...msgItems.filter((m) => m.ageMinutes > 15).slice(0, 6));
 
   items.sort((a, b) => b.ageMinutes - a.ageMinutes);
-  return [{ kind: "attention_feed", items: items.slice(0, 10) }];
+  return [{ kind: "attention_feed", items: [...freshMsgs, ...items].slice(0, 10) }];
 }
 
 // ---------------------------------------------------------------- auction
