@@ -50,7 +50,10 @@ Sub-second analytics behind every component.
   builds a shipment manifest, then **pauses** on a waitpoint until the merchant
   approves the exact batch with one click; on approval it resumes and buys the
   labels one by one, and the approve chip polls the run to show progress
-  ("purchasing 1/N → purchased") to completion.
+  ("purchasing 1/N → purchased") to completion. *Progress transport is
+  deliberately simple polling in this build — the run already publishes its
+  progress to run metadata, so subscribing via Trigger.dev Realtime is the
+  drop-in next step, not a redesign.*
 - **A scheduled task** ticks one minute of reality into both stores every
   minute, so the charts move live.
 

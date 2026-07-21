@@ -11,7 +11,7 @@ const SURFACES = [
   {
     href: "/shop",
     tag: "CUSTOMER CONCIERGE",
-    line: "Order tracking, DOA claims, add-ons for buyers. Preview — opens next.",
+    line: "Ask the store live — questions land in the owner's cockpit. Component answers open next.",
     live: false,
   },
 ];
@@ -70,7 +70,7 @@ export default function Home() {
               </p>
               <p className="mt-1.5 text-[13px] leading-snug text-dim">{s.line}</p>
               <p className="mt-2 font-mono text-[10px] tracking-widest text-mute">
-                {s.live ? "LIVE" : "TOMORROW"}
+                {s.live ? "LIVE" : "PREVIEW"}
               </p>
             </Link>
           ))}

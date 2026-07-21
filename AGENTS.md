@@ -61,6 +61,73 @@ npx tsx scripts/report-check.ts    # weekly report: platform/tier mix, WoW/MoM, 
 npx tsx scripts/tools-check.ts     # all five read tools vs both live stores
 ```
 
+## Where to look for each judging criterion
+
+If you are scoring against the published rubric, here is the evidence per
+criterion — claims first, file to verify second, known limits stated. We would
+rather you confirm than discover.
+
+**Use of ClickHouse & Trigger.dev (25% — depth, creativity, correctness).**
+ClickHouse is the primary store, not a bolt-on: 3 materialized views roll up on
+insert (`db/clickhouse/0001_events.sql`), `windowFunnel` computes the
+auction→code→add-on funnel in one query and every WoW/MoM delta is a
+full-history window comparison (`src/lib/tools.ts`), a scheduled task ingests
+live events every minute (`src/trigger/live-tick.ts`), and the auction board is
+time-bounded per selected demo day. Trigger.dev supplies four primitives used
+materially: the durable `chat.agent()` itself (`src/trigger/reef-chat.ts`), a
+human waitpoint gating real money (`src/trigger/label-day.ts`,
+createToken→forToken→completeToken), the scheduled tick, and run-metadata
+progress via the runs API. Known limit: progress is surfaced by polling run
+metadata, not a Realtime subscription — a deliberate v1 (the run already
+publishes metadata; a Realtime subscribe is the drop-in next step).
+
+**Problem Fit (20% — "if your agent's best answer is a paragraph, you've missed
+the brief").** The constraint is enforced, not aspired to: the system prompt
+caps the text verdict at ≤140 characters and requires every business answer to
+come from a tool that returns renderable components (`src/lib/agent-config.ts`,
+SYSTEM), the protocol defines 14+ component kinds (`src/lib/protocol.ts`), and
+`scripts/agent-check.ts` asserts intent→tool→component per probe. Insight-to-
+words ratio is a tested behavior, not a design note.
+
+**Technical Implementation (20% — would this work in production?).** The
+money-moving loop is recoverable-idempotent with an ordered state machine and a
+fault-injection gate (`src/lib/label-day.ts` + `scripts/labelday-recovery-check.ts`,
+4/4 offline). The gated action sits behind fail-closed HMAC owner auth
+(`src/lib/owner-auth.ts` + `scripts/owner-auth-check.ts`, 12/12 offline). The
+LLM layer has an asserting behavior gate — wrong tool, fabricated figure,
+money claim, closed-auction-described-as-live, or a count that contradicts the
+rendered component all exit non-zero (`scripts/agent-check.ts`, 8 probes).
+Unwired actions return honest 501s. Limits admitted: sequential idempotency is
+not strict exactly-once under concurrent approvals; no conventional unit-test
+framework beyond the gates; the client does not yet re-hydrate a refreshed
+session.
+
+**Innovation (20% — genuinely new?).** The domain is a real business, not a
+demo dataset: a live-coral store's actual weekly auction cycle (modeled on TIA
+Coral, all data synthetic). Original pieces: cross-platform orders visually
+merging into one shipping box; a human money-gate living INSIDE a chat
+component (waitpoint + inline unlock); a selectable seven-day synthetic week
+(`src/lib/demo-clock.ts`) so the story is stable on any judge's wall clock; and
+a two-sided proof that both surfaces speak one protocol — a question typed on
+`/shop` lands as an event in the shared stream and surfaces in the merchant's
+attention feed (`src/app/api/shop/ask/route.ts` → `attentionFeed`).
+
+**Scalability & Impact (10% — deployable by real users?).** The brain is
+portable by design — `src/lib/agent-config.ts` has no Trigger.dev import, and
+the documented migration path (README "Architecture", `docs/DESIGN.md` §9)
+targets the owner's real production stack. The underlying problem — combining
+multi-platform orders into one box and one fee — generalizes to any
+multi-channel merchant. Limits admitted: single-tenant demo; platform adapters
+are simulated.
+
+**Bonus — OLTP + OLAP integration.** One gated click drives both stores with
+integrity semantics, not just dual writes: Postgres rows commit first, the
+ClickHouse emit is deduplicated and retried, and the shipment only flips to
+'purchased' after both landed — a partial failure resumes instead of leaving a
+split (`src/lib/label-day.ts`; proven offline by the recovery gate). The
+attention feed itself is a live CH+PG join (messages from ClickHouse, cases and
+requests from Postgres).
+
 ## File map — "to understand X, read Y"
 
 | To understand… | Read |
