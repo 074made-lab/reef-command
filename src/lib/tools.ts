@@ -10,10 +10,11 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import type { Pool } from "pg";
 import { queryRows } from "./store/clickhouse";
 import type {
-  AttentionItem, ComponentSpec, FunnelStep, LotPrice, Metric, ReportSection,
+  AttentionItem, ComponentSpec, DemoDayId, FunnelStep, LotPrice, Metric, ReportSection,
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
+import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment } from "./demo-clock";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);                 // a Thursday — cycle anchor
@@ -139,20 +140,21 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
 
 // ---------------------------------------------------------------- auction
 
-export async function auctionBoard(ch: ClickHouseClient): Promise<ComponentSpec[]> {
-  const wi = currentWeekIndex();
+export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Promise<ComponentSpec[]> {
+  const now = dayId ? demoAuctionMoment(dayId) : Date.now();
+  const wi = dayId ? DEMO_AUCTION_WEEK_INDEX : currentWeekIndex(now);
   const w = weekWindow(wi);
+  const weekStart = ANCHOR + wi * WEEK_MS;
+  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
+  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
+  const queryEnd = fmt(Math.min(now, closesMs, ANCHOR + (wi + 1) * WEEK_MS));
   const lots = await queryRows<{ lot: string; sku: string; bid: string; n: string; leader: string }>(ch, `
     SELECT JSONExtractString(meta,'lotId') AS lot, sku,
            max(amount_cents) AS bid, count() AS n,
            argMax(JSONExtractString(meta,'bidder'), ts) AS leader
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
-    GROUP BY lot, sku ORDER BY bid DESC`, w);
-  const weekStart = ANCHOR + wi * WEEK_MS;
-  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
-  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
+    GROUP BY lot, sku ORDER BY bid DESC`, { start: w.start, end: queryEnd });
   const closesAt = new Date(closesMs).toISOString();
-  const now = Date.now();
   const state: "upcoming" | "live" | "closed" =
     now < opensAt ? "upcoming" : now >= closesMs ? "closed" : "live";
   const board: LotPrice[] = lots.map((l) => {

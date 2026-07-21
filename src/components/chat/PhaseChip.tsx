@@ -18,18 +18,20 @@ export function PhaseChip() {
   const today = demoDay(dayId);
 
   function selectDay(next: DemoDayId) {
-    setDayId(next);
-    window.dispatchEvent(new CustomEvent(DEMO_DAY_EVENT, { detail: next }));
+    const accepted = window.dispatchEvent(
+      new CustomEvent(DEMO_DAY_EVENT, { detail: next, cancelable: true }),
+    );
+    if (accepted) setDayId(next);
   }
 
   return (
     <div className="border-t border-line/70 bg-panel/55">
       <div className="mx-auto max-w-4xl px-4 py-2">
         <div className="mb-1.5 flex items-center justify-between gap-3 font-mono uppercase">
-          <span className="text-[10px] tracking-[0.18em] text-mute">
+          <span className="text-[12px] tracking-[0.15em] text-mute">
             Synthetic demo week · choose today
           </span>
-          <span className="flex items-center gap-1.5 text-[11px] tracking-[0.08em]">
+          <span className="flex items-center gap-1.5 text-[12px] tracking-[0.08em]">
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-tealhi" />
             <span className="text-mute">TODAY IS</span>
             <span className="text-tealhi">{today.weekday}</span>
@@ -54,10 +56,10 @@ export function PhaseChip() {
                       : "border-line/70 bg-abyss/35 hover:border-teal/40 hover:bg-raise"
                   }`}
                 >
-                  <span className={`block font-mono text-[10px] tracking-[0.18em] ${active ? "text-tealhi" : "text-mute"}`}>
+                  <span className={`block font-mono text-[12px] tracking-[0.16em] ${active ? "text-tealhi" : "text-mute"}`}>
                     {day.short}
                   </span>
-                  <span className={`mt-0.5 block truncate text-[11px] ${active ? "text-ink" : "text-dim"}`}>
+                  <span className={`mt-0.5 block truncate text-[12px] ${active ? "text-ink" : "text-dim"}`}>
                     {day.label}
                   </span>
                 </button>

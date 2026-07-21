@@ -66,12 +66,13 @@ async function revenue(): Promise<ChatResponse> {
   };
 }
 
-async function auction(): Promise<ChatResponse> {
-  const specs = await auctionBoard(ch);
+async function auction(message: string): Promise<ChatResponse> {
+  const dayId = parseDemoDayContext(message);
+  const specs = await auctionBoard(ch, dayId);
   const board = firstOf(specs, "auction_board");
   const lots = board?.lots ?? [];
   const top = lots[0];
-  const closed = board ? Date.parse(board.closesAt) <= Date.now() : false;
+  const closed = board?.state === "closed";
   return {
     verdict: top
       ? closed
@@ -137,7 +138,7 @@ export async function routeChat(message: string): Promise<ChatResponse> {
     if (/attention|morning|needs? my|need me/.test(q)) return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
       return await report();
-    if (/auction|bids?|board/.test(q)) return await auction();
+    if (/auction|bids?|board/.test(q)) return await auction(message);
     if (/merge|combine|orders?/.test(q)) return await merges();
     if (/revenue|business|sales|how are we|how'?s (it|the week)/.test(q))
       return await revenue();

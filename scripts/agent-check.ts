@@ -96,8 +96,8 @@ const PROBES: Probe[] = [
     check: (c) => (called(c, "weeklyReport") && has(c, "report") ? null : "wrong tool/component"),
   },
   {
-    q: "How's the auction going right now?",
-    expect: "auctionBoard → phase-truthful verdict (R2-M5)",
+    q: "[SYNTHETIC DEMO TODAY: THURSDAY — AUCTION OPENS] How's the auction going right now?",
+    expect: "auctionBoard → selected Thursday live board + phase-truthful verdict (R2-M5)",
     check: (c) => {
       if (!called(c, "auctionBoard") || !has(c, "auction_board")) return "wrong tool/component";
       const board = c.components.find((s) => s.kind === "auction_board");
@@ -107,6 +107,9 @@ const PROBES: Probe[] = [
         if (/heading into close|closes in|still live|is live|going strong/.test(t))
           return `closed auction described as live: "${c.text.slice(0, 80)}"`;
       }
+      if (board.state !== "live") return `selected Thursday returned ${board.state}, not live`;
+      if (/\b(?:board|auction)\b[^.]{0,24}\bclosed\b|\bclosed\b[^.]{0,24}\b(?:board|auction)\b/.test(lower(c)))
+        return `live Thursday described as closed: "${c.text.slice(0, 80)}"`;
       return null;
     },
   },

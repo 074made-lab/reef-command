@@ -194,6 +194,13 @@ export function MerchantChat() {
     const onDay = (event: Event) => {
       const next = (event as CustomEvent<DemoDayId>).detail;
       if (!DEMO_DAYS.some((day) => day.id === next)) return;
+      // Keep the header and chat on one accepted day. A rapid click while the
+      // current turn is in flight must not update Today without sending the
+      // matching hidden context and dayBrief request.
+      if (waiting || streaming) {
+        event.preventDefault();
+        return;
+      }
       demoDayRef.current = next;
       setDemoDayId(next);
       const day = demoDay(next);
@@ -212,7 +219,7 @@ export function MerchantChat() {
       window.removeEventListener(DEMO_DAY_EVENT, onDay);
       window.removeEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
     };
-  }, [submit]);
+  }, [streaming, submit, waiting]);
 
   const currentDay = demoDay(demoDayId);
   const suggestions = [

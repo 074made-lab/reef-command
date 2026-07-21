@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import {
   DEMO_DAYS,
+  DEMO_AUCTION_WEEK_INDEX,
+  demoAuctionMoment,
   dayBriefSpec,
   parseDemoDayContext,
   stripDemoDayContext,
@@ -38,6 +40,11 @@ for (const day of DEMO_DAYS) {
   const contextual = withDemoDayContext(day.id, "What matters now?");
   assert.equal(parseDemoDayContext(contextual), day.id);
   assert.equal(stripDemoDayContext(contextual), "What matters now?");
+  assert.equal(
+    Math.floor((demoAuctionMoment(day.id) - Date.UTC(2026, 0, 1)) / (7 * 24 * 60 * 60_000)),
+    DEMO_AUCTION_WEEK_INDEX,
+    `${day.weekday} must stay inside the stable auction cycle`,
+  );
   console.log(`✓ ${day.short} ${day.weekday.padEnd(9)} → ${day.label}`);
 }
 

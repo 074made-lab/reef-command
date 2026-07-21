@@ -101,6 +101,35 @@ export const DEFAULT_DEMO_DAY: DemoDayId = "monday";
 export const DEMO_DAY_EVENT = "reef:demo-day";
 export const DEMO_CHAT_PROMPT_EVENT = "reef:chat-prompt";
 
+/**
+ * Stable ClickHouse cycle used by the selectable recording week. W28 has the
+ * complete deterministic auction arc in the seeded world: THU open through
+ * SAT close, followed by SUN-WED operations. Keeping this explicit prevents a
+ * judge's wall clock from silently swapping the demo to a different cycle.
+ */
+export const DEMO_AUCTION_WEEK_INDEX = 28;
+
+const DEMO_WEEK_ANCHOR = Date.UTC(2026, 0, 1);
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+const CYCLE_DAY: Record<DemoDayId, number> = {
+  thursday: 0,
+  friday: 1,
+  saturday: 2,
+  sunday: 3,
+  monday: 4,
+  tuesday: 5,
+  wednesday: 6,
+};
+
+/** Synthetic timestamp for a selected day inside the stable demo cycle. */
+export function demoAuctionMoment(dayId: DemoDayId): number {
+  const day = demoDay(dayId);
+  const [hour, minute] = day.time.split(":").map(Number);
+  return DEMO_WEEK_ANCHOR + DEMO_AUCTION_WEEK_INDEX * WEEK_MS +
+    CYCLE_DAY[dayId] * DAY_MS + hour * 60 * 60_000 + minute * 60_000;
+}
+
 export function demoDay(dayId: DemoDayId): DemoDay {
   return DEMO_DAYS.find((day) => day.id === dayId) ?? DEMO_DAYS[0];
 }

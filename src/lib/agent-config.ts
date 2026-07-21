@@ -156,9 +156,11 @@ export const reefTools = {
   }),
   auctionBoard: tool({
     description:
-      "Call this for the auction — 'how's the auction going', 'bids', 'the board', 'what's leading'. Returns the current cycle's lots with live/closed bid totals and leaders.",
-    inputSchema: z.object({}),
-    execute: async () => auctionBoard(ch()),
+      "Call this for the auction — 'how's the auction going', 'bids', 'the board', 'what's leading'. Pass the weekday from the authoritative [SYNTHETIC DEMO TODAY: ...] marker. Returns the selected demo day's time-bounded board with truthful live/closed bid totals and leaders.",
+    inputSchema: z.object({
+      day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+    }),
+    execute: async ({ day }) => auctionBoard(ch(), day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
   scanMerges: tool({
@@ -192,6 +194,7 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - After the tool, add ONE short sentence (≤140 chars) as your verdict — interpret or point, don't re-list the numbers the components already show.
 - Pick the tool by intent (each tool's description says when to use it). You may call more than one if the question genuinely spans them.
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the recording. Never replace it with the real wall-clock weekday.
+- When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 
 HARD RULES (never break):
