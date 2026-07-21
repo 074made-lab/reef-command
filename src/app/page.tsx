@@ -11,7 +11,7 @@ const SURFACES = [
   {
     href: "/shop",
     tag: "CUSTOMER CONCIERGE",
-    line: "Order tracking, DOA claims, add-ons for buyers. Opens tomorrow.",
+    line: "Order tracking, DOA claims, add-ons for buyers. Preview — opens next.",
     live: false,
   },
 ];
