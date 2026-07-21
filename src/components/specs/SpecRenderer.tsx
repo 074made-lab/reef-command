@@ -12,6 +12,7 @@ import { CycleTimeline } from "./CycleTimeline";
 import { DayBriefCard } from "./DayBriefCard";
 import { FunnelChart } from "./FunnelChart";
 import { LabelManifest } from "./LabelManifest";
+import { MergeBatch } from "./MergeBatch";
 import { MergeCard } from "./MergeCard";
 import { MetricRow } from "./MetricRow";
 import { OrderCard } from "./OrderCard";
@@ -51,6 +52,8 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <AddonOrderBoard spec={spec} />;
     case "auction_announcement":
       return <AuctionAnnouncement spec={spec} />;
+    case "merge_batch":
+      return <MergeBatch spec={spec} />;
     case "merge_card":
       return <MergeCard spec={spec} />;
     case "label_manifest":

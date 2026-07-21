@@ -195,10 +195,9 @@ function weekScript(weekIndex: number, seed: number): Script {
   }
 
   // --- add-on wave (SUN 10:00 – MON 20:00): cross-platform orders with codes
-  const addonCustomers: SynthCustomer[] = [];
+  const addonUnitsByCustomer = new Map<number, number>();
   for (const cust of winnerCustomers) {
     if (rng() >= 0.55) continue;
-    addonCustomers.push(cust);
     const ms = day(3, 10) + Math.floor(rng() * 34 * 60) * MIN;
     const platform = rng() < 0.7 ? "web" : "marketplace";
     const n = 1 + Math.floor(rng() * 3);
@@ -209,6 +208,10 @@ function weekScript(weekIndex: number, seed: number): Script {
     });
     const code = `RC${weekIndex}-${cust.id}`;
     const orderId = `${platform === "web" ? "WEB" : "MKT"}-${weekIndex}-${++seq}`;
+    addonUnitsByCustomer.set(
+      cust.id,
+      (addonUnitsByCustomer.get(cust.id) ?? 0) + items.reduce((sum, item) => sum + item.qty, 0),
+    );
     orderEvents(ms, orderId, platform, cust, items, { discountCode: code, addon: true })
       .forEach((e) => at(script, ms, e));
     at(script, ms, {
@@ -251,15 +254,15 @@ function weekScript(weekIndex: number, seed: number): Script {
   let ship = 0;
   for (const [custId, ws] of shippers) {
     const cust = CUSTOMERS[custId - 1];
-    const addon = addonCustomers.find((c) => c.id === custId);
-    const items = ws.length + (addon ? 2 : 0);
+    const addonUnits = addonUnitsByCustomer.get(custId) ?? 0;
+    const items = ws.length + addonUnits;
     const wLb = weightLb(items);
     const ms = day(4, 18, 10) + ship * MIN;
     const shipmentId = `SHP-${weekIndex}-${++ship}`;
     at(script, ms, {
       ts: new Date(ms).toISOString(), type: "label_purchased", platform: "system",
       customerId: custId, amountCents: 3900 + Math.round(wLb * 160),
-      meta: { shipmentId, items, weightLb: wLb, destination: destOf(cust).city, combined: !!addon },
+      meta: { shipmentId, items, weightLb: wLb, destination: destOf(cust).city, combined: addonUnits > 0 },
     });
   }
   // a cancel/address change after purchase sometimes voids a label

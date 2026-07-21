@@ -17,13 +17,17 @@ type MergeSpec = Extract<ComponentSpec, { kind: "merge_card" }>;
 
 gsap.registerPlugin(useGSAP);
 
-function SourceOrder({ o }: { o: OrderSummary }) {
+function SourceOrder({ o, anchor }: { o: OrderSummary; anchor: boolean }) {
+  const coralUnits = o.items.reduce((sum, item) => sum + item.qty, 0);
   return (
     <div className="rounded-sm border border-line bg-raise/50 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <PlatformChip p={o.platform} />
           <span className="font-mono text-[12px] text-dim">{o.orderId}</span>
+          <Chip className={anchor ? "border-teal/40 text-tealhi" : "border-coral/40 text-coralhi"}>
+            {anchor ? "ANCHOR" : "ADD-ON"}
+          </Chip>
         </span>
         <span className="font-mono text-sm font-semibold text-ink tabular-nums">
           {usd(o.totalCents)}
@@ -34,6 +38,9 @@ function SourceOrder({ o }: { o: OrderSummary }) {
           → {o.destination}
         </p>
       ) : null}
+      <p className="mt-1 font-mono text-[11px] text-mute">
+        {coralUnits} {coralUnits === 1 ? "coral" : "corals"}
+      </p>
     </div>
   );
 }
@@ -90,6 +97,10 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
       return {
         platform,
         count: platformOrders.length,
+        coralUnits: platformOrders.reduce(
+          (sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+          0,
+        ),
         totalCents: platformOrders.reduce((sum, order) => sum + order.totalCents, 0),
       };
     },
@@ -138,7 +149,7 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
           <PlatformChip key={p} p={p} />
         ))}
         <span className="ml-auto font-mono text-[13px] text-mute">
-          {orders.length} orders · {orders.length} shipping fees → 1
+          ReefnBid anchor + {spec.addonOrderCount} {spec.addonOrderCount === 1 ? "add-on" : "add-ons"} · {spec.totalCoralUnits} corals
         </span>
       </div>
 
@@ -154,7 +165,7 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
                 </span>
               </div>
               <p className="mt-1 font-mono text-[12px] text-mute">
-                {current.count} {current.count === 1 ? "order" : "orders"} entering this current
+                {current.count} {current.count === 1 ? "order" : "orders"} · {current.coralUnits} {current.coralUnits === 1 ? "coral" : "corals"}
               </p>
             </div>
           ))}
@@ -186,7 +197,7 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
             <span className="text-mute"> · {combined.shipWeek}</span>
           </p>
           <p className="mt-1 font-mono text-[12px] text-mute">
-            one current · one box · one shipping fee
+            {spec.totalCoralUnits} corals · one combined box · one shipment record
           </p>
         </div>
       </div>
@@ -198,7 +209,7 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
         </summary>
         <div className="grid gap-2 border-t border-line/60 p-2 md:grid-cols-2">
           {orders.map((o) => (
-            <SourceOrder key={o.orderId} o={o} />
+            <SourceOrder key={o.orderId} o={o} anchor={o.orderId === spec.anchorOrderId} />
           ))}
         </div>
       </details>

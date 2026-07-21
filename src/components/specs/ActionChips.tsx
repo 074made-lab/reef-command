@@ -88,12 +88,27 @@ function ChipButton({ chip }: { chip: ActionChip }) {
     setState("busy");
     setNote("");
     try {
-      const res = await fetch("/api/actions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
+      const request = () => fetch("/api/actions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
+        });
+      let res = await request();
+      let data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
+      if (res.status === 202 && chip.taskId.startsWith("merge-")) {
+        setState("running");
+        setNote(data.note ?? "merge staged — finalizing audit event…");
+        for (let attempt = 0; attempt < 30 && res.status === 202; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          res = await request();
+          data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
+        }
+        if (res.status === 202) {
+          setState("stalled");
+          setNote("merge is staged; audit delivery is still finishing");
+          return;
+        }
+      }
       if (!res.ok) {
         if (isApproval && res.status === 401) {           // session lost/expired
           setState("idle");

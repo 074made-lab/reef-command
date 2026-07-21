@@ -265,8 +265,9 @@ function AgentAnswer({ message }: { message: ReefMessage }) {
 
   // Feature the first merge candidate; tuck the rest behind a compact
   // affordance so the top of the answer stays on screen.
+  const mergeBatches = specs.filter((s) => s.kind === "merge_batch");
   const merges = specs.filter((s) => s.kind === "merge_card");
-  const others = specs.filter((s) => s.kind !== "merge_card");
+  const others = specs.filter((s) => s.kind !== "merge_card" && s.kind !== "merge_batch");
   const restMerges = merges.slice(1);
 
   if (!verdict && specs.length === 0) return <div ref={answerRef} />;
@@ -291,6 +292,7 @@ function AgentAnswer({ message }: { message: ReefMessage }) {
         </div>
       ) : null}
 
+      {mergeBatches.map((spec, i) => <SpecRenderer key={`mb${i}`} spec={spec} />)}
       {merges.length ? <SpecRenderer spec={merges[0]} /> : null}
       {restMerges.length ? (
         <div className="space-y-3">

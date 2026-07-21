@@ -1,5 +1,5 @@
 import type { ComponentSpec } from "@/lib/protocol";
-import { Chip, PlatformChip, SpecCard, StatusChip } from "./bits";
+import { Chip, PlatformChip, SpecCard } from "./bits";
 import { num, shortTime, usd } from "./format";
 
 type AddonBoardSpec = Extract<ComponentSpec, { kind: "addon_order_board" }>;
@@ -7,9 +7,9 @@ type AddonBoardSpec = Extract<ComponentSpec, { kind: "addon_order_board" }>;
 export function AddonOrderBoard({ spec }: { spec: AddonBoardSpec }) {
   const metrics = [
     ["ADD-ON ORDERS", num(spec.totalOrders)],
-    ["CORAL UNITS", num(spec.coralUnits)],
+    ["ADD-ON CORALS", num(spec.coralUnits)],
     ["ADD-ON VALUE", usd(spec.totalCents)],
-    ["COMBINE READY", num(spec.combineReady)],
+    ["MERGE READY", num(spec.combineReady)],
   ];
   return (
     <SpecCard
@@ -38,16 +38,17 @@ export function AddonOrderBoard({ spec }: { spec: AddonBoardSpec }) {
 
       {spec.orders.length ? (
         <div className="mt-4 overflow-x-auto rounded-lg border border-line/70">
-          <table className="w-full min-w-[720px] border-collapse text-left text-[12px]">
+          <table className="w-full min-w-[920px] border-collapse text-left text-[12px]">
             <thead className="bg-raise/65 font-mono text-[10px] tracking-[0.08em] text-mute">
               <tr>
-                <th className="px-3 py-2 font-medium">ORDER</th>
+                <th className="px-3 py-2 font-medium">ADD-ON ORDER</th>
                 <th className="px-3 py-2 font-medium">CUSTOMER</th>
                 <th className="px-3 py-2 font-medium">CHANNEL</th>
-                <th className="px-3 py-2 text-right font-medium">CORALS</th>
-                <th className="px-3 py-2 text-right font-medium">VALUE</th>
-                <th className="px-3 py-2 font-medium">MERGE</th>
-                <th className="px-3 py-2 font-medium">STATUS</th>
+                <th className="px-3 py-2 text-right font-medium">ADD-ON CORALS</th>
+                <th className="px-3 py-2 font-medium">REEFNBID ANCHOR</th>
+                <th className="px-3 py-2 text-right font-medium">BOX CORALS</th>
+                <th className="px-3 py-2 text-right font-medium">ADD-ON VALUE</th>
+                <th className="px-3 py-2 font-medium">MERGE STATE</th>
               </tr>
             </thead>
             <tbody>
@@ -60,13 +61,27 @@ export function AddonOrderBoard({ spec }: { spec: AddonBoardSpec }) {
                   <td className="px-3 py-2.5 text-dim">{order.customer}</td>
                   <td className="px-3 py-2.5"><PlatformChip p={order.platform} /></td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-ink">{order.coralUnits}</td>
+                  <td className="px-3 py-2.5">
+                    <p className="font-mono text-[11px] text-ink">{order.auctionOrderId}</p>
+                    <p className="mt-0.5 font-mono text-[10px] text-mute">
+                      {order.auctionCoralUnits} auction {order.auctionCoralUnits === 1 ? "coral" : "corals"}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-tealhi">
+                    {order.combinedCoralUnits}
+                  </td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-tealhi">{usd(order.totalCents)}</td>
                   <td className="px-3 py-2.5">
-                    <Chip className={order.combineReady ? "border-coral/45 text-coralhi" : "border-line text-mute"}>
-                      {order.combineReady ? "READY" : "ADD-ON ONLY"}
+                    <Chip className={
+                      order.mergeState === "ready"
+                        ? "border-coral/45 text-coralhi"
+                        : order.mergeState === "merged"
+                          ? "border-ok/45 text-ok"
+                          : "border-warn/45 text-warn"
+                    }>
+                      {order.mergeState === "ready" ? "READY" : order.mergeState === "merged" ? "MERGED" : "REVIEW"}
                     </Chip>
                   </td>
-                  <td className="px-3 py-2.5"><StatusChip s={order.status} /></td>
                 </tr>
               ))}
             </tbody>

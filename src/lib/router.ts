@@ -132,8 +132,8 @@ async function merges(): Promise<ChatResponse> {
   return {
     verdict:
       n === 0
-        ? "No cross-platform merge candidates right now — every open order is single-platform."
-        : `${plural(n, "cross-platform merge candidate")} found — one box, one shipping fee each.`,
+        ? "No ReefnBid shipments have winner-code Shopify or eBay add-ons waiting to merge."
+        : `${plural(n, "ReefnBid-anchored shipment")} can merge now. Add-on and coral totals are reconciled below.`,
     components: specs,
   };
 }

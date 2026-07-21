@@ -111,6 +111,11 @@ export function summarize(specs: ComponentSpec[]): string {
           `add-on order board: ${s.totalOrders} order(s), ${s.coralUnits} coral unit(s), ${s.combineReady} combine-ready`,
         );
         break;
+      case "merge_batch":
+        parts.push(
+          `merge run: ${s.candidates} ReefnBid-anchored shipment(s), ${s.addonOrders} add-on order(s), ${s.coralUnits} total coral unit(s); Merge all requires a human click`,
+        );
+        break;
       case "auction_announcement":
         parts.push(
           `next auction ${s.dateRange}, closes ${s.closeTime}; ${s.emailRecipients} email recipient(s), ${s.smsRecipients} SMS recipient(s); simulated send requires a human click`,
@@ -118,7 +123,7 @@ export function summarize(specs: ComponentSpec[]): string {
         break;
       case "merge_card":
         parts.push(
-          `merge candidate ${s.customer.displayName}: ${s.orders.length} orders on ${s.orders.map((o) => o.platform).join("+")} → one box, one shipping fee`,
+          `merge candidate ${s.customer.displayName}: ReefnBid anchor ${s.anchorOrderId} + ${s.addonOrderCount} add-on order(s) = ${s.totalCoralUnits} coral unit(s) in one combined box`,
         );
         break;
       case "report": {
@@ -157,7 +162,7 @@ export const reefTools = {
   }),
   addonOrderBoard: tool({
     description:
-      "Call this for Sunday's 'Watch add-on orders' monitor or when the owner asks for the add-on order board, add-on volume, coral units, channels, value, or combine-ready status. It returns a live synthetic Postgres board, not the general revenue pulse.",
+      "Call only this tool for Sunday's 'Watch add-on orders' monitor or when the owner asks for the add-on order board, add-on volume, coral units, channels, value, or anchor matches. It returns a read-only live synthetic Postgres board with no merge action; do not also call scanMerges unless the owner starts Step 2.",
     inputSchema: z.object({}),
     execute: async () => addonOrderBoard(pg()),
     toModelOutput: (output) => asText(summarize(output)),
@@ -217,7 +222,7 @@ export const reefTools = {
   }),
   scanMerges: tool({
     description:
-      "Call this to find cross-platform orders that should combine into one shipment — 'any orders to merge', 'combine orders', 'one box'. Returns merge cards where the same customer has unshipped orders on 2+ platforms.",
+      "Call this for Sunday's Step 2 'Combine eligible orders', 'Merge all', or an explicit request to merge. Do not call it for the Step 1 add-on monitor. It returns ReefnBid anchors with winner-code Shopify/eBay add-ons, a reconciled batch summary, Merge all, and one card per eligible shipment.",
     inputSchema: z.object({}),
     execute: async () => mergeScan(pg()),
     toModelOutput: (output) => asText(summarize(output)),
@@ -249,7 +254,7 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
 - When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
-- Sunday's add-on monitor calls addonOrderBoard, never revenuePulse. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday listing questions call listingPlan. Wednesday/Friday promotion questions call promotionPlan with the marker's weekday.
+- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday's Step 2 combine task calls ONLY scanMerges: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile with the add-on board, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday listing questions call listingPlan. Wednesday/Friday promotion questions call promotionPlan with the marker's weekday.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 - A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
 - A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"

@@ -230,7 +230,10 @@ export type AddonOrderRow = {
   totalCents: number;
   orderedAt: string;
   status: OrderSummary["status"];
-  combineReady: boolean;
+  auctionOrderId: string;
+  auctionCoralUnits: number;
+  combinedCoralUnits: number;
+  mergeState: "ready" | "merged" | "review";
 };
 
 // ---------- actions ----------
@@ -265,11 +268,15 @@ export type ComponentSpec =
   | { kind: "addon_order_board"; windowLabel: string; totalOrders: number;
       coralUnits: number; totalCents: number; combineReady: number;
       platformCounts: Partial<Record<Platform, number>>; orders: AddonOrderRow[] }
+  | { kind: "merge_batch"; weekLabel: string; candidates: number;
+      sourceOrders: number; addonOrders: number; coralUnits: number;
+      totalCents: number; actions: ActionChip[] }
   | { kind: "auction_announcement"; campaignId: string; dateRange: string;
       closeTime: string; emailRecipients: number; smsRecipients: number;
       emailPreview: MessagePreview; smsPreview: MessagePreview; actions: ActionChip[] }
   | { kind: "merge_card"; orders: OrderSummary[]; customer: CustomerRef;
       combined: OrderSummary; confidence: "high" | "low";
+      anchorOrderId: string; addonOrderCount: number; totalCoralUnits: number;
       actions?: ActionChip[] }          // low confidence ⇒ gated merge chip
   | { kind: "label_manifest"; weekLabel: string; shipments: ShipmentLine[];
       productLabels: number; weatherFlags: WeatherFlag[];

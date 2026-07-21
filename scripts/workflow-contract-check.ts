@@ -29,7 +29,10 @@ assert.match(wednesday.priorities[1].prompt ?? "", /email.*SMS.*Thursday/i);
 assert.equal(friday.priorities[1].label, "Review last-call ads");
 assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
-assert.match(sunday.priorities[0].prompt ?? "", /add-on orders board.*coral units.*combine-ready/i);
+assert.match(sunday.priorities[0].prompt ?? "", /only the Sunday add-on orders board.*Shopify or eBay add-on.*ReefnBid anchor/i);
+assert.match(sunday.priorities[0].prompt ?? "", /Do not open merge controls yet/i);
+assert.equal(sunday.priorities[1].label, "Combine eligible orders");
+assert.match(sunday.priorities[1].prompt ?? "", /ReefnBid-anchored shipment.*coral totals.*Merge all/i);
 assert.equal(sunday.priorities[2].label, "Announce next auction");
 assert.match(sunday.priorities[2].prompt ?? "", /Thursday through Saturday.*8 PM ET/i);
 assert.match(sunday.priorities[2].prompt ?? "", /email and SMS recipient counts.*drafts.*send button/i);
@@ -113,6 +116,10 @@ assert.match(merchantSource, /CHAT_RESPONSE_TIMEOUT_MS = 30_000/,
 assert.match(merchantSource, /setRequestFailure\([\s\S]*Trigger\.dev worker is running/,
   "a timed-out chat request must explain the local recovery step");
 
+const actionChipSource = readFileSync(new URL("../src/components/specs/ActionChips.tsx", import.meta.url), "utf8");
+assert.match(actionChipSource, /res\.status === 202[\s\S]*chip\.taskId\.startsWith\("merge-"\)[\s\S]*attempt < 30/,
+  "a concurrent merge response must poll its durable outbox instead of disabling the action as done");
+
 const phaseSource = readFileSync(new URL("../src/components/chat/PhaseChip.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(phaseSource, /block truncate text-\[13px\]/,
   "demo-day labels must wrap instead of rendering ellipses");
@@ -124,8 +131,10 @@ assert.match(agentSource, /structured_component_required=true[\s\S]*Call the mat
   "routine retries must require a fresh structured tool call");
 assert.match(agentSource, /Tuesday listing questions call listingPlan/,
   "Tuesday listing routines must have a structured review tool");
-assert.match(agentSource, /Sunday's add-on monitor calls addonOrderBoard, never revenuePulse/,
+assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
+assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
+  "Sunday's merge task must use the ReefnBid anchor/add-on contract");
 assert.match(agentSource, /Sunday's next-auction task calls auctionAnnouncement/,
   "Sunday's announcement must open drafts, counts, and the gated send control");
 
@@ -146,18 +155,60 @@ assert.doesNotMatch(routerSource, /components: \[\.\.\.feed, \.\.\.pulse\]/,
 const rendererSource = readFileSync(new URL("../src/components/specs/SpecRenderer.tsx", import.meta.url), "utf8");
 assert.match(rendererSource, /case "addon_order_board"/,
   "the add-on monitor must render a dedicated board");
+assert.match(rendererSource, /case "merge_batch"/,
+  "the merge routine must render its batch summary and Merge all control");
 assert.match(rendererSource, /case "auction_announcement"/,
   "the next-auction package must render both drafts and its action");
 
 const actionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
 assert.match(actionRouteSource, /send-demo-auction-announcement/,
   "the announcement approval must have a wired action");
+assert.match(actionRouteSource, /merge-all-orders/,
+  "the combined-order routine must wire Merge all");
+assert.match(actionRouteSource, /UPDATE orders SET shipment_id/,
+  "merge actions must persist the source-order to shipment relationship");
+assert.match(actionRouteSource, /pg_advisory_xact_lock/,
+  "duplicate merge clicks must serialize on a durable merge key");
+assert.match(actionRouteSource, /pending_event[\s\S]*emitting[\s\S]*completed/,
+  "merge event delivery must use a retryable Postgres outbox lifecycle");
+assert.match(actionRouteSource, /restorePersistedMergeBatch/,
+  "a committed merge outbox must retry without reconstructing live eligibility");
+assert.match(actionRouteSource, /taskId === "merge-orders" && groups\.length !== 1/,
+  "an individual merge retry must remain bound to exactly one group");
+assert.match(actionRouteSource, /status: "in-progress"[\s\S]*status: 202/,
+  "a simultaneous retry must return an idempotent in-progress response");
+assert.match(actionRouteSource, /UPDATE action_log SET outcome = 'ok'[\s\S]*payload->'mergeCodes'/,
+  "the audit row must move from pending_event to ok after delivery completes");
+assert.match(actionRouteSource, /decision === "update-planned"[\s\S]*status = 'planned'/,
+  "only planned shipment rows may be changed by a merge");
+assert.match(actionRouteSource, /shipmentTargetDecision/,
+  "purchased and held shipments must pass the immutable target guard");
 assert.match(actionRouteSource, /simulated: true[\s\S]*no external messages sent/,
   "the demo send must remain synthetic and state that boundary");
 
+const toolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
+assert.match(toolSource, /addon\.discount_code = concat\('RC', \$3::int, '-', addon\.customer_id\)/,
+  "the add-on board and merge run must share the exact winner-code pairing rule");
+assert.match(toolSource, /kind: "merge_batch"[\s\S]*label: "Merge all"/,
+  "the merge batch must expose one explicit Merge all action");
+assert.match(toolSource, /groups: plans\.map/,
+  "Merge all must bind the click to every exact group rendered on the board");
+
+const mergeMigrationSource = readFileSync(new URL("../db/postgres/0002_merge_runs.sql", import.meta.url), "utf8");
+assert.match(mergeMigrationSource, /merge_code\s+TEXT PRIMARY KEY/,
+  "merge runs must have one durable idempotency key");
+assert.match(mergeMigrationSource, /pending_event','emitting','completed/,
+  "the durable merge outbox must expose every delivery state");
+
+const generatorSource = readFileSync(new URL("../src/lib/synth/generator.ts", import.meta.url), "utf8");
+assert.match(generatorSource, /addonUnitsByCustomer/,
+  "shipment fixtures must use actual add-on coral units");
+assert.doesNotMatch(generatorSource, /addon \? 2 : 0/,
+  "shipment fixtures must never hardcode two add-on units");
+
 console.log("✓ Monday prepares shipping documents; exception routing opens attention, not a manifest");
 console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");
-console.log("✓ Sunday opens a live add-on board and a gated two-channel announcement package");
+console.log("✓ Sunday reconciles ReefnBid anchors, add-on totals, Merge all, and the announcement package");
 console.log("✓ Wednesday and Friday promotion work stays review-only");
 console.log("✓ DOA approval closes 3 replacements into tomorrow's updated shipment");
 console.log("✓ Customer reply remains a draft and is never auto-sent");

@@ -10,7 +10,8 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import type { Pool } from "pg";
 import { queryRows } from "./store/clickhouse";
 import type {
-  AttentionItem, ComponentSpec, DemoDayId, FunnelStep, LotPrice, Metric, ReportSection,
+  AddonOrderRow, AttentionItem, ComponentSpec, CustomerRef, DemoDayId, FunnelStep,
+  LotPrice, Metric, OrderLine, OrderSummary, ReportSection,
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
@@ -252,6 +253,151 @@ type AnnouncementRecipient = {
 
 type Queryable = Pick<Pool, "query">;
 
+type AddonPairRow = {
+  customer_id: string;
+  customer: string;
+  tier: 1 | 2 | 3 | 4;
+  anchor_id: string;
+  anchor_total_cents: string;
+  anchor_destination: string | null;
+  anchor_status: OrderSummary["status"];
+  anchor_units: number;
+  anchor_items: OrderLine[];
+  anchor_shipment_id: string | null;
+  addon_id: string;
+  addon_platform: "web" | "marketplace";
+  addon_total_cents: string;
+  addon_destination: string | null;
+  addon_status: OrderSummary["status"];
+  addon_units: number;
+  addon_items: OrderLine[];
+  addon_ordered_at: Date;
+  addon_shipment_id: string | null;
+};
+
+export type AddonMergePlan = {
+  weekIndex: number;
+  customer: CustomerRef;
+  anchor: OrderSummary;
+  addons: Array<OrderSummary & { orderedAt: string }>;
+  totalCoralUnits: number;
+  totalCents: number;
+  mergeState: "ready" | "merged" | "review";
+};
+
+const normalizeItems = (items: OrderLine[] | null | undefined): OrderLine[] =>
+  (items ?? []).map((item) => ({
+    ...item,
+    qty: Number(item.qty),
+    priceCents: Number(item.priceCents),
+  }));
+
+/**
+ * Current-cycle ReefnBid anchors and the Shopify/eBay orders that redeemed
+ * their winner code. This is the single data contract used by both Sunday
+ * views and both merge actions, so board and action totals cannot drift.
+ */
+export async function currentAddonMergePlans(db: Queryable): Promise<AddonMergePlan[]> {
+  const weekIndex = currentWeekIndex();
+  const window = weekWindow(weekIndex);
+  const params = [
+    window.start.replace(" ", "T") + "Z",
+    window.end.replace(" ", "T") + "Z",
+    weekIndex,
+  ];
+  const result = await db.query<AddonPairRow>(`
+    WITH cycle_orders AS (
+      SELECT o.*,
+        coalesce((SELECT sum(oi.qty) FROM order_items oi WHERE oi.order_id = o.id), 0)::int AS coral_units,
+        coalesce((SELECT json_agg(json_build_object(
+          'sku', oi.sku, 'name', oi.name, 'category', oi.category,
+          'qty', oi.qty, 'priceCents', oi.price_cents) ORDER BY oi.id)
+          FROM order_items oi WHERE oi.order_id = o.id), '[]'::json) AS items
+      FROM orders o
+      WHERE o.ordered_at >= $1::timestamptz AND o.ordered_at < $2::timestamptz
+        AND o.status IN ('pending','paid','labeled')
+    ), anchors AS (
+      SELECT DISTINCT ON (customer_id) * FROM cycle_orders
+      WHERE platform = 'auction'
+      ORDER BY customer_id, ordered_at DESC
+    )
+    SELECT c.id AS customer_id, c.primary_name AS customer, c.tier,
+      anchor.external_id AS anchor_id, anchor.total_cents AS anchor_total_cents,
+      anchor.destination_city AS anchor_destination, anchor.status AS anchor_status,
+      anchor.coral_units AS anchor_units, anchor.items AS anchor_items,
+      anchor.shipment_id AS anchor_shipment_id,
+      addon.external_id AS addon_id, addon.platform AS addon_platform,
+      addon.total_cents AS addon_total_cents, addon.destination_city AS addon_destination,
+      addon.status AS addon_status, addon.coral_units AS addon_units,
+      addon.items AS addon_items, addon.ordered_at AS addon_ordered_at,
+      addon.shipment_id AS addon_shipment_id
+    FROM cycle_orders addon
+    JOIN anchors anchor ON anchor.customer_id = addon.customer_id
+    JOIN customers c ON c.id = addon.customer_id
+    WHERE addon.platform IN ('web','marketplace')
+      AND addon.discount_code = concat('RC', $3::int, '-', addon.customer_id)
+    ORDER BY addon.ordered_at DESC`, params);
+
+  const grouped = new Map<number, AddonMergePlan>();
+  for (const row of result.rows) {
+    const customerId = Number(row.customer_id);
+    const pairState = row.anchor_shipment_id && row.anchor_shipment_id === row.addon_shipment_id
+      ? "merged" as const
+      : !row.anchor_shipment_id && !row.addon_shipment_id
+        ? "ready" as const
+        : "review" as const;
+    let plan = grouped.get(customerId);
+    if (!plan) {
+      const customer: CustomerRef = {
+        customerId,
+        displayName: row.customer,
+        tier: Number(row.tier) as CustomerRef["tier"],
+        platforms: ["auction"],
+      };
+      plan = {
+        weekIndex,
+        customer,
+        anchor: {
+          orderId: row.anchor_id,
+          platform: "auction",
+          customer,
+          items: normalizeItems(row.anchor_items),
+          totalCents: Number(row.anchor_total_cents),
+          destination: row.anchor_destination ?? "",
+          status: row.anchor_status,
+          shipWeek: `W${weekIndex}`,
+        },
+        addons: [],
+        totalCoralUnits: Number(row.anchor_units),
+        totalCents: Number(row.anchor_total_cents),
+        mergeState: pairState,
+      };
+      grouped.set(customerId, plan);
+    } else if (plan.mergeState !== pairState) {
+      plan.mergeState = "review";
+    }
+    const addon: OrderSummary & { orderedAt: string } = {
+      orderId: row.addon_id,
+      platform: row.addon_platform,
+      customer: plan.customer,
+      items: normalizeItems(row.addon_items),
+      totalCents: Number(row.addon_total_cents),
+      destination: row.addon_destination ?? row.anchor_destination ?? "",
+      status: row.addon_status,
+      shipWeek: `W${weekIndex}`,
+      orderedAt: row.addon_ordered_at.toISOString(),
+    };
+    plan.addons.push(addon);
+    plan.totalCoralUnits += Number(row.addon_units);
+    plan.totalCents += Number(row.addon_total_cents);
+    if (!plan.customer.platforms.includes(row.addon_platform)) {
+      plan.customer.platforms.push(row.addon_platform);
+    }
+  }
+  return [...grouped.values()].sort((a, b) =>
+    b.addons[0].orderedAt.localeCompare(a.addons[0].orderedAt));
+}
+
 /** Arbitrary public-demo audience; never a production targeting rule. */
 export async function announcementRecipients(db: Queryable): Promise<{
   emailIds: number[];
@@ -296,73 +442,33 @@ export function nextAuctionAnnouncementMeta() {
 
 /** Sunday order monitor backed by the synthetic Postgres order ledger. */
 export async function addonOrderBoard(pg: Pool): Promise<ComponentSpec[]> {
-  const window = weekWindow(currentWeekIndex());
-  const params = [window.start.replace(" ", "T") + "Z", window.end.replace(" ", "T") + "Z"];
-  type Row = {
-    order_id: string;
-    platform: "auction" | "web" | "marketplace";
-    customer: string;
-    coral_units: string;
-    total_cents: string;
-    ordered_at: Date;
-    status: "pending" | "paid" | "labeled" | "shipped" | "cancelled" | "held";
-    combine_ready: boolean;
-    total_orders: string;
-    all_units: string;
-    all_cents: string;
-    all_combine_ready: string;
-  };
-  const [ordersResult, platformsResult] = await Promise.all([
-    pg.query<Row>(`
-      WITH addon AS (
-        SELECT o.external_id AS order_id, o.platform, c.primary_name AS customer,
-          coalesce((SELECT sum(oi.qty) FROM order_items oi WHERE oi.order_id = o.id), 0) AS coral_units,
-          o.total_cents, o.ordered_at, o.status,
-          EXISTS (
-            SELECT 1 FROM orders auction_order
-            WHERE auction_order.customer_id = o.customer_id
-              AND auction_order.platform = 'auction'
-              AND auction_order.status IN ('pending','paid','labeled')
-          ) AS combine_ready
-        FROM orders o JOIN customers c ON c.id = o.customer_id
-        WHERE o.discount_code IS NOT NULL
-          AND o.ordered_at >= $1::timestamptz AND o.ordered_at < $2::timestamptz
-          AND o.status IN ('pending','paid','labeled')
-      )
-      SELECT *, count(*) OVER() AS total_orders,
-        sum(coral_units) OVER() AS all_units,
-        sum(total_cents) OVER() AS all_cents,
-        sum(combine_ready::int) OVER() AS all_combine_ready
-      FROM addon ORDER BY ordered_at DESC LIMIT 8`, params),
-    pg.query<{ platform: "auction" | "web" | "marketplace"; count: string }>(`
-      SELECT platform, count(*) AS count FROM orders
-      WHERE discount_code IS NOT NULL
-        AND ordered_at >= $1::timestamptz AND ordered_at < $2::timestamptz
-        AND status IN ('pending','paid','labeled')
-      GROUP BY platform ORDER BY platform`, params),
-  ]);
-  const first = ordersResult.rows[0];
-  const platformCounts = Object.fromEntries(
-    platformsResult.rows.map((row) => [row.platform, Number(row.count)]),
-  );
+  const plans = await currentAddonMergePlans(pg);
+  const orders: AddonOrderRow[] = plans.flatMap((plan) => plan.addons.map((addon) => ({
+    orderId: addon.orderId,
+    platform: addon.platform as "web" | "marketplace",
+    customer: plan.customer.displayName,
+    coralUnits: addon.items.reduce((sum, item) => sum + item.qty, 0),
+    totalCents: addon.totalCents,
+    orderedAt: addon.orderedAt,
+    status: addon.status,
+    auctionOrderId: plan.anchor.orderId,
+    auctionCoralUnits: plan.anchor.items.reduce((sum, item) => sum + item.qty, 0),
+    combinedCoralUnits: plan.totalCoralUnits,
+    mergeState: plan.mergeState,
+  })));
+  const platformCounts = orders.reduce<Partial<Record<"web" | "marketplace", number>>>((counts, order) => {
+    counts[order.platform as "web" | "marketplace"] = (counts[order.platform as "web" | "marketplace"] ?? 0) + 1;
+    return counts;
+  }, {});
   return [{
     kind: "addon_order_board",
     windowLabel: `Synthetic W${currentWeekIndex()} · Sunday–Monday add-on window`,
-    totalOrders: Number(first?.total_orders ?? 0),
-    coralUnits: Number(first?.all_units ?? 0),
-    totalCents: Number(first?.all_cents ?? 0),
-    combineReady: Number(first?.all_combine_ready ?? 0),
+    totalOrders: orders.length,
+    coralUnits: orders.reduce((sum, order) => sum + order.coralUnits, 0),
+    totalCents: orders.reduce((sum, order) => sum + order.totalCents, 0),
+    combineReady: orders.filter((order) => order.mergeState === "ready").length,
     platformCounts,
-    orders: ordersResult.rows.map((row) => ({
-      orderId: row.order_id,
-      platform: row.platform,
-      customer: row.customer,
-      coralUnits: Number(row.coral_units),
-      totalCents: Number(row.total_cents),
-      orderedAt: row.ordered_at.toISOString(),
-      status: row.status,
-      combineReady: row.combine_ready,
-    })),
+    orders,
   }];
 }
 
@@ -440,38 +546,62 @@ export function promotionPlan(dayId: "wednesday" | "friday"): ComponentSpec[] {
 
 // ---------------------------------------------------------------- merge scan
 
-/** Customers with unshipped orders on ≥2 platforms this cycle — combine them. */
+/** ReefnBid anchor shipments with winner-code Shopify/eBay add-ons this cycle. */
 export async function mergeScan(pg: Pool): Promise<ComponentSpec[]> {
-  const rows = await pg.query(`
-    SELECT c.id, c.primary_name, c.tier,
-           json_agg(json_build_object('orderId', o.external_id, 'platform', o.platform,
-             'totalCents', o.total_cents, 'destination', o.destination_city,
-             'orderedAt', o.ordered_at) ORDER BY o.ordered_at) AS orders
-    FROM orders o JOIN customers c ON c.id = o.customer_id
-    WHERE o.status IN ('pending','paid') AND o.shipment_id IS NULL
-    GROUP BY c.id HAVING count(DISTINCT o.platform) >= 2
-    ORDER BY max(o.ordered_at) DESC LIMIT 5`);
-  return rows.rows.map((r): ComponentSpec => {
-    const orders = (r.orders as { orderId: string; platform: string; totalCents: number; destination: string }[])
-      .map((o) => ({
-        orderId: o.orderId, platform: o.platform as "auction" | "web" | "marketplace",
-        customer: { customerId: Number(r.id), displayName: r.primary_name, tier: r.tier, platforms: [] },
-        items: [], totalCents: Number(o.totalCents), destination: o.destination ?? "",
-        status: "paid" as const, shipWeek: `W${currentWeekIndex()}`,
-      }));
+  const plans = (await currentAddonMergePlans(pg)).filter((plan) => plan.mergeState === "ready");
+  if (!plans.length) return [];
+  const batch: ComponentSpec = {
+    kind: "merge_batch",
+    weekLabel: `Synthetic W${currentWeekIndex()}`,
+    candidates: plans.length,
+    sourceOrders: plans.reduce((sum, plan) => sum + 1 + plan.addons.length, 0),
+    addonOrders: plans.reduce((sum, plan) => sum + plan.addons.length, 0),
+    coralUnits: plans.reduce((sum, plan) => sum + plan.totalCoralUnits, 0),
+    totalCents: plans.reduce((sum, plan) => sum + plan.totalCents, 0),
+    actions: [{
+      taskId: "merge-all-orders",
+      label: "Merge all",
+      payload: {
+        weekIndex: currentWeekIndex(),
+        groups: plans.map((plan) => ({
+          customerId: plan.customer.customerId,
+          orderIds: [plan.anchor.orderId, ...plan.addons.map((addon) => addon.orderId)],
+        })),
+      },
+      risk: "gated",
+    }],
+  };
+  return [batch, ...plans.map((plan): ComponentSpec => {
+    const orders = [plan.anchor, ...plan.addons];
     return {
       kind: "merge_card",
-      customer: { customerId: Number(r.id), displayName: r.primary_name, tier: r.tier, platforms: orders.map((o) => o.platform as never) },
+      customer: plan.customer,
       orders,
       combined: {
-        ...orders[0], orderId: `CMB-${r.id}-${currentWeekIndex()}`, platform: "combined",
-        totalCents: orders.reduce((s, o) => s + o.totalCents, 0),
+        ...plan.anchor,
+        orderId: `CMB-${plan.customer.customerId}-${currentWeekIndex()}`,
+        platform: "combined",
+        items: orders.flatMap((order) => order.items),
+        totalCents: plan.totalCents,
       },
       confidence: "high",
-      actions: [{ taskId: "merge-orders", label: "Merge into one shipment",
-        payload: { customerId: r.id, orderIds: orders.map((o) => o.orderId) }, risk: "gated" }],
+      anchorOrderId: plan.anchor.orderId,
+      addonOrderCount: plan.addons.length,
+      totalCoralUnits: plan.totalCoralUnits,
+      actions: [{
+        taskId: "merge-orders",
+        label: "Merge this shipment",
+        payload: {
+          weekIndex: plan.weekIndex,
+          groups: [{
+            customerId: plan.customer.customerId,
+            orderIds: orders.map((order) => order.orderId),
+          }],
+        },
+        risk: "gated",
+      }],
     };
-  });
+  })];
 }
 
 // ---------------------------------------------------------------- weekly report
