@@ -7,6 +7,7 @@ import { AuctionBoard } from "./AuctionBoard";
 import { CampaignCard } from "./CampaignCard";
 import { CaseCard } from "./CaseCard";
 import { CycleTimeline } from "./CycleTimeline";
+import { DayBriefCard } from "./DayBriefCard";
 import { FunnelChart } from "./FunnelChart";
 import { LabelManifest } from "./LabelManifest";
 import { MergeCard } from "./MergeCard";
@@ -22,6 +23,8 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
   switch (spec.kind) {
     case "cycle_timeline":
       return <CycleTimeline phase={spec.phase} upcoming={spec.upcoming} />;
+    case "day_brief":
+      return <DayBriefCard spec={spec} />;
     case "attention_feed":
       return <AttentionFeed items={spec.items} />;
     case "metric_row":

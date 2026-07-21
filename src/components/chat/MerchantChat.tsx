@@ -10,7 +10,7 @@
  * The offline `/api/chat` + router path still exists as a fallback; this
  * surface uses the real LLM agent.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   useTriggerChatTransport,
@@ -18,12 +18,21 @@ import {
 } from "@trigger.dev/sdk/chat/react";
 import type { reefChat } from "@/trigger/reef-chat";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
-import type { ComponentSpec } from "@/lib/protocol";
+import type { ComponentSpec, DemoDayId } from "@/lib/protocol";
 import { SpecRenderer } from "@/components/specs/SpecRenderer";
+import {
+  DEFAULT_DEMO_DAY,
+  DEMO_CHAT_PROMPT_EVENT,
+  DEMO_DAYS,
+  DEMO_DAY_EVENT,
+  demoDay,
+  stripDemoDayContext,
+  withDemoDayContext,
+} from "@/lib/demo-clock";
 
 type ReefMessage = InferChatUIMessage<typeof reefChat>;
 
-const SUGGESTIONS = [
+const GENERAL_SUGGESTIONS = [
   "What needs my attention?",
   "How's the auction going?",
   "Any orders to merge?",
@@ -35,6 +44,13 @@ function CoralPulseSkeleton() {
   return (
     <div className="anim-rise space-y-2.5" aria-label="thinking">
       <div className="flex items-center gap-1.5 pl-0.5">
+        <img
+          src="/teddy-avatar.jpg"
+          alt=""
+          width={20}
+          height={20}
+          className="mr-1 rounded-full ring-1 ring-teal/40"
+        />
         {[0, 1, 2].map((i) => (
           <span
             key={i}
@@ -43,7 +59,7 @@ function CoralPulseSkeleton() {
           />
         ))}
         <span className="ml-1 font-mono text-[12px] tracking-widest text-mute">
-          READING THE REEF…
+          TEDDY&apos;S READING THE REEF…
         </span>
       </div>
       <div className="skeleton-bar h-16 rounded-md border border-line/50" />
@@ -93,12 +109,21 @@ function AgentAnswer({
   return (
     <div ref={innerRef} className="anim-rise space-y-3">
       {verdict ? (
-        <p className="flex items-baseline gap-2 border-l-2 border-tealhi/70 pl-2.5 text-[14px] leading-snug text-ink">
-          <span className="shrink-0 font-mono text-[12px] tracking-[0.2em] text-teal">
-            REEF»
-          </span>
-          {verdict}
-        </p>
+        <div className="flex items-start gap-2.5 border-l-2 border-tealhi/70 pl-2.5">
+          <img
+            src="/teddy-avatar.jpg"
+            alt=""
+            width={26}
+            height={26}
+            className="mt-px shrink-0 rounded-full ring-1 ring-teal/50"
+          />
+          <p className="text-[14px] leading-snug text-ink">
+            <span className="mr-2 font-mono text-[12px] tracking-[0.2em] text-teal">
+              TEDDY»
+            </span>
+            {verdict}
+          </p>
+        </div>
       ) : null}
 
       {merges.length ? <SpecRenderer spec={merges[0]} /> : null}
@@ -138,23 +163,69 @@ export function MerchantChat() {
     transport,
   });
   const [input, setInput] = useState("");
+  const [demoDayId, setDemoDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
+  const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
   const lastRef = useRef<HTMLDivElement>(null);
 
   const waiting = status === "submitted";
   const streaming = status === "streaming";
+  const newest = messages[messages.length - 1];
+  const newestVisualKey = newest?.role === "assistant"
+    ? readAssistant(newest).specs.map((spec) => spec.kind).join("|")
+    : "";
 
   // Land the viewport on the START of the newest turn — the strong visual
   // answers (merge cards, the tall report) open above the fold, not below it.
+  // Trigger chat streams tool output into an existing assistant message, so
+  // message count alone is not a sufficient signal: scroll again when the
+  // renderable component kinds arrive.
   useEffect(() => {
     lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [messages.length]);
+  }, [messages.length, newestVisualKey]);
 
-  function submit(text: string) {
+  const submit = useCallback((text: string, dayOverride?: DemoDayId) => {
     const message = text.trim();
     if (!message || waiting || streaming) return;
     setInput("");
-    void sendMessage({ text: message });
-  }
+    void sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
+  }, [sendMessage, streaming, waiting]);
+
+  useEffect(() => {
+    const onDay = (event: Event) => {
+      const next = (event as CustomEvent<DemoDayId>).detail;
+      if (!DEMO_DAYS.some((day) => day.id === next)) return;
+      // Keep the header and chat on one accepted day. A rapid click while the
+      // current turn is in flight must not update Today without sending the
+      // matching hidden context and dayBrief request.
+      if (waiting || streaming) {
+        event.preventDefault();
+        return;
+      }
+      demoDayRef.current = next;
+      setDemoDayId(next);
+      const day = demoDay(next);
+      submit(
+        `Show me ${day.weekday}'s command brief. What are today's priorities, and what should you remind me not to miss?`,
+        next,
+      );
+    };
+    const onPrompt = (event: Event) => {
+      const prompt = (event as CustomEvent<string>).detail;
+      if (typeof prompt === "string") submit(prompt);
+    };
+    window.addEventListener(DEMO_DAY_EVENT, onDay);
+    window.addEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
+    return () => {
+      window.removeEventListener(DEMO_DAY_EVENT, onDay);
+      window.removeEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
+    };
+  }, [streaming, submit, waiting]);
+
+  const currentDay = demoDay(demoDayId);
+  const suggestions = [
+    ...currentDay.priorities.flatMap((priority) => priority.prompt ? [priority.prompt] : []),
+    ...GENERAL_SUGGESTIONS,
+  ].filter((suggestion, index, all) => all.indexOf(suggestion) === index).slice(0, 5);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -162,13 +233,25 @@ export function MerchantChat() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl space-y-5 px-4 py-5">
           {messages.length === 0 && status === "ready" ? (
-            <div className="pt-16 text-center">
-              <p className="font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
-                channel open · Teddy is watching the reef
+            <div className="pt-10 text-center">
+              {/* Teddy — the real reef dog behind the store. The first frame a
+                  judge sees: a face, not a terminal. */}
+              <img
+                src="/teddy.jpg"
+                alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
+                width={112}
+                height={112}
+                className="mx-auto rounded-full ring-2 ring-coral/60 shadow-[0_0_46px_rgba(232,86,43,0.28)]"
+              />
+              <p className="mt-4 font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
+                channel open · today is {currentDay.weekday} · {currentDay.label}
               </p>
               <p className="mt-2 text-sm text-dim">
-                Ask about the week — answers come back as live components, not
-                prose.
+                Teddy&apos;s watching the reef. Choose a day above — he&apos;ll brief the
+                priorities and open the right component.
+              </p>
+              <p className="mt-1.5 font-mono text-[11px] tracking-[0.24em] text-coralhi/85 uppercase">
+                happy reefing
               </p>
             </div>
           ) : null}
@@ -185,6 +268,7 @@ export function MerchantChat() {
                   {m.parts
                     .filter((p): p is { type: "text"; text: string } => p.type === "text")
                     .map((p) => p.text)
+                    .map(stripDemoDayContext)
                     .join("")}
                 </p>
               </div>
@@ -214,7 +298,7 @@ export function MerchantChat() {
       <div className="border-t border-line/80 bg-abyss/90 backdrop-blur-sm">
         <div className="mx-auto max-w-4xl px-4 pt-2.5 pb-4">
           <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button
                 key={s}
                 type="button"
@@ -225,7 +309,10 @@ export function MerchantChat() {
                 {s}
               </button>
             ))}
-            {streaming ? (
+            {waiting || streaming ? (
+              // Visible during BOTH in-flight phases: if a run hangs before it
+              // streams (dead worker, sandboxed network), STOP is the way out —
+              // without it the composer would wait forever with no exit.
               <button
                 type="button"
                 onClick={() => void stop()}
@@ -242,13 +329,15 @@ export function MerchantChat() {
             }}
             className="flex gap-2"
           >
+            {/* Never disabled: typing must survive a hung or slow run — only
+                SEND gates on in-flight state. A locked composer reads as a
+                broken product on camera. */}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              disabled={waiting || streaming}
-              placeholder="Ask the reef — attention, revenue, auction, merges, report…"
+              placeholder="Ask Teddy — attention, revenue, auction, merges, report…"
               aria-label="Message"
-              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none"
             />
             <button
               type="submit"

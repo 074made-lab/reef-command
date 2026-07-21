@@ -41,6 +41,17 @@ function citedCount(text: string, nounPattern: string): number | null {
 
 const PROBES: Probe[] = [
   {
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me today's command brief and priorities.",
+    expect: "dayBrief → Monday day_brief; synthetic weekday beats wall clock",
+    check: (c) => {
+      if (!called(c, "dayBrief") || !has(c, "day_brief")) return "wrong tool/component";
+      const brief = c.components.find((s) => s.kind === "day_brief");
+      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Label Day"
+        ? null
+        : "did not honor synthetic Monday";
+    },
+  },
+  {
     q: "What needs my attention this morning?",
     expect: "whatNeedsAttention → attention_feed; cited DOA/request/message/item counts match the feed",
     check: (c) => {
@@ -85,8 +96,8 @@ const PROBES: Probe[] = [
     check: (c) => (called(c, "weeklyReport") && has(c, "report") ? null : "wrong tool/component"),
   },
   {
-    q: "How's the auction going right now?",
-    expect: "auctionBoard → phase-truthful verdict (R2-M5)",
+    q: "[SYNTHETIC DEMO TODAY: THURSDAY — AUCTION OPENS] How's the auction going right now?",
+    expect: "auctionBoard → selected Thursday live board + phase-truthful verdict (R2-M5)",
     check: (c) => {
       if (!called(c, "auctionBoard") || !has(c, "auction_board")) return "wrong tool/component";
       const board = c.components.find((s) => s.kind === "auction_board");
@@ -96,6 +107,9 @@ const PROBES: Probe[] = [
         if (/heading into close|closes in|still live|is live|going strong/.test(t))
           return `closed auction described as live: "${c.text.slice(0, 80)}"`;
       }
+      if (board.state !== "live") return `selected Thursday returned ${board.state}, not live`;
+      if (/\b(?:board|auction)\b[^.]{0,24}\bclosed\b|\bclosed\b[^.]{0,24}\b(?:board|auction)\b/.test(lower(c)))
+        return `live Thursday described as closed: "${c.text.slice(0, 80)}"`;
       return null;
     },
   },

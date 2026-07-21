@@ -10,10 +10,11 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import type { Pool } from "pg";
 import { queryRows } from "./store/clickhouse";
 import type {
-  AttentionItem, ComponentSpec, FunnelStep, LotPrice, Metric, ReportSection,
+  AttentionItem, ComponentSpec, DemoDayId, FunnelStep, LotPrice, Metric, ReportSection,
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
+import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment } from "./demo-clock";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);                 // a Thursday — cycle anchor
@@ -69,13 +70,22 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
   const items: AttentionItem[] = [];
   const now = Date.now();
 
-  const cases = await pg.query(`SELECT case_code, kind, cases.created_at, c.primary_name
+  const cases = await pg.query(`SELECT case_code, kind, cases.created_at, cases.summary,
+      c.primary_name, c.primary_email,
+      coalesce((SELECT m.preview FROM messages m
+        WHERE m.customer_id = cases.customer_id AND m.direction = 'in'
+          AND (m.intent = cases.kind OR cases.kind = 'other') AND m.at <= cases.created_at
+        ORDER BY m.at DESC LIMIT 1), cases.summary) AS customer_text
     FROM cases JOIN customers c ON c.id = cases.customer_id
     WHERE cases.status = 'open' ORDER BY cases.created_at DESC LIMIT 5`);
   for (const r of cases.rows) items.push({
     id: r.case_code, kind: "case",
     headline: `${r.kind === "doa_claim" ? "DOA claim" : r.kind} from ${r.primary_name} — evidence ready, needs your decision`,
     ageMinutes: Math.round((now - r.created_at.getTime()) / 60_000),
+    customerName: r.primary_name,
+    customerEmail: r.primary_email,
+    detail: r.customer_text,
+    photoHref: r.kind === "doa_claim" ? "/mock-doa-coral.svg" : undefined,
   });
 
   const reqs = await pg.query(`SELECT request_code, kind, received_at, c.primary_name
@@ -88,18 +98,40 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
     ageMinutes: Math.round((now - r.received_at.getTime()) / 60_000),
   });
 
-  const unanswered = await queryRows<{ id: string; preview: string; platform: string; age_min: string }>(ch, `
+  const unanswered = await queryRows<{ id: string; preview: string; platform: string; age_min: string; customer_id: string }>(ch, `
     SELECT JSONExtractString(meta,'id') AS id, JSONExtractString(meta,'preview') AS preview,
-           platform, toString(round((now() - ts)/60)) AS age_min
+           platform, toString(round((now() - ts)/60)) AS age_min, toString(customer_id) AS customer_id
     FROM events WHERE type = 'message_in' AND ts > now() - INTERVAL 2 DAY
       AND JSONExtractString(meta,'id') != ''
       AND JSONExtractString(meta,'id') NOT IN (
         SELECT JSONExtractString(meta,'id') FROM events
         WHERE type = 'message_answered' AND ts > now() - INTERVAL 3 DAY)
     ORDER BY ts ASC LIMIT 6`);
+  const messageCustomerIds = [...new Set(unanswered.map((m) => Number(m.customer_id)).filter(Boolean))];
+  const messageCustomers = messageCustomerIds.length
+    ? await pg.query<{ id: string; primary_name: string; primary_email: string }>(
+      `SELECT id, primary_name, primary_email FROM customers WHERE id = ANY($1::bigint[])`,
+      [messageCustomerIds],
+    )
+    : { rows: [] as { id: string; primary_name: string; primary_email: string }[] };
+  const customerById = new Map(messageCustomers.rows.map((c) => [Number(c.id), c]));
+  const replyDraft = (preview: string) => {
+    const p = preview.toLowerCase();
+    if (p.includes("apartment") || p.includes("address"))
+      return "Thanks for the heads-up — I’ve paused the shipping workflow while we verify the corrected address. Please reply with the full address, including apartment number.";
+    if (p.includes("canada"))
+      return "Thanks for asking. This demo store currently ships live coral within the continental United States only, so we can’t offer Canadian delivery.";
+    if (p.includes("combine") || p.includes("auction win"))
+      return "Yes — we can combine eligible add-on orders with your ReefnBid win so the corals travel in one box with one shipping fee. I’m checking the order match now.";
+    return "Thanks for reaching out. I’ve reviewed your message and will confirm the next step shortly.";
+  };
   for (const m of unanswered) items.push({
     id: m.id, kind: "message", platform: m.platform as AttentionItem["platform"],
     headline: `unanswered: “${m.preview}”`, ageMinutes: Number(m.age_min),
+    customerName: customerById.get(Number(m.customer_id))?.primary_name,
+    customerEmail: customerById.get(Number(m.customer_id))?.primary_email,
+    detail: m.preview,
+    draft: replyDraft(m.preview),
   });
 
   items.sort((a, b) => b.ageMinutes - a.ageMinutes);
@@ -108,20 +140,21 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
 
 // ---------------------------------------------------------------- auction
 
-export async function auctionBoard(ch: ClickHouseClient): Promise<ComponentSpec[]> {
-  const wi = currentWeekIndex();
+export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Promise<ComponentSpec[]> {
+  const now = dayId ? demoAuctionMoment(dayId) : Date.now();
+  const wi = dayId ? DEMO_AUCTION_WEEK_INDEX : currentWeekIndex(now);
   const w = weekWindow(wi);
+  const weekStart = ANCHOR + wi * WEEK_MS;
+  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
+  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
+  const queryEnd = fmt(Math.min(now, closesMs, ANCHOR + (wi + 1) * WEEK_MS));
   const lots = await queryRows<{ lot: string; sku: string; bid: string; n: string; leader: string }>(ch, `
     SELECT JSONExtractString(meta,'lotId') AS lot, sku,
            max(amount_cents) AS bid, count() AS n,
            argMax(JSONExtractString(meta,'bidder'), ts) AS leader
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
-    GROUP BY lot, sku ORDER BY bid DESC`, w);
-  const weekStart = ANCHOR + wi * WEEK_MS;
-  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
-  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
+    GROUP BY lot, sku ORDER BY bid DESC`, { start: w.start, end: queryEnd });
   const closesAt = new Date(closesMs).toISOString();
-  const now = Date.now();
   const state: "upcoming" | "live" | "closed" =
     now < opensAt ? "upcoming" : now >= closesMs ? "closed" : "live";
   const board: LotPrice[] = lots.map((l) => {

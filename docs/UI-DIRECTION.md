@@ -55,6 +55,26 @@ Very light only: water ripple, bubbles, a coral bioluminescent "breathing"
 glow. **No** AI orb, **no** typewriter long-text, **no** meaningless loading
 spinners.
 
+## Interaction details
+
+- The header is a **selectable seven-day synthetic week**, never the evaluator's
+  wall clock. It always states `TODAY IS MONDAY · LABEL DAY` (or the selected
+  equivalent), and keeps all seven weekdays visible for recording.
+- Selecting any weekday sends its synthetic-day context into `chat.agent()`.
+  Teddy must render the day's goal, three priorities, one reminder, and prompt
+  chips for supported live components. Selection does not execute the work.
+- Platform labels use the business names everywhere: **ReefnBid**, **Online
+  Store (Shopify)**, and **eBay**.
+- Merge cards use layered water currents and moving particles to carry every
+  source order into one combined shipping box.
+- The weekly reef-health report is tabbed. Platform revenue appears as three
+  currents feeding one reef; product and auction rows generate deterministic,
+  evidence-backed next-week stocking guidance. Dossier tiers include their
+  synthetic percentile definition and do not masquerade as new-customer rate.
+- Attention rows expand in place. DOA cases reveal the original synthetic text
+  and a clearly marked mock photo; messages reveal an editable template draft.
+  Approve and Send remain explicit simulations: no refund or external message.
+
 ## Type
 
 - Don't set everything in the usual Inter. Headings can be a touch warmer, with
@@ -67,3 +87,9 @@ spinners.
 The star of the video is the **visual result**, not the chat box. The
 **Merge Card** is the signature shot: two platform orders swim into one box,
 Teddy beside it confirming "one box, one shipping fee."
+
+The demo sequence is a guided week, after the human introduction and business
+context: select **MON** for the label-day gate, **TUE/WED** for shipping and the
+report, **THU–SAT** for the auction arc, then **SUN** for add-ons and the merge
+shot. Each click begins with Teddy's day-aware command brief before opening the
+supporting live component.

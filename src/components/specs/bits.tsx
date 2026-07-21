@@ -23,7 +23,7 @@ export function SpecCard({
     >
       <header className="flex items-center justify-between gap-3 border-b border-line/70 px-3 py-1.5">
         <span
-          className={`font-mono text-[10px] font-semibold tracking-[0.22em] ${
+          className={`font-mono text-[12px] font-semibold tracking-[0.18em] ${
             tone === "coral" ? "text-coralhi" : "text-teal"
           }`}
         >
@@ -45,7 +45,7 @@ export function Chip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[10px] tracking-wider ${className}`}
+      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[12px] tracking-wider ${className}`}
     >
       {children}
     </span>

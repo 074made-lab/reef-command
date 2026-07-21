@@ -48,6 +48,22 @@ export type WeekPhase =
   | "ship_days"           // TUE–WED  combined shipping
   | "report";             // WED      cycle closes
 
+export type DemoDayId =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+export type DayPriority = {
+  label: string;
+  detail: string;
+  cue: "do-now" | "watch" | "human-gate";
+  prompt?: string;
+};
+
 export type PhaseStep = {
   phase: WeekPhase;
   label: string;          // "Auction closes 10pm Sat"
@@ -64,6 +80,11 @@ export type AttentionItem = {
   headline: string;       // "coral_km ordered on web — merge candidate"
   ageMinutes: number;
   href?: string;          // deep link to the owning card
+  customerName?: string;  // synthetic display handle
+  customerEmail?: string; // synthetic address, shown only inside the expanded row
+  detail?: string;        // original synthetic customer text / request detail
+  draft?: string;         // deterministic template draft for unanswered messages
+  photoHref?: string;     // synthetic evidence asset (DOA demo only)
 };
 
 export type OrderLine = { sku: string; name: string; category: CoralCategory; qty: number; priceCents: number };
@@ -181,6 +202,8 @@ export type ActionChip = {
 export type ComponentSpec =
   // cycle & attention
   | { kind: "cycle_timeline"; phase: WeekPhase; upcoming: PhaseStep[] }
+  | { kind: "day_brief"; dayId: DemoDayId; weekday: string; time: string;
+      label: string; goal: string; priorities: DayPriority[]; reminder: string }
   | { kind: "attention_feed"; items: AttentionItem[] }
   // analytics
   | { kind: "metric_row"; metrics: Metric[] }

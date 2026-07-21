@@ -34,9 +34,20 @@ export default function Home() {
         <p className="mb-4 font-mono text-[10px] tracking-[0.4em] text-mute uppercase">
           depth 04 · channel open
         </p>
+        {/* Teddy at the center of the sonar — the store's real reef dog */}
+        <img
+          src="/teddy.jpg"
+          alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
+          width={132}
+          height={132}
+          className="mb-6 rounded-full ring-2 ring-coral/60 shadow-[0_0_56px_rgba(232,86,43,0.3)]"
+        />
         <Wordmark size="lg" />
         <p className="mt-5 max-w-md text-[15px] leading-relaxed text-dim">
           One week of a coral business, run from one chat window.
+        </p>
+        <p className="mt-2 font-mono text-[11px] tracking-[0.24em] text-coralhi/85 uppercase">
+          watched over by teddy · happy reefing
         </p>
 
         <div className="mt-10 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
