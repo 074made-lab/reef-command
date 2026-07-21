@@ -32,13 +32,13 @@ export function Header({ surface }: { surface: "merchant" | "shop" }) {
           />
           <Wordmark />
         </Link>
-        <span className="hidden font-mono text-[10px] tracking-widest text-mute uppercase sm:inline">
+        <span className="hidden font-mono text-[12px] tracking-widest text-mute uppercase sm:inline">
           {surface === "merchant" ? "merchant cockpit" : "customer concierge"}
         </span>
         <nav className="ml-auto flex items-center gap-3">
           <Link
             href="/merchant"
-            className={`font-mono text-[11px] tracking-widest uppercase ${
+            className={`font-mono text-[12px] tracking-widest uppercase ${
               surface === "merchant" ? "text-tealhi" : "text-mute hover:text-dim"
             }`}
           >
@@ -46,7 +46,7 @@ export function Header({ surface }: { surface: "merchant" | "shop" }) {
           </Link>
           <Link
             href="/shop"
-            className={`font-mono text-[11px] tracking-widest uppercase ${
+            className={`font-mono text-[12px] tracking-widest uppercase ${
               surface === "shop" ? "text-tealhi" : "text-mute hover:text-dim"
             }`}
           >

@@ -169,12 +169,19 @@ export function MerchantChat() {
 
   const waiting = status === "submitted";
   const streaming = status === "streaming";
+  const newest = messages[messages.length - 1];
+  const newestVisualKey = newest?.role === "assistant"
+    ? readAssistant(newest).specs.map((spec) => spec.kind).join("|")
+    : "";
 
   // Land the viewport on the START of the newest turn — the strong visual
   // answers (merge cards, the tall report) open above the fold, not below it.
+  // Trigger chat streams tool output into an existing assistant message, so
+  // message count alone is not a sufficient signal: scroll again when the
+  // renderable component kinds arrive.
   useEffect(() => {
     lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [messages.length]);
+  }, [messages.length, newestVisualKey]);
 
   const submit = useCallback((text: string, dayOverride?: DemoDayId) => {
     const message = text.trim();
@@ -295,7 +302,10 @@ export function MerchantChat() {
                 {s}
               </button>
             ))}
-            {streaming ? (
+            {waiting || streaming ? (
+              // Visible during BOTH in-flight phases: if a run hangs before it
+              // streams (dead worker, sandboxed network), STOP is the way out —
+              // without it the composer would wait forever with no exit.
               <button
                 type="button"
                 onClick={() => void stop()}
@@ -312,13 +322,15 @@ export function MerchantChat() {
             }}
             className="flex gap-2"
           >
+            {/* Never disabled: typing must survive a hung or slow run — only
+                SEND gates on in-flight state. A locked composer reads as a
+                broken product on camera. */}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              disabled={waiting || streaming}
               placeholder="Ask Teddy — attention, revenue, auction, merges, report…"
               aria-label="Message"
-              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none"
             />
             <button
               type="submit"
