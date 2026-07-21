@@ -20,14 +20,14 @@ fixtures; they do not document the store's workflow. The compressed synthetic
 operating cycle:
 
 ```text
+SUN  eligible add-ons consolidate + next-auction announcement draft
+MON  shipping documents: product labels + shipping labels (weight calc,
+     weather check, gated batch purchase)
+TUE  combined shipping + Thursday listing drafts + human inventory check
+WED  combined shipping + email/SMS auction and new-arrival promotion drafts
 THU  auction opens on the auction platform (ReefnBid-style)
-SAT  auction closes → winners get payment instructions + discount codes
-     for the web store (Shopify-style) and marketplace (eBay-style)
-SUN–MON  eligible synthetic orders consolidate into one coordinated shipment
-MON  label day: product labels + shipping labels (weight calc, weather
-     check, batch purchase)
-TUE–WED  combined shipping (live animals ship Tue/Wed only)
-WED  synthetic report closes the compressed demo cycle
+FRI  auction momentum + last-call advertisement drafts
+SAT  auction closes → winner handoff + add-on window
 ```
 
 Live-animal fulfillment has little room for missed handoffs: a customer change
@@ -90,7 +90,7 @@ affected charts update live on screen — see §4 for the two closed loops
    new order pings the attention feed; every order triggers a merge check
    against the CRM — when the same customer orders on different platforms,
    the two order cards visibly merge into one combined order on screen.
-2. **Label day (MON).** A scheduled durable task: per-order weight from item
+2. **Shipping documents (MON).** A scheduled durable task: per-order weight from item
    count (per-coral unit weight + per-platform box tare, with a minimum
    billable floor; constants generic) → per-destination weather check
    (heat/cold pack verdicts) → two
@@ -112,11 +112,12 @@ affected charts update live on screen — see §4 for the two closed loops
    give it time); DOA → support-ticket link; thank-you → acknowledgment.
    Anything beyond the templates escalates as a case card. Auto-replies are
    template-only — the model never freestyles customer-facing text.
-   The public `/shop` proof intentionally implements only a synthetic DOA-link
-   example. It demonstrates robot routing versus human decision authority
+   The public `/shop` proof implements the synthetic DOA-link example plus one
+   public-safe order-combining FAQ. Other questions enter the owner attention
+   feed. This demonstrates direct service, routing, and human decision authority
    without publishing the real store's policy corpus or response playbook.
 
-### Task 4 — Weekly report (WED, after the last ship day)
+### Task 4 — Weekly report (on demand after the last ship day)
 
 Rendered entirely as interactive components, and always shown **against
 history**: every headline number carries a week-over-week and
@@ -170,8 +171,8 @@ alternatives (spreadsheets/local DB; generic workflow builders) do not.
 The agent never answers with prose alone. Tools return typed data; the agent
 composes `ComponentSpec`s the frontend renders inline in the chat stream
 (full width, no separate canvas). Two routes: `/merchant` (the live cockpit)
-and `/shop` (a deliberately narrow public-safe proof: one synthetic DOA route,
-plus a human-handoff message that appears in the merchant feed).
+and `/shop` (a deliberately narrow public-safe proof: one synthetic combine
+FAQ, one DOA route, plus a human-handoff message in the merchant feed).
 
 ```ts
 type ChatResponse = {
@@ -188,7 +189,7 @@ type ComponentSpec =
   | { kind: "timeseries";    series: Series[]; annotations?: Annotation[] }
   | { kind: "auction_board"; lots: LotPrice[]; closesAt: string }   // live THU board
   | { kind: "funnel";        steps: FunnelStep[] }                  // auction→code→add-on
-  | { kind: "report";        sections: ReportSection[] }            // WED weekly report
+  | { kind: "report";        sections: ReportSection[] }            // on-demand weekly report
   // operations
   | { kind: "campaign_card"; audience: AudienceBreakdown; preview: MessagePreview;
       schedule: string; actions: ActionChip[] }

@@ -9,11 +9,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * The concierge INTAKE is live: a buyer's question writes a `message_in` event
- * to the shared store and surfaces in the merchant cockpit's attention feed —
- * both surfaces provably speak one component protocol. The ANSWER side stays an
- * explicit preview (the documented scope decision — see docs/DESIGN.md): no
- * fake composer pretending to chat back; a human reads and answers.
+ * The concierge directly answers one narrow synthetic FAQ, routes delivery
+ * loss to evidence intake, and writes every unsupported question to the shared
+ * owner-attention stream. It never pretends a real customer was contacted.
  */
 export default function ShopPage() {
   return (
@@ -33,8 +31,8 @@ export default function ShopPage() {
               <span className="mr-2 font-mono text-[13px] tracking-[0.16em] text-coralhi uppercase">
                 customer concierge
               </span>
-              Tell Teddy what happened. Delivery-loss messages get the DOA
-              path immediately; other questions land live in the owner&apos;s cockpit.
+              Ask Teddy about combining an add-on with an auction win, or tell
+              him what happened. Delivery loss opens the DOA path immediately.
             </p>
           </div>
 

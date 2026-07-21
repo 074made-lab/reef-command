@@ -73,7 +73,7 @@ These need **your own** service keys (we ship none — see Integrity). Without
 them, read the assertions in each file to confirm the logic:
 
 ```bash
-npx tsx scripts/agent-check.ts     # 9 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
+npx tsx scripts/agent-check.ts     # 10 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
 npx tsx scripts/doa-resolution-check.ts # rollback-safe DOA integration; Postgres only, no CH writes
 npx tsx scripts/ship-day-exception-check.ts # rollback-safe stale-selection + replay integration
 npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel)
@@ -124,7 +124,7 @@ fault-injection gate (`src/lib/label-day.ts` + `scripts/labelday-recovery-check.
 DOA state machine is verified under rollback (`scripts/doa-resolution-check.ts`).
 The LLM layer has an asserting behavior gate — wrong tool, fabricated figure,
 money claim, closed-auction-described-as-live, or a count that contradicts the
-rendered component all exit non-zero (`scripts/agent-check.ts`, 9 probes).
+rendered component all exit non-zero (`scripts/agent-check.ts`, 10 probes).
 Unwired actions return honest 501s. Limits admitted: sequential idempotency is
 not strict exactly-once under concurrent approvals; no conventional unit-test
 framework beyond the gates; the client does not yet re-hydrate a refreshed

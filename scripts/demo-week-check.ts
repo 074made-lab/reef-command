@@ -9,17 +9,18 @@ import {
   isDemoDayId,
   parseDemoDayContext,
   stripDemoDayContext,
+  withRoutineContext,
   withDemoDayContext,
 } from "../src/lib/demo-clock";
 
 const expected = [
-  ["monday", "Label Day"],
-  ["tuesday", "Ship + Preview"],
-  ["wednesday", "Ship + Report"],
+  ["monday", "Shipping Documents"],
+  ["tuesday", "Ship + Listings"],
+  ["wednesday", "Ship + Promotion"],
   ["thursday", "Auction Opens"],
   ["friday", "Auction Momentum"],
-  ["saturday", "Close + Winners"],
-  ["sunday", "Add-on Day"],
+  ["saturday", "Closing Night + Winners"],
+  ["sunday", "Add-ons + Announcement"],
 ] as const;
 
 assert.equal(DEMO_DAYS.length, 7, "the synthetic-week controller must expose seven days");
@@ -29,11 +30,19 @@ assert.equal(isDemoDayId("demo-day"), false);
 assert.deepEqual(DEMO_DAYS.map((day) => [day.id, day.label]), expected);
 assert.equal(new Set(DEMO_DAYS.map((day) => day.id)).size, 7, "weekday ids must be unique");
 
+const saturday = DEMO_DAYS.find((day) => day.id === "saturday");
+assert.ok(saturday, "Saturday must exist");
+assert.equal(saturday.priorities[1].label, "Review winner next steps");
+assert.match(saturday.priorities[1].prompt ?? "", /payment.*add-on.*shipping/i);
+assert.match(saturday.priorities[1].prompt ?? "", /do not send|do not.*claim/i);
+assert.notEqual(saturday.priorities[0].prompt, saturday.priorities[1].prompt,
+  "Saturday result review and winner handoff must be distinct tasks");
+
 for (const day of DEMO_DAYS) {
   assert.equal(day.priorities.length, 3, `${day.weekday} must have three priorities`);
   assert.ok(day.priorities.every((priority) => priority.prompt), `${day.weekday} focus cards must all start a supported routine`);
   assert.ok(
-    day.priorities.every((priority) => /attention|exception|combine|merge|label|business|auction|report/i.test(priority.prompt ?? "")),
+    day.priorities.every((priority) => /attention|exception|combine|merge|label|business|auction|report|listing|inventory|promotion|advertis|email|sms|announcement/i.test(priority.prompt ?? "")),
     `${day.weekday} focus cards must map to a supported agent tool`,
   );
   assert.ok(day.goal.length > 40, `${day.weekday} needs a meaningful goal`);
@@ -82,5 +91,11 @@ const traceMessage = withDemoDayContext(
   "[SYNTHETIC SHIP TRACE: status=protected; shipment=SHP-DEMO]\nExplain this ship-day automation trace.",
 );
 assert.equal(stripDemoDayContext(traceMessage), "Explain this ship-day automation trace.");
+
+const routineMessage = withDemoDayContext(
+  "saturday",
+  withRoutineContext(1, "Review winner next steps."),
+);
+assert.equal(stripDemoDayContext(routineMessage), "Review winner next steps.");
 
 console.log("\nALL PASS — seven-day demo-week contract");

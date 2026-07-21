@@ -145,6 +145,7 @@ function ProductSpotlight({ section }: { section: TableSection }) {
                   src={art.src}
                   alt={art.alt}
                   fill
+                  priority={index === 0}
                   sizes="(max-width: 640px) 100vw, 33vw"
                   className="object-cover transition-transform duration-700 ease-[cubic-bezier(.16,1,.3,1)] group-hover:scale-[1.035]"
                 />

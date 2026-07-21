@@ -52,13 +52,20 @@ timing, thresholds, and decision rules are invented fixtures.
 
 | Day | Store rhythm | Three staff jobs |
 |---|---|---|
-| Monday | Label Day | Clear order issues, combine matching orders, prepare labels in bulk |
-| Tuesday | Ship + Preview | Check today's boxes, stop urgent changes, check the store pulse |
-| Wednesday | Ship + Report | Finish today's shipments, review the weekly report, set next week's priorities |
+| Monday | Shipping Documents | Clear shipping blockers, combine eligible orders, prepare shipping docs |
+| Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
+| Wednesday | Ship + Promotion | Finish ready shipments, review the auction reminder, review the new-arrivals promotion |
 | Thursday | Auction Opens | Check the live auction, verify the opening status, answer buyer questions |
-| Friday | Auction Momentum | Check bid movement, keep the board accurate, clear buyer questions |
-| Saturday | Close + Winners | Confirm final results, send winner next steps, watch add-on orders |
-| Sunday | Add-on Day | Watch new orders, combine matching orders, clear Monday blockers |
+| Friday | Auction Momentum | Check bid movement, review last-call ads, clear buyer questions |
+| Saturday | Closing Night + Winners | Confirm final results, review winner next steps, watch add-on orders |
+| Sunday | Add-ons + Announcement | Watch add-on orders, combine eligible orders, review the next-auction announcement |
+
+Tuesday's synthetic plan targets Thursday for ReefnBid publication and prepares
+new Shopify arrivals. Human staff verify physical inventory and update Shopify
+directly; the demo treats eBay as an automatic mirror of the Shopify catalog.
+Wednesday, Friday, and Sunday campaign work remains a reviewable draft until a
+human approves it; the public demo never claims an external listing or message
+was actually published or sent.
 
 Live-animal fulfillment is time-sensitive: a missed customer change can become
 wasted packing work, an avoidable carrier charge, or an incorrect shipment.

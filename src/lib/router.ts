@@ -12,8 +12,11 @@ import { pgPool } from "./store/postgres";
 import {
   attentionFeed,
   auctionBoard,
+  listingPlan,
   mergeScan,
+  promotionPlan,
   revenuePulse,
+  winnerNextSteps,
   weeklyReport,
 } from "./tools";
 import type { ChatResponse, ComponentSpec } from "./protocol";
@@ -80,6 +83,29 @@ async function auction(message: string): Promise<ChatResponse> {
   };
 }
 
+async function winnerHandoff(): Promise<ChatResponse> {
+  return {
+    verdict: "Saturday's closed board and winner handoff are ready for review. Nothing has been sent.",
+    components: await winnerNextSteps(ch),
+  };
+}
+
+async function listings(): Promise<ChatResponse> {
+  return {
+    verdict: "The Thursday listing target and Shopify inventory handoff are staged. Nothing is published.",
+    components: listingPlan(),
+  };
+}
+
+async function promotions(message: string): Promise<ChatResponse> {
+  const selected = parseDemoDayContext(message);
+  const day = selected === "friday" || selected === "sunday" ? selected : "wednesday";
+  return {
+    verdict: "The selected promotion is a reviewable draft. Nothing has been sent.",
+    components: promotionPlan(day),
+  };
+}
+
 async function merges(): Promise<ChatResponse> {
   const specs = await mergeScan(pg);
   const n = specs.filter((s) => s.kind === "merge_card").length;
@@ -143,6 +169,12 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
       return await report();
+    if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
+      return await listings();
+    if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))
+      return await promotions(message);
+    if (/winner.*next steps|payment.*add-on.*shipping/.test(q))
+      return await winnerHandoff();
     if (/auction|bids?|board/.test(q)) return await auction(message);
     if (/merge|combine|orders?/.test(q)) return await merges();
     if (/revenue|business|sales|how are we|how'?s (it|the week)/.test(q))

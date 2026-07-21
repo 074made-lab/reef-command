@@ -2,9 +2,9 @@
  * Reef Command chat agent — the LLM brain as a durable Trigger.dev task.
  *
  * A `chat.agent()` running Claude (Sonnet) via the Vercel AI SDK, driven from
- * the frontend by `useTriggerChatTransport`. The five read tools + model +
+ * the frontend by `useTriggerChatTransport`. The read/review tools + model +
  * system prompt live in `lib/agent-config.ts` (orchestration-agnostic). The
- * sixth tool, `prepareLabelDay`, is Trigger-native: it fires the durable
+ * write-side tool, `prepareLabelDay`, is Trigger-native: it fires the durable
  * label-day run (which pauses on a human waitpoint) and renders the manifest
  * with a gated approve chip, so it lives here alongside the Trigger wiring.
  * `lib/router.ts` + `/api/chat` remain as an offline fallback path.

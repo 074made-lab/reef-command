@@ -42,6 +42,7 @@ import {
   demoDay,
   isDemoDayId,
   stripDemoDayContext,
+  withRoutineContext,
   withDemoDayContext,
   type DemoChatPromptDetail,
 } from "@/lib/demo-clock";
@@ -337,6 +338,7 @@ export function MerchantChat() {
   const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
   const shipAlertStartedRef = useRef(false);
   const activeRoutineRef = useRef<ActiveRoutine | null>(null);
+  const routineHadVisualRef = useRef(false);
   const routineTokenRef = useRef(0);
   const streamRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef<HTMLDivElement>(null);
@@ -369,6 +371,7 @@ export function MerchantChat() {
   const beginRoutine = useCallback((target: RoutineTarget): ActiveRoutine => {
     const active = { ...target, token: ++routineTokenRef.current };
     activeRoutineRef.current = active;
+    routineHadVisualRef.current = false;
     updateRoutine(target, { status: "running", progress: 8 });
     return active;
   }, [updateRoutine]);
@@ -379,6 +382,7 @@ export function MerchantChat() {
       status,
       progress: status === "complete" ? 100 : 0,
     });
+    routineHadVisualRef.current = false;
     activeRoutineRef.current = null;
   }, [updateRoutine]);
 
@@ -458,6 +462,7 @@ export function MerchantChat() {
   useEffect(() => {
     const active = activeRoutineRef.current;
     if (!active) return;
+    if (newestAnswer?.specs.length) routineHadVisualRef.current = true;
     if (waiting) {
       updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, 24) }));
       return;
@@ -467,6 +472,14 @@ export function MerchantChat() {
       updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, progress) }));
     }
   }, [newestAnswer?.specs.length, newestAnswer?.verdict, streaming, updateRoutine, waiting]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!active || waiting || streaming || status !== "ready") return;
+    // Every routine maps to a structured tool. A prose-only turn can be an
+    // honest tool/network failure, but it is not completed operational work.
+    finishRoutine(active, routineHadVisualRef.current ? "complete" : "failed");
+  }, [finishRoutine, status, streaming, waiting]);
 
   useEffect(() => {
     const active = activeRoutineRef.current;
@@ -486,13 +499,13 @@ export function MerchantChat() {
     followAnswerRef.current = true;
     setShowJump(false);
     setInput("");
-    const active = routine ? beginRoutine(routine) : null;
-    const request = sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
-    if (active) {
-      void request.then(() => finishRoutine(active, "complete")).catch(() => finishRoutine(active, "failed"));
-    } else {
-      void request;
-    }
+    if (routine) beginRoutine(routine);
+    const routedMessage = routine ? withRoutineContext(routine.priorityIndex, message) : message;
+    const request = sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, routedMessage) });
+    void request.catch(() => {
+      const active = activeRoutineRef.current;
+      if (active) finishRoutine(active, "failed");
+    });
   }, [beginRoutine, finishRoutine, sendMessage, streaming, traceFollowupPending, waiting]);
 
   useEffect(() => {

@@ -40,12 +40,12 @@ function citedCount(text: string, nounPattern: string): number | null {
 
 const PROBES: Probe[] = [
   {
-    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me today's command brief and priorities.",
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — SHIPPING DOCUMENTS] Show me today's command brief and priorities.",
     expect: "dayBrief → Monday day_brief; synthetic weekday beats wall clock",
     check: (c) => {
       if (!called(c, "dayBrief") || !has(c, "day_brief")) return "wrong tool/component";
       const brief = c.components.find((s) => s.kind === "day_brief");
-      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Label Day"
+      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Shipping Documents"
         ? null
         : "did not honor synthetic Monday";
     },
@@ -79,7 +79,7 @@ const PROBES: Probe[] = [
     },
   },
   {
-    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me the order exceptions to clear before we purchase shipping labels.",
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — SHIPPING DOCUMENTS] Show me the order exceptions to clear before we prepare shipping documents.",
     expect: "whatNeedsAttention → attention_feed; never a label manifest",
     check: (c) => {
       if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
@@ -117,6 +117,20 @@ const PROBES: Probe[] = [
       if (/\b(?:board|auction)\b[^.]{0,24}\bclosed\b|\bclosed\b[^.]{0,24}\b(?:board|auction)\b/.test(lower(c)))
         return `live Thursday described as closed: "${c.text.slice(0, 80)}"`;
       return null;
+    },
+  },
+  {
+    q: "[SYNTHETIC DEMO TODAY: SATURDAY — CLOSE + WINNERS]\n[SYNTHETIC ROUTINE: priority=2; structured_component_required=true]\nReview the closed auction board and show the synthetic winner next steps for payment, add-on, and shipping. Do not send or claim a message.",
+    expect: "winnerNextSteps → fresh closed board + unsent structured handoff on repeated routine turns",
+    check: (c) => {
+      if (!called(c, "winnerNextSteps") || !has(c, "auction_board") || !has(c, "verdict_card"))
+        return "routine did not call the dedicated structured tool";
+      const board = c.components.find((s) => s.kind === "auction_board");
+      const handoff = c.components.find((s) => s.kind === "verdict_card");
+      if (board?.kind !== "auction_board" || board.state !== "closed") return "winner board is not closed";
+      return handoff?.kind === "verdict_card" && /no customer message has been sent/i.test(handoff.verdict)
+        ? null
+        : "handoff does not preserve the unsent boundary";
     },
   },
   {

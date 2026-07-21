@@ -3,20 +3,32 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DEMO_DAYS } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
+import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
 
 const monday = DEMO_DAYS.find((day) => day.id === "monday");
 const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
-assert.ok(monday && tuesday);
+const wednesday = DEMO_DAYS.find((day) => day.id === "wednesday");
+const friday = DEMO_DAYS.find((day) => day.id === "friday");
+const sunday = DEMO_DAYS.find((day) => day.id === "sunday");
+assert.ok(monday && tuesday && wednesday && friday && sunday);
 
 assert.deepEqual(
   monday.priorities.map((priority) => priority.label),
-  ["Clear order issues", "Combine matching orders", "Prepare labels in bulk"],
-  "Monday's visible Label Day routine must stay plain and task-focused",
+  ["Clear shipping blockers", "Combine eligible orders", "Prepare shipping docs"],
+  "Monday's visible shipping-document routine must stay plain and task-focused",
 );
 assert.match(monday.priorities[0].prompt ?? "", /customer messages|holds|address changes/i);
 assert.match(monday.priorities[0].prompt ?? "", /do not prepare the label manifest/i);
-assert.equal(tuesday.priorities[1].label, "Stop urgent changes");
-assert.equal(tuesday.priorities[1].prompt, "What needs my attention?");
+assert.equal(tuesday.priorities[1].label, "Stage Thursday listings");
+assert.match(tuesday.priorities[1].prompt ?? "", /ReefnBid.*Shopify/i);
+assert.equal(tuesday.priorities[2].label, "Request inventory check");
+assert.match(tuesday.priorities[2].prompt ?? "", /human inventory reminder.*Shopify/i);
+assert.equal(wednesday.priorities[1].label, "Review auction reminder");
+assert.match(wednesday.priorities[1].prompt ?? "", /email.*SMS.*Thursday/i);
+assert.equal(friday.priorities[1].label, "Review last-call ads");
+assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
+assert.equal(sunday.priorities[2].label, "Review next announcement");
+assert.match(sunday.priorities[2].prompt ?? "", /next-auction announcement/i);
 
 assert.equal(DEMO_DOA_REVIEW.caseId, "DOA-DEMO-2401");
 assert.equal(DEMO_DOA_REVIEW.claimedItems.length, 3);
@@ -26,6 +38,12 @@ assert.notEqual(DEMO_DOA_REVIEW.shipment.currentLabelId, DEMO_DOA_REVIEW.shipmen
 assert.ok(DEMO_DOA_REVIEW.shipment.updatedLabelCostCents > 0);
 assert.match(DEMO_DOA_REVIEW.replyDraft, /three replacement corals/i);
 assert.match(DEMO_DOA_REVIEW.replyDraft, /scheduled for tomorrow/i);
+
+assert.equal(routeShopQuestion("My coral arrived dead"), "doa-claim");
+assert.equal(routeShopQuestion("Can I combine an add-on order with my auction win?"), "direct-answer");
+assert.equal(routeShopQuestion("Can you hold my box until next week?"), "human-intake");
+assert.match(SHOP_COMBINE_ANSWER, /synthetic demo/i);
+assert.match(SHOP_COMBINE_ANSWER, /store confirms/i);
 
 const taskSource = readFileSync(new URL("../src/trigger/doa-resolution.ts", import.meta.url), "utf8");
 const phases = [
@@ -79,15 +97,33 @@ assert.match(merchantSource, /setShipAlert\(PENDING_SHIP_ALERT\)/,
   "Tuesday must show the inbound change before its durable workflow responds");
 assert.match(merchantSource, /demoDayId !== "tuesday"[\s\S]*shipAlertStartedRef\.current = false/,
   "leaving Tuesday must reset the autonomous alert for the next visit");
+assert.match(merchantSource, /routineHadVisualRef\.current \? "complete" : "failed"/,
+  "routine completion must require a structured operational component");
+assert.doesNotMatch(merchantSource, /request\.then\(\(\) => finishRoutine\(active, "complete"\)\)/,
+  "a resolved prose-only chat turn must not mark operational work complete");
+
+const agentSource = readFileSync(new URL("../src/lib/agent-config.ts", import.meta.url), "utf8");
+assert.match(agentSource, /structured_component_required=true[\s\S]*Call the matching live tool/,
+  "routine retries must require a fresh structured tool call");
+assert.match(agentSource, /Tuesday listing questions call listingPlan/,
+  "Tuesday listing routines must have a structured review tool");
+assert.match(agentSource, /Wednesday\/Friday\/Sunday promotion questions call promotionPlan/,
+  "promotion routines must have a structured review tool");
 
 const routerSource = readFileSync(new URL("../src/lib/router.ts", import.meta.url), "utf8");
 assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
   "offline fallback must route exceptions to attention before the generic order rule");
+assert.match(routerSource, /inventory reminder\|inventory check/,
+  "offline fallback must route Tuesday inventory work to the listing plan");
+assert.match(routerSource, /announcement\|last\[ -\]call/,
+  "offline fallback must route promotion routines before auction keywords");
 assert.doesNotMatch(routerSource, /components: \[\.\.\.feed, \.\.\.pulse\]/,
   "attention must not silently append an unrelated revenue pulse");
 
-console.log("✓ Monday stays Label Day; exception routing opens attention, not a manifest");
-console.log("✓ Tuesday owns the urgent ship-day change and autonomous protection loop");
+console.log("✓ Monday prepares shipping documents; exception routing opens attention, not a manifest");
+console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");
+console.log("✓ Wednesday, Friday, and Sunday promotion work stays review-only");
 console.log("✓ DOA approval closes 3 replacements into tomorrow's updated shipment");
 console.log("✓ Customer reply remains a draft and is never auto-sent");
+console.log("✓ Concierge answers the supported combine FAQ; DOA and human handoff stay explicit");
 console.log("\nALL PASS — synthetic workflow contracts");

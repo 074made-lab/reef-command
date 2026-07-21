@@ -26,34 +26,34 @@ export type DemoDay = {
 
 export const DEMO_DAYS: DemoDay[] = [
   {
-    id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Label Day",
-    goal: "Prepare this week's orders for shipping: fix issues, combine boxes, and prepare one label batch.",
+    id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Shipping Documents",
+    goal: "Clear shipment issues, combine eligible orders, and prepare shipping documents for carrier review.",
     priorities: [
-      { label: "Clear order issues", detail: "Review holds, address changes, cancellations, and late add-ons before any label purchase.", cue: "do-now", prompt: "Show me urgent customer messages, holds, address changes, and order exceptions to clear before label approval. Do not prepare the label manifest yet." },
-      { label: "Combine matching orders", detail: "Put the same customer's eligible orders from different sales channels into one shipment.", cue: "do-now", prompt: "Check for orders we can combine across platforms." },
-      { label: "Prepare labels in bulk", detail: "Check weight and weather protection, then send one label batch to the owner for approval.", cue: "human-gate", prompt: "Run label day: prepare today's shipping-label batch for bulk approval." },
+      { label: "Clear shipping blockers", detail: "Review holds, address changes, cancellations, and late add-ons before documents are prepared.", cue: "do-now", prompt: "Show me urgent customer messages, holds, address changes, and shipping exceptions to clear before document approval. Do not prepare the label manifest yet." },
+      { label: "Combine eligible orders", detail: "Put the same customer's eligible orders from different sales channels into one shipment.", cue: "do-now", prompt: "Check for eligible orders we can combine across platforms." },
+      { label: "Prepare shipping docs", detail: "Build the label manifest with weights and weather protection for owner approval.", cue: "human-gate", prompt: "Prepare Monday's shipping documents and label manifest for owner approval." },
     ],
-    reminder: "Tell winners the ship date, add-on code, and that eligible orders will share one box.",
+    reminder: "Human staff verify each packed box; the owner approves any shipping-label purchase.",
   },
   {
-    id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Preview",
-    goal: "Ship today's prepared orders and stop last-minute changes before carrier handoff.",
+    id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Listings",
+    goal: "Ship ready boxes, stage Thursday's ReefnBid listings, and prepare new Shopify arrivals.",
     priorities: [
-      { label: "Check today's boxes", detail: "Confirm packing lists, labels, and weather protection before handoff.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Stop urgent changes", detail: "Catch hold, address, or cancel requests before the carrier takes the box.", cue: "watch", prompt: "What needs my attention?" },
-      { label: "Check the store pulse", detail: "Keep the next auction cycle visible while today's boxes leave.", cue: "do-now", prompt: "How's business?" },
+      { label: "Check today's shipments", detail: "Confirm packing lists, labels, and weather protection before carrier handoff.", cue: "do-now", prompt: "What shipping exceptions need my attention before today's carrier handoff?" },
+      { label: "Stage Thursday listings", detail: "Prepare ReefnBid lots and new Shopify arrivals for the Thursday publish target.", cue: "do-now", prompt: "Show the Tuesday listing plan for Thursday's ReefnBid lots and new Shopify arrivals." },
+      { label: "Request inventory check", detail: "Ask human staff to verify stock and update Shopify before anything publishes.", cue: "human-gate", prompt: "Show the Tuesday listing plan and the human inventory reminder for Shopify." },
     ],
-    reminder: "A late customer change must reach packing before the carrier receives the box.",
+    reminder: "Human staff update inventory in Shopify; eBay mirrors the Shopify catalog in this demo.",
   },
   {
-    id: "wednesday", phase: "report", short: "WED", weekday: "Wednesday", time: "18:15", label: "Ship + Report",
-    goal: "Finish this week's shipping and review results before the next auction.",
+    id: "wednesday", phase: "announce", short: "WED", weekday: "Wednesday", time: "18:15", label: "Ship + Promotion",
+    goal: "Finish ready shipments and review Thursday auction and new-arrival reminders before approval.",
     priorities: [
-      { label: "Finish today's shipments", detail: "Ship the remaining ready boxes and hold anything that cannot leave safely.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Review the weekly report", detail: "Check channel results, repeat buyers, product movement, and the add-on funnel.", cue: "do-now", prompt: "Weekly report" },
-      { label: "Set next week's priorities", detail: "Turn the weekly results into a short list of follow-up work.", cue: "watch", prompt: "Weekly report" },
+      { label: "Finish ready shipments", detail: "Ship the remaining ready boxes and hold anything that cannot leave safely.", cue: "do-now", prompt: "What shipping exceptions need my attention before today's carrier handoff?" },
+      { label: "Review auction reminder", detail: "Review the email and SMS drafts announcing Thursday's ReefnBid opening.", cue: "human-gate", prompt: "Review Wednesday's email and SMS auction reminder drafts for Thursday." },
+      { label: "Review arrivals promo", detail: "Review the Shopify new-coral-arrivals promotion alongside the auction reminder.", cue: "human-gate", prompt: "Review Wednesday's Shopify new-arrivals promotion draft." },
     ],
-    reminder: "Use the report to decide what needs attention next week.",
+    reminder: "Email and SMS remain drafts until approval; Thursday is the ReefnBid publish target.",
   },
   {
     id: "thursday", phase: "auction_live", short: "THU", weekday: "Thursday", time: "20:45", label: "Auction Opens",
@@ -70,30 +70,30 @@ export const DEMO_DAYS: DemoDay[] = [
     goal: "Keep the auction accurate and clear buyer questions before Saturday's close.",
     priorities: [
       { label: "Check bid movement", detail: "Compare current bidding with Thursday's opening.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Keep the board accurate", detail: "Make sure every lot and close time still shows the correct state.", cue: "watch", prompt: "How's the auction going?" },
+      { label: "Review last-call ads", detail: "Review the final-call email and SMS drafts before Saturday's close.", cue: "human-gate", prompt: "Review Friday's auction momentum and last-call advertisement drafts." },
       { label: "Clear buyer questions", detail: "Answer questions before the final-night rush.", cue: "watch", prompt: "What needs my attention?" },
     ],
-    reminder: "Answer questions today so closing night does not create a bigger queue.",
+    reminder: "Last-call email and SMS remain drafts until approval; keep the live board accurate.",
   },
   {
-    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Close + Winners",
+    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Closing Night + Winners",
     goal: "Close the auction, confirm winners, and start the two-day add-on window.",
     priorities: [
       { label: "Confirm final results", detail: "Lock the closed state and show final hammer prices.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Send winner next steps", detail: "Give winners payment, add-on, and shipping instructions.", cue: "do-now", prompt: "How's the auction going?" },
+      { label: "Review winner next steps", detail: "Check the payment, add-on, and shipping instructions before they go out.", cue: "do-now", prompt: "Review the closed auction board and show the synthetic winner next steps for payment, add-on, and shipping. Do not send or claim a message." },
       { label: "Watch add-on orders", detail: "Watch for new orders that may belong in the same shipment.", cue: "watch", prompt: "Any orders to merge?" },
     ],
     reminder: "Every winner needs payment steps, an add-on code, and a ship date.",
   },
   {
-    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-on Day",
-    goal: "Combine add-on orders so each customer has one clear shipment for Monday.",
+    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-ons + Announcement",
+    goal: "Combine eligible add-ons and review the next-auction announcement before Monday's document work.",
     priorities: [
-      { label: "Watch new orders", detail: "Keep orders from the auction, online store, and marketplace visible together.", cue: "watch", prompt: "How's business?" },
-      { label: "Combine matching orders", detail: "Put each customer's eligible orders into one coordinated shipment.", cue: "do-now", prompt: "Any orders to merge?" },
-      { label: "Clear Monday blockers", detail: "Catch holds, address changes, and late add-ons before label work begins.", cue: "watch", prompt: "What needs my attention?" },
+      { label: "Watch add-on orders", detail: "Keep orders from the auction, online store, and marketplace visible together.", cue: "watch", prompt: "How's business during the Sunday add-on window?" },
+      { label: "Combine eligible orders", detail: "Put each customer's eligible orders into one coordinated shipment.", cue: "do-now", prompt: "Any eligible orders to merge?" },
+      { label: "Review next announcement", detail: "Review the next-auction announcement before the new weekly cycle begins.", cue: "human-gate", prompt: "Review Sunday's next-auction announcement draft." },
     ],
-    reminder: "Resolve holds, address changes, and late add-ons before Monday label work.",
+    reminder: "The announcement remains a draft until approval; Monday starts shipping-document preparation.",
   },
 ];
 
@@ -107,6 +107,10 @@ export type DemoChatPromptDetail = {
   dayId: DemoDayId;
   priorityIndex: number;
 };
+
+export function withRoutineContext(priorityIndex: number, message: string): string {
+  return `[SYNTHETIC ROUTINE: priority=${priorityIndex + 1}; structured_component_required=true]\n${message}`;
+}
 
 export function isDemoDayId(value: string | null): value is DemoDayId {
   return DEMO_DAYS.some((day) => day.id === value);
@@ -167,6 +171,7 @@ export function withDemoDayContext(dayId: DemoDayId, message: string): string {
 export function stripDemoDayContext(message: string): string {
   return message
     .replace(/^\[SYNTHETIC DEMO TODAY:[^\]]+\]\s*/i, "")
+    .replace(/^\[SYNTHETIC ROUTINE:[^\]]+\]\s*/i, "")
     .replace(/^\[SYNTHETIC SHIP TRACE:[^\]]+\]\s*/i, "");
 }
 

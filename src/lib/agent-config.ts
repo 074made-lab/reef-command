@@ -21,8 +21,11 @@ import { pgPool } from "./store/postgres";
 import {
   attentionFeed,
   auctionBoard,
+  listingPlan,
   mergeScan,
+  promotionPlan,
   revenuePulse,
+  winnerNextSteps,
   weeklyReport,
 } from "./tools";
 import type { ComponentSpec } from "./protocol";
@@ -163,6 +166,29 @@ export const reefTools = {
     execute: async ({ day }) => auctionBoard(ch(), day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
+  winnerNextSteps: tool({
+    description:
+      "Call this only when the owner asks to review Saturday winner next steps for payment, add-ons, and shipping. It returns the closed board plus a synthetic review card. It never sends or claims to send a customer message.",
+    inputSchema: z.object({}),
+    execute: async () => winnerNextSteps(ch()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  listingPlan: tool({
+    description:
+      "Call this for Tuesday listing work: the Thursday ReefnBid publish target, new Shopify arrival drafts, the eBay sync assumption, or the human inventory reminder. It returns a synthetic review card and never publishes a listing.",
+    inputSchema: z.object({}),
+    execute: async () => listingPlan(),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  promotionPlan: tool({
+    description:
+      "Call this for Wednesday auction-start and Shopify-arrival reminders, Friday momentum/last-call ads, or Sunday's next-auction announcement. It returns a synthetic draft review card and never sends email or SMS.",
+    inputSchema: z.object({
+      day: z.enum(["wednesday", "friday", "sunday"]),
+    }),
+    execute: async ({ day }) => promotionPlan(day),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   scanMerges: tool({
     description:
       "Call this to find cross-platform orders that should combine into one shipment — 'any orders to merge', 'combine orders', 'one box'. Returns merge cards where the same customer has unshipped orders on 2+ platforms.",
@@ -187,7 +213,7 @@ export const reefTools = {
 
 export const SYSTEM = `You are Reef Command, the merchant cockpit for a synthetic live-coral-store demo inspired by physical-commerce problems. The workflow, customer bands, account links, timing, economics, and rules are invented fixtures and are not TIA Coral's operating playbook. You are a calm, brief co-pilot ("Teddy") — never chatty.
 
-THE WEEK: MON label day → TUE ship + next-auction preview → WED final ship + weekly report → THU ReefnBid opens → FRI auction momentum → SAT close + winners/codes → SUN add-ons + cross-platform merges. Tuesday/Wednesday shipping the previous cycle overlaps with previewing the next auction. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
+THE WEEK: MON shipping documents → TUE shipping + ReefnBid/Shopify listing prep → WED shipping + email/SMS promotion review → THU ReefnBid opens → FRI auction momentum + last-call review → SAT closing night + winners → SUN add-ons + next-auction announcement review. eBay mirrors Shopify in this synthetic demo, but human staff verify inventory and update Shopify directly. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
 
 HOW YOU ANSWER — this is a visual product, not a wall of text:
 - For any question about the business, CALL THE RIGHT TOOL. The tool renders the real answer as interactive components on screen.
@@ -196,10 +222,13 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - Pick the tool by intent (each tool's description says when to use it). You may call more than one if the question genuinely spans them.
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
+- When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
+- Tuesday listing questions call listingPlan. Wednesday/Friday/Sunday promotion questions call promotionPlan with the marker's weekday. These are review artifacts: never claim a listing was published or a message was sent.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
+- A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
 - A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"
 - If the owner's next message confirms that trace follow-up, call whatNeedsAttention and render the complete attention feed. Do not add revenue or unrelated tools unless asked.
-- Intent boundary on Monday: questions about exceptions/messages/holds/address changes to CLEAR BEFORE label approval call whatNeedsAttention. Only an explicit request to PREPARE/RUN/BUILD the label batch calls prepareLabelDay.
+- Intent boundary on Monday: questions about exceptions/messages/holds/address changes to CLEAR BEFORE shipping-document approval call whatNeedsAttention. Only an explicit request to PREPARE/RUN/BUILD shipping documents or the label manifest calls prepareLabelDay.
 
 HARD RULES (never break):
 - NEVER fabricate a number, price, date, handle, or policy. Every business figure must come from a tool result. If no tool covers the question, say so plainly in one sentence — do not guess or invent.

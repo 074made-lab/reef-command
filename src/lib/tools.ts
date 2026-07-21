@@ -221,6 +221,78 @@ export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Pro
   return [{ kind: "auction_board", lots: board, closesAt, state }];
 }
 
+/** Public-safe Saturday handoff. This is a review artifact, not a send action. */
+export async function winnerNextSteps(ch: ClickHouseClient): Promise<ComponentSpec[]> {
+  const board = await auctionBoard(ch, "saturday");
+  return [
+    ...board,
+    {
+      kind: "verdict_card",
+      verdict: "Winner handoff is ready for review. No customer message has been sent.",
+      confidence: "high",
+      evidence: [
+        { label: "payment", detail: "Complete payment from the synthetic winner checkout." },
+        { label: "add-on", detail: "Use the synthetic add-on code during the two-day add-on window." },
+        { label: "shipping", detail: "Confirm the planned Tuesday or Wednesday ship date." },
+      ],
+    },
+  ];
+}
+
+// ------------------------------------------------------ weekly operating plan
+
+/** Public-safe listing review artifact. It never publishes to a sales channel. */
+export function listingPlan(): ComponentSpec[] {
+  return [{
+    kind: "verdict_card",
+    verdict: "Tuesday's listing plan is staged for review. Nothing has been published.",
+    confidence: "high",
+    evidence: [
+      { label: "ReefnBid", detail: "Thursday is the target live day; the synthetic lot queue remains a draft." },
+      { label: "Shopify", detail: "New coral arrivals are prepared as draft products for review." },
+      { label: "eBay sync", detail: "Demo assumption: eBay mirrors the catalog after Shopify is updated." },
+      { label: "human check", detail: "Human staff must verify physical inventory and update Shopify directly before publish." },
+    ],
+  }];
+}
+
+/** Public-safe campaign review artifact. It never sends email or SMS. */
+export function promotionPlan(dayId: "wednesday" | "friday" | "sunday"): ComponentSpec[] {
+  const plans: Record<"wednesday" | "friday" | "sunday", {
+    verdict: string;
+    evidence: { label: string; detail: string }[];
+  }> = {
+    wednesday: {
+      verdict: "Wednesday's launch reminders are ready for review. Nothing has been sent.",
+      evidence: [
+        { label: "email", detail: "Draft announces that the ReefnBid auction opens Thursday." },
+        { label: "SMS", detail: "Short Thursday-start reminder is prepared as a draft." },
+        { label: "Shopify", detail: "New-coral-arrivals promotion is paired with the auction reminder." },
+        { label: "approval", detail: "A human must review recipients and copy before any send." },
+      ],
+    },
+    friday: {
+      verdict: "Friday's momentum and last-call ads are ready for review. Nothing has been sent.",
+      evidence: [
+        { label: "momentum", detail: "Draft highlights active auction lots without inventing prices or bid counts." },
+        { label: "email", detail: "Last-call draft points buyers to Saturday closing night." },
+        { label: "SMS", detail: "Concise closing-night reminder is prepared as a draft." },
+        { label: "approval", detail: "A human must review recipients and copy before any send." },
+      ],
+    },
+    sunday: {
+      verdict: "Sunday's next-auction announcement is ready for review. Nothing has been sent.",
+      evidence: [
+        { label: "add-ons", detail: "The current add-on window stays visible while the auction cycle turns over." },
+        { label: "announcement", detail: "Draft introduces the next ReefnBid auction without claiming it is live." },
+        { label: "handoff", detail: "Monday's shipping-document work is the next staff checkpoint." },
+        { label: "approval", detail: "A human must review the announcement before any send." },
+      ],
+    },
+  };
+  return [{ kind: "verdict_card", confidence: "high", ...plans[dayId] }];
+}
+
 // ---------------------------------------------------------------- merge scan
 
 /** Customers with unshipped orders on ≥2 platforms this cycle — combine them. */
