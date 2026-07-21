@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { DEMO_DAYS } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
 import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
+import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
 
 const monday = DEMO_DAYS.find((day) => day.id === "monday");
 const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
@@ -27,8 +28,14 @@ assert.equal(wednesday.priorities[1].label, "Review auction reminder");
 assert.match(wednesday.priorities[1].prompt ?? "", /email.*SMS.*Thursday/i);
 assert.equal(friday.priorities[1].label, "Review last-call ads");
 assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
-assert.equal(sunday.priorities[2].label, "Review next announcement");
-assert.match(sunday.priorities[2].prompt ?? "", /next-auction announcement/i);
+assert.equal(sunday.priorities[0].label, "Watch add-on orders");
+assert.match(sunday.priorities[0].prompt ?? "", /add-on orders board.*coral units.*combine-ready/i);
+assert.equal(sunday.priorities[2].label, "Announce next auction");
+assert.match(sunday.priorities[2].prompt ?? "", /Thursday through Saturday.*8 PM ET/i);
+assert.match(sunday.priorities[2].prompt ?? "", /email and SMS recipient counts.*drafts.*send button/i);
+const announcementMeta = nextAuctionAnnouncementMeta();
+assert.equal(announcementMeta.dateRange, "Thu, Jul 23, 2026 – Sat, Jul 25, 2026");
+assert.equal(announcementMeta.closeTime, "Saturday at 8:00 PM ET");
 
 assert.equal(DEMO_DOA_REVIEW.caseId, "DOA-DEMO-2401");
 assert.equal(DEMO_DOA_REVIEW.claimedItems.length, 3);
@@ -117,8 +124,10 @@ assert.match(agentSource, /structured_component_required=true[\s\S]*Call the mat
   "routine retries must require a fresh structured tool call");
 assert.match(agentSource, /Tuesday listing questions call listingPlan/,
   "Tuesday listing routines must have a structured review tool");
-assert.match(agentSource, /Wednesday\/Friday\/Sunday promotion questions call promotionPlan/,
-  "promotion routines must have a structured review tool");
+assert.match(agentSource, /Sunday's add-on monitor calls addonOrderBoard, never revenuePulse/,
+  "Sunday's monitor must open the dedicated order board");
+assert.match(agentSource, /Sunday's next-auction task calls auctionAnnouncement/,
+  "Sunday's announcement must open drafts, counts, and the gated send control");
 
 const routerSource = readFileSync(new URL("../src/lib/router.ts", import.meta.url), "utf8");
 assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
@@ -127,12 +136,29 @@ assert.match(routerSource, /inventory reminder\|inventory check/,
   "offline fallback must route Tuesday inventory work to the listing plan");
 assert.match(routerSource, /announcement\|last\[ -\]call/,
   "offline fallback must route promotion routines before auction keywords");
+assert.match(routerSource, /add-on orders\? board[\s\S]*return await addOns/,
+  "offline fallback must route the Sunday monitor to its board");
+assert.match(routerSource, /next-auction announcement[\s\S]*return await announcement/,
+  "offline fallback must route the Sunday announcement to its review package");
 assert.doesNotMatch(routerSource, /components: \[\.\.\.feed, \.\.\.pulse\]/,
   "attention must not silently append an unrelated revenue pulse");
 
+const rendererSource = readFileSync(new URL("../src/components/specs/SpecRenderer.tsx", import.meta.url), "utf8");
+assert.match(rendererSource, /case "addon_order_board"/,
+  "the add-on monitor must render a dedicated board");
+assert.match(rendererSource, /case "auction_announcement"/,
+  "the next-auction package must render both drafts and its action");
+
+const actionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
+assert.match(actionRouteSource, /send-demo-auction-announcement/,
+  "the announcement approval must have a wired action");
+assert.match(actionRouteSource, /simulated: true[\s\S]*no external messages sent/,
+  "the demo send must remain synthetic and state that boundary");
+
 console.log("✓ Monday prepares shipping documents; exception routing opens attention, not a manifest");
 console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");
-console.log("✓ Wednesday, Friday, and Sunday promotion work stays review-only");
+console.log("✓ Sunday opens a live add-on board and a gated two-channel announcement package");
+console.log("✓ Wednesday and Friday promotion work stays review-only");
 console.log("✓ DOA approval closes 3 replacements into tomorrow's updated shipment");
 console.log("✓ Customer reply remains a draft and is never auto-sent");
 console.log("✓ Concierge answers the supported combine FAQ; DOA and human handoff stay explicit");

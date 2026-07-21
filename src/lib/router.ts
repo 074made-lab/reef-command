@@ -10,7 +10,9 @@
 import { chClient } from "./store/clickhouse";
 import { pgPool } from "./store/postgres";
 import {
+  addonOrderBoard,
   attentionFeed,
+  auctionAnnouncement,
   auctionBoard,
   listingPlan,
   mergeScan,
@@ -99,10 +101,28 @@ async function listings(): Promise<ChatResponse> {
 
 async function promotions(message: string): Promise<ChatResponse> {
   const selected = parseDemoDayContext(message);
-  const day = selected === "friday" || selected === "sunday" ? selected : "wednesday";
+  const day = selected === "friday" ? selected : "wednesday";
   return {
     verdict: "The selected promotion is a reviewable draft. Nothing has been sent.",
     components: promotionPlan(day),
+  };
+}
+
+async function addOns(): Promise<ChatResponse> {
+  const components = await addonOrderBoard(pg);
+  const board = firstOf(components, "addon_order_board");
+  return {
+    verdict: board
+      ? `${plural(board.totalOrders, "add-on order")} are open; ${plural(board.combineReady, "order")} can join an auction shipment.`
+      : "The add-on order board is ready.",
+    components,
+  };
+}
+
+async function announcement(): Promise<ChatResponse> {
+  return {
+    verdict: "Next Thursday-through-Saturday announcement is ready for human approval. External sending remains off.",
+    components: await auctionAnnouncement(pg),
   };
 }
 
@@ -169,6 +189,10 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
       return await report();
+    if (/add-on orders? board|add-on volume|coral units.*combine-ready|watch add-on orders/.test(q))
+      return await addOns();
+    if (/next-auction announcement|announce next auction|email and sms recipient counts|demo send button/.test(q))
+      return await announcement();
     if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
       return await listings();
     if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))

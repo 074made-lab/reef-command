@@ -17,6 +17,10 @@
  * Deliberately NOT money and NOT physical: orders are not relinked here — the
  * physical consolidation into one labeled box happens at label day, exactly
  * like the real store. No owner session required (nothing is spent).
+ *
+ * send-demo-auction-announcement → a human click records a simulated email/SMS
+ * send to synthetic recipients in Postgres and ClickHouse. It never connects
+ * to an external messaging provider.
  */
 import { NextResponse } from "next/server";
 import type { ClickHouseClient } from "@clickhouse/client";
@@ -24,7 +28,11 @@ import { wait, runs } from "@trigger.dev/sdk";
 import { requireOwner, OwnerAuthError } from "@/lib/owner-auth";
 import { pgPool } from "@/lib/store/postgres";
 import { chClient, insertEvents, queryRows } from "@/lib/store/clickhouse";
-import { currentWeekIndex } from "@/lib/tools";
+import {
+  announcementRecipients,
+  currentWeekIndex,
+  nextAuctionAnnouncementMeta,
+} from "@/lib/tools";
 
 let chSingleton: ClickHouseClient | undefined;
 const ch = () => (chSingleton ??= chClient());
@@ -170,6 +178,88 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       note: `merged ${rows.rows.length} orders → one box, one fee — audit row + orders_merged event written`,
+    });
+  }
+
+  if (taskId === "send-demo-auction-announcement") {
+    const expected = nextAuctionAnnouncementMeta();
+    const campaignId = typeof body.payload?.campaignId === "string" ? body.payload.campaignId : null;
+    if (campaignId !== expected.campaignId) {
+      return NextResponse.json({ ok: false, error: "unknown synthetic campaign" }, { status: 400 });
+    }
+
+    const db = pgPool();
+    const client = await db.connect();
+    let emailCount = 0;
+    let smsCount = 0;
+    let alreadySent = false;
+    try {
+      await client.query("BEGIN");
+      const recipients = await announcementRecipients(client);
+      emailCount = recipients.emailIds.length;
+      smsCount = recipients.smsIds.length;
+      const uniqueRecipients = new Set([...recipients.emailIds, ...recipients.smsIds]).size;
+      const campaign = await client.query<{ id: string; sent_at: Date | null }>(`
+        INSERT INTO campaigns (
+          campaign_code, phase, audience_criteria, audience_count, preview, scheduled_at
+        ) VALUES ($1, 'announce', 'arbitrary synthetic auction-account fixture', $2, $3::jsonb, now())
+        ON CONFLICT (campaign_code) DO UPDATE SET
+          audience_count = EXCLUDED.audience_count,
+          preview = EXCLUDED.preview
+        RETURNING id, sent_at`, [
+        campaignId,
+        uniqueRecipients,
+        JSON.stringify({ dateRange: expected.dateRange, closeTime: expected.closeTime, simulated: true }),
+      ]);
+      const campaignDbId = Number(campaign.rows[0]?.id);
+      alreadySent = Boolean(campaign.rows[0]?.sent_at);
+      if (!alreadySent) {
+        if (emailCount) {
+          await client.query(`
+            INSERT INTO campaign_sends (campaign_id, customer_id, channel, simulated, sent_at)
+            SELECT $1, recipient_id, 'email', true, now()
+            FROM unnest($2::bigint[]) AS recipient_id`, [campaignDbId, recipients.emailIds]);
+        }
+        if (smsCount) {
+          await client.query(`
+            INSERT INTO campaign_sends (campaign_id, customer_id, channel, simulated, sent_at)
+            SELECT $1, recipient_id, 'sms', true, now()
+            FROM unnest($2::bigint[]) AS recipient_id`, [campaignDbId, recipients.smsIds]);
+        }
+        await client.query(`
+          UPDATE campaigns SET approved_by = 'merchant-click', sent_at = now()
+          WHERE id = $1`, [campaignDbId]);
+        await client.query(`
+          INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
+          VALUES ('send-demo-auction-announcement','gated',$1,'merchant-click','ok')`, [
+          JSON.stringify({ campaignId, emailCount, smsCount, simulated: true }),
+        ]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const duplicate = await queryRows<{ n: string }>(ch(), `
+      SELECT count() AS n FROM events
+      WHERE type = 'campaign_sent'
+        AND JSONExtractString(meta, 'campaignId') = {campaignId:String}`,
+    { campaignId });
+    if (Number(duplicate[0]?.n ?? 0) === 0) {
+      await insertEvents(ch(), [{
+        ts: new Date().toISOString(),
+        type: "campaign_sent",
+        platform: "system",
+        meta: { campaignId, emailCount, smsCount, simulated: true },
+      }]);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      note: `${alreadySent ? "already recorded" : "simulated send recorded"}: ${emailCount} email + ${smsCount} SMS · no external messages sent`,
     });
   }
 

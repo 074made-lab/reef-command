@@ -18,6 +18,7 @@ import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 
 const WEEK_MS = 7 * 24 * 3600_000;
+const DAY_MS = 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);                 // a Thursday — cycle anchor
 const bySku = new Map(CATALOG.map((c) => [c.sku, c]));
 
@@ -241,6 +242,159 @@ export async function winnerNextSteps(ch: ClickHouseClient): Promise<ComponentSp
 
 // ------------------------------------------------------ weekly operating plan
 
+type AnnouncementRecipient = {
+  id: string;
+  tier: number;
+  contact: "email" | "sms" | "both";
+  primary_email: string | null;
+  primary_phone: string | null;
+};
+
+type Queryable = Pick<Pool, "query">;
+
+/** Arbitrary public-demo audience; never a production targeting rule. */
+export async function announcementRecipients(db: Queryable): Promise<{
+  emailIds: number[];
+  smsIds: number[];
+}> {
+  const result = await db.query<AnnouncementRecipient>(`
+    SELECT DISTINCT c.id, c.tier,
+      coalesce(c.preferences->>'contact', 'email') AS contact,
+      c.primary_email, c.primary_phone
+    FROM customers c
+    WHERE EXISTS (
+      SELECT 1 FROM customer_identities i
+      WHERE i.customer_id = c.id AND i.platform = 'auction'
+    )
+    ORDER BY c.id`);
+  const emailIds = result.rows
+    .filter((row) => row.primary_email && (row.contact === "email" || row.contact === "both"))
+    .map((row) => Number(row.id));
+  const smsIds = result.rows
+    .filter((row) => row.primary_phone && (row.contact === "sms" || row.contact === "both"))
+    .map((row) => Number(row.id));
+  return { emailIds, smsIds };
+}
+
+export function nextAuctionAnnouncementMeta() {
+  const sundayMs = demoAuctionMoment("sunday");
+  const thursdayMs = sundayMs + 4 * DAY_MS;
+  const saturdayMs = sundayMs + 6 * DAY_MS;
+  const date = (ms: number) => new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(ms));
+  return {
+    campaignId: `CMP-W${DEMO_AUCTION_WEEK_INDEX + 1}-next-auction`,
+    dateRange: `${date(thursdayMs)} – ${date(saturdayMs)}`,
+    closeTime: "Saturday at 8:00 PM ET",
+  };
+}
+
+/** Sunday order monitor backed by the synthetic Postgres order ledger. */
+export async function addonOrderBoard(pg: Pool): Promise<ComponentSpec[]> {
+  const window = weekWindow(currentWeekIndex());
+  const params = [window.start.replace(" ", "T") + "Z", window.end.replace(" ", "T") + "Z"];
+  type Row = {
+    order_id: string;
+    platform: "auction" | "web" | "marketplace";
+    customer: string;
+    coral_units: string;
+    total_cents: string;
+    ordered_at: Date;
+    status: "pending" | "paid" | "labeled" | "shipped" | "cancelled" | "held";
+    combine_ready: boolean;
+    total_orders: string;
+    all_units: string;
+    all_cents: string;
+    all_combine_ready: string;
+  };
+  const [ordersResult, platformsResult] = await Promise.all([
+    pg.query<Row>(`
+      WITH addon AS (
+        SELECT o.external_id AS order_id, o.platform, c.primary_name AS customer,
+          coalesce((SELECT sum(oi.qty) FROM order_items oi WHERE oi.order_id = o.id), 0) AS coral_units,
+          o.total_cents, o.ordered_at, o.status,
+          EXISTS (
+            SELECT 1 FROM orders auction_order
+            WHERE auction_order.customer_id = o.customer_id
+              AND auction_order.platform = 'auction'
+              AND auction_order.status IN ('pending','paid','labeled')
+          ) AS combine_ready
+        FROM orders o JOIN customers c ON c.id = o.customer_id
+        WHERE o.discount_code IS NOT NULL
+          AND o.ordered_at >= $1::timestamptz AND o.ordered_at < $2::timestamptz
+          AND o.status IN ('pending','paid','labeled')
+      )
+      SELECT *, count(*) OVER() AS total_orders,
+        sum(coral_units) OVER() AS all_units,
+        sum(total_cents) OVER() AS all_cents,
+        sum(combine_ready::int) OVER() AS all_combine_ready
+      FROM addon ORDER BY ordered_at DESC LIMIT 8`, params),
+    pg.query<{ platform: "auction" | "web" | "marketplace"; count: string }>(`
+      SELECT platform, count(*) AS count FROM orders
+      WHERE discount_code IS NOT NULL
+        AND ordered_at >= $1::timestamptz AND ordered_at < $2::timestamptz
+        AND status IN ('pending','paid','labeled')
+      GROUP BY platform ORDER BY platform`, params),
+  ]);
+  const first = ordersResult.rows[0];
+  const platformCounts = Object.fromEntries(
+    platformsResult.rows.map((row) => [row.platform, Number(row.count)]),
+  );
+  return [{
+    kind: "addon_order_board",
+    windowLabel: `Synthetic W${currentWeekIndex()} · Sunday–Monday add-on window`,
+    totalOrders: Number(first?.total_orders ?? 0),
+    coralUnits: Number(first?.all_units ?? 0),
+    totalCents: Number(first?.all_cents ?? 0),
+    combineReady: Number(first?.all_combine_ready ?? 0),
+    platformCounts,
+    orders: ordersResult.rows.map((row) => ({
+      orderId: row.order_id,
+      platform: row.platform,
+      customer: row.customer,
+      coralUnits: Number(row.coral_units),
+      totalCents: Number(row.total_cents),
+      orderedAt: row.ordered_at.toISOString(),
+      status: row.status,
+      combineReady: row.combine_ready,
+    })),
+  }];
+}
+
+/** Full next-auction review package. The action records simulated sends only. */
+export async function auctionAnnouncement(pg: Pool): Promise<ComponentSpec[]> {
+  const audience = await announcementRecipients(pg);
+  const meta = nextAuctionAnnouncementMeta();
+  const emailPreview = {
+    channel: "email" as const,
+    subject: "Next ReefnBid auction opens Thursday",
+    body: `The next ReefnBid auction runs ${meta.dateRange}. Bidding closes ${meta.closeTime}. Preview the new coral lineup and set your closing-night reminder.`,
+  };
+  const smsPreview = {
+    channel: "sms" as const,
+    body: `ReefnBid returns ${meta.dateRange}. Bidding closes ${meta.closeTime}. Open ReefnBid to preview the coral lineup.`,
+  };
+  return [{
+    kind: "auction_announcement",
+    ...meta,
+    emailRecipients: audience.emailIds.length,
+    smsRecipients: audience.smsIds.length,
+    emailPreview,
+    smsPreview,
+    actions: [{
+      taskId: "send-demo-auction-announcement",
+      label: "Approve & send demo",
+      payload: { campaignId: meta.campaignId },
+      risk: "gated",
+    }],
+  }];
+}
+
 /** Public-safe listing review artifact. It never publishes to a sales channel. */
 export function listingPlan(): ComponentSpec[] {
   return [{
@@ -257,8 +411,8 @@ export function listingPlan(): ComponentSpec[] {
 }
 
 /** Public-safe campaign review artifact. It never sends email or SMS. */
-export function promotionPlan(dayId: "wednesday" | "friday" | "sunday"): ComponentSpec[] {
-  const plans: Record<"wednesday" | "friday" | "sunday", {
+export function promotionPlan(dayId: "wednesday" | "friday"): ComponentSpec[] {
+  const plans: Record<"wednesday" | "friday", {
     verdict: string;
     evidence: { label: string; detail: string }[];
   }> = {
@@ -278,15 +432,6 @@ export function promotionPlan(dayId: "wednesday" | "friday" | "sunday"): Compone
         { label: "email", detail: "Last-call draft points buyers to Saturday closing night." },
         { label: "SMS", detail: "Concise closing-night reminder is prepared as a draft." },
         { label: "approval", detail: "A human must review recipients and copy before any send." },
-      ],
-    },
-    sunday: {
-      verdict: "Sunday's next-auction announcement is ready for review. Nothing has been sent.",
-      evidence: [
-        { label: "add-ons", detail: "The current add-on window stays visible while the auction cycle turns over." },
-        { label: "announcement", detail: "Draft introduces the next ReefnBid auction without claiming it is live." },
-        { label: "handoff", detail: "Monday's shipping-document work is the next staff checkpoint." },
-        { label: "approval", detail: "A human must review the announcement before any send." },
       ],
     },
   };

@@ -19,7 +19,9 @@ import type { Pool } from "pg";
 import { chClient } from "./store/clickhouse";
 import { pgPool } from "./store/postgres";
 import {
+  addonOrderBoard,
   attentionFeed,
+  auctionAnnouncement,
   auctionBoard,
   listingPlan,
   mergeScan,
@@ -104,6 +106,16 @@ export function summarize(specs: ComponentSpec[]): string {
         );
         break;
       }
+      case "addon_order_board":
+        parts.push(
+          `add-on order board: ${s.totalOrders} order(s), ${s.coralUnits} coral unit(s), ${s.combineReady} combine-ready`,
+        );
+        break;
+      case "auction_announcement":
+        parts.push(
+          `next auction ${s.dateRange}, closes ${s.closeTime}; ${s.emailRecipients} email recipient(s), ${s.smsRecipients} SMS recipient(s); simulated send requires a human click`,
+        );
+        break;
       case "merge_card":
         parts.push(
           `merge candidate ${s.customer.displayName}: ${s.orders.length} orders on ${s.orders.map((o) => o.platform).join("+")} → one box, one shipping fee`,
@@ -141,6 +153,20 @@ export const reefTools = {
       day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
     }),
     execute: async ({ day }) => dayBriefSpec(day),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  addonOrderBoard: tool({
+    description:
+      "Call this for Sunday's 'Watch add-on orders' monitor or when the owner asks for the add-on order board, add-on volume, coral units, channels, value, or combine-ready status. It returns a live synthetic Postgres board, not the general revenue pulse.",
+    inputSchema: z.object({}),
+    execute: async () => addonOrderBoard(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  auctionAnnouncement: tool({
+    description:
+      "Call this for Sunday's next-auction announcement. It returns the next Thursday-through-Saturday dates, Saturday 8 PM ET close, email and SMS recipient counts, both drafts, and one human-gated simulated-send button. It never contacts an external recipient.",
+    inputSchema: z.object({}),
+    execute: async () => auctionAnnouncement(pg()),
     toModelOutput: (output) => asText(summarize(output)),
   }),
   whatNeedsAttention: tool({
@@ -182,9 +208,9 @@ export const reefTools = {
   }),
   promotionPlan: tool({
     description:
-      "Call this for Wednesday auction-start and Shopify-arrival reminders, Friday momentum/last-call ads, or Sunday's next-auction announcement. It returns a synthetic draft review card and never sends email or SMS.",
+      "Call this for Wednesday auction-start and Shopify-arrival reminders or Friday momentum/last-call ads. Sunday's full next-auction package belongs to auctionAnnouncement. This tool returns a synthetic draft review card and never sends email or SMS.",
     inputSchema: z.object({
-      day: z.enum(["wednesday", "friday", "sunday"]),
+      day: z.enum(["wednesday", "friday"]),
     }),
     execute: async ({ day }) => promotionPlan(day),
     toModelOutput: (output) => asText(summarize(output)),
@@ -223,7 +249,7 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
 - When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
-- Tuesday listing questions call listingPlan. Wednesday/Friday/Sunday promotion questions call promotionPlan with the marker's weekday. These are review artifacts: never claim a listing was published or a message was sent.
+- Sunday's add-on monitor calls addonOrderBoard, never revenuePulse. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday listing questions call listingPlan. Wednesday/Friday promotion questions call promotionPlan with the marker's weekday.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 - A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
 - A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"

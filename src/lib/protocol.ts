@@ -222,6 +222,17 @@ export type MessagePreview = {
   body: string;           // rendered template with sample customer
 };
 
+export type AddonOrderRow = {
+  orderId: string;
+  platform: Platform;
+  customer: string;
+  coralUnits: number;
+  totalCents: number;
+  orderedAt: string;
+  status: OrderSummary["status"];
+  combineReady: boolean;
+};
+
 // ---------- actions ----------
 
 /** An executable action. `gated` requires an explicit human click. */
@@ -251,6 +262,12 @@ export type ComponentSpec =
   | { kind: "campaign_card"; campaignId: string; phase: WeekPhase;
       audience: AudienceBreakdown; preview: MessagePreview;
       schedule: string; actions: ActionChip[] }
+  | { kind: "addon_order_board"; windowLabel: string; totalOrders: number;
+      coralUnits: number; totalCents: number; combineReady: number;
+      platformCounts: Partial<Record<Platform, number>>; orders: AddonOrderRow[] }
+  | { kind: "auction_announcement"; campaignId: string; dateRange: string;
+      closeTime: string; emailRecipients: number; smsRecipients: number;
+      emailPreview: MessagePreview; smsPreview: MessagePreview; actions: ActionChip[] }
   | { kind: "merge_card"; orders: OrderSummary[]; customer: CustomerRef;
       combined: OrderSummary; confidence: "high" | "low";
       actions?: ActionChip[] }          // low confidence ⇒ gated merge chip

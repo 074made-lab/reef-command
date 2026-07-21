@@ -29,9 +29,9 @@ export const DEMO_DAYS: DemoDay[] = [
     id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-ons + Announcement",
     goal: "Combine eligible add-ons and review the next-auction announcement before Monday's document work.",
     priorities: [
-      { label: "Watch add-on orders", detail: "Keep orders from the auction, online store, and marketplace visible together.", cue: "watch", prompt: "How's business during the Sunday add-on window?" },
+      { label: "Watch add-on orders", detail: "Open the live board for add-on volume, coral units, channels, value, and merge status.", cue: "watch", prompt: "Show the Sunday add-on orders board with order counts, coral units, value, channels, and combine-ready status." },
       { label: "Combine eligible orders", detail: "Put each customer's eligible orders into one coordinated shipment.", cue: "do-now", prompt: "Any eligible orders to merge?" },
-      { label: "Review next announcement", detail: "Review the next-auction announcement before the new weekly cycle begins.", cue: "human-gate", prompt: "Review Sunday's next-auction announcement draft." },
+      { label: "Announce next auction", detail: "Review Thursday–Saturday dates, email and SMS drafts, counts, and the demo send approval.", cue: "human-gate", prompt: "Build Sunday's next-auction announcement for next Thursday through Saturday, closing Saturday at 8 PM ET. Show email and SMS recipient counts, both drafts, and the human-gated demo send button." },
     ],
     reminder: "The announcement remains a draft until approval; Monday starts shipping-document preparation.",
   },

@@ -52,7 +52,7 @@ timing, thresholds, and decision rules are invented fixtures.
 
 | Day | Store rhythm | Three staff jobs |
 |---|---|---|
-| Sunday | Add-ons + Announcement | Watch add-on orders, combine eligible orders, review the next-auction announcement |
+| Sunday | Add-ons + Announcement | Open the add-on order board, combine eligible orders, review and approve the next-auction email/SMS package |
 | Monday | Shipping Documents | Clear shipping blockers, combine eligible orders, prepare shipping docs |
 | Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
 | Wednesday | Ship + Promotion | Finish ready shipments, review the auction reminder, review the new-arrivals promotion |

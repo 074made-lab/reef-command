@@ -3,7 +3,9 @@
 
 import type { ComponentSpec } from "@/lib/protocol";
 import { AttentionFeed } from "./AttentionFeed";
+import { AddonOrderBoard } from "./AddonOrderBoard";
 import { AuctionBoard } from "./AuctionBoard";
+import { AuctionAnnouncement } from "./AuctionAnnouncement";
 import { CampaignCard } from "./CampaignCard";
 import { CaseCard } from "./CaseCard";
 import { CycleTimeline } from "./CycleTimeline";
@@ -45,6 +47,10 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <ReportCard weekLabel={spec.weekLabel} sections={spec.sections} />;
     case "campaign_card":
       return <CampaignCard spec={spec} />;
+    case "addon_order_board":
+      return <AddonOrderBoard spec={spec} />;
+    case "auction_announcement":
+      return <AuctionAnnouncement spec={spec} />;
     case "merge_card":
       return <MergeCard spec={spec} />;
     case "label_manifest":
