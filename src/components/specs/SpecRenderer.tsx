@@ -17,6 +17,7 @@ import { RequestCard } from "./RequestCard";
 import { Timeseries } from "./Timeseries";
 import { VerdictCard } from "./VerdictCard";
 import { WeatherStrip } from "./WeatherStrip";
+import { PhaseBeacon } from "@/components/chat/PhaseBeacon";
 
 export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
   switch (spec.kind) {
@@ -35,17 +36,17 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
         />
       );
     case "auction_board":
-      return <AuctionBoard lots={spec.lots} closesAt={spec.closesAt} state={spec.state} />;
+      return <><PhaseBeacon phase={spec.state === "live" ? "auction_live" : "winners"} /><AuctionBoard lots={spec.lots} closesAt={spec.closesAt} state={spec.state} /></>;
     case "funnel":
       return <FunnelChart title={spec.title} steps={spec.steps} />;
     case "report":
-      return <ReportCard weekLabel={spec.weekLabel} sections={spec.sections} />;
+      return <><PhaseBeacon phase="report" /><ReportCard weekLabel={spec.weekLabel} sections={spec.sections} /></>;
     case "campaign_card":
       return <CampaignCard spec={spec} />;
     case "merge_card":
-      return <MergeCard spec={spec} />;
+      return <><PhaseBeacon phase="addon_window" /><MergeCard spec={spec} /></>;
     case "label_manifest":
-      return <LabelManifest spec={spec} />;
+      return <><PhaseBeacon phase="label_day" /><LabelManifest spec={spec} /></>;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

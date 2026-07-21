@@ -64,6 +64,11 @@ export type AttentionItem = {
   headline: string;       // "coral_km ordered on web — merge candidate"
   ageMinutes: number;
   href?: string;          // deep link to the owning card
+  customerName?: string;  // synthetic display handle
+  customerEmail?: string; // synthetic address, shown only inside the expanded row
+  detail?: string;        // original synthetic customer text / request detail
+  draft?: string;         // deterministic template draft for unanswered messages
+  photoHref?: string;     // synthetic evidence asset (DOA demo only)
 };
 
 export type OrderLine = { sku: string; name: string; category: CoralCategory; qty: number; priceCents: number };

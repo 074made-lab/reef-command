@@ -55,6 +55,23 @@ Very light only: water ripple, bubbles, a coral bioluminescent "breathing"
 glow. **No** AI orb, **no** typewriter long-text, **no** meaningless loading
 spinners.
 
+## Interaction details
+
+- The header uses a **synthetic demo clock**, never the evaluator's wall clock.
+  Rendering an auction, merge, label, or report component moves the clock to
+  that scene; the owner may also choose a scene manually.
+- Platform labels use the business names everywhere: **ReefnBid**, **Online
+  Store (Shopify)**, and **eBay**.
+- Merge cards use layered water currents and moving particles to carry every
+  source order into one combined shipping box.
+- The weekly reef-health report is tabbed. Platform revenue appears as three
+  currents feeding one reef; product and auction rows generate deterministic,
+  evidence-backed next-week stocking guidance. Dossier tiers include their
+  synthetic percentile definition and do not masquerade as new-customer rate.
+- Attention rows expand in place. DOA cases reveal the original synthetic text
+  and a clearly marked mock photo; messages reveal an editable template draft.
+  Approve and Send remain explicit simulations: no refund or external message.
+
 ## Type
 
 - Don't set everything in the usual Inter. Headings can be a touch warmer, with

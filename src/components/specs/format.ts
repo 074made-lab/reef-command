@@ -26,10 +26,17 @@ export function ageTone(minutes: number): string {
 }
 
 export const PLATFORM_SHORT: Record<string, string> = {
-  auction: "AUC",
-  web: "WEB",
-  marketplace: "MKT",
-  combined: "CMB",
+  auction: "REEFNBID",
+  web: "ONLINE STORE · SHOPIFY",
+  marketplace: "EBAY",
+  combined: "COMBINED BOX",
+};
+
+export const PLATFORM_LABEL: Record<string, string> = {
+  auction: "ReefnBid",
+  web: "Online Store (Shopify)",
+  marketplace: "eBay",
+  combined: "Combined shipment",
 };
 
 export const PLATFORM_TONE: Record<string, string> = {
