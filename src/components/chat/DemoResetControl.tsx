@@ -13,7 +13,12 @@ export function DemoResetControl() {
         <span className="hidden text-[11px] leading-none text-dim md:inline">Return to Sunday 0/3?</span>
         <button
           type="button"
-          onClick={() => router.push("/merchant/reset")}
+          onClick={() => {
+            // One-shot intent: /merchant/reset only auto-runs when reached
+            // through this confirmed control — never from history/back-button.
+            window.sessionStorage.setItem("reef-command:reset-intent", "1");
+            router.push("/merchant/reset");
+          }}
           className="rounded-sm bg-coral px-2 py-1 text-[10px] font-bold tracking-[0.06em] text-abyss uppercase transition-opacity hover:opacity-90"
         >
           Reset now
