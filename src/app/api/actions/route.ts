@@ -52,12 +52,11 @@ import {
   type AddonMergePlan,
   announcementRecipients,
   currentAddonMergePlans,
-  currentWeekIndex,
   nextAuctionAnnouncementMeta,
 } from "@/lib/tools";
 import { labelDay } from "@/trigger/label-day";
 import { resetInProgressResponse, tryDemoOperation } from "@/lib/demo-operation-lock";
-import { demoAuctionWeekIndex } from "@/lib/demo-clock";
+import { DEMO_AUCTION_WEEK_INDEX, demoAuctionWeekIndex } from "@/lib/demo-clock";
 
 let chSingleton: ClickHouseClient | undefined;
 const ch = () => (chSingleton ??= chClient());
@@ -540,7 +539,9 @@ export async function POST(req: Request) {
 
   if (taskId === "merge-orders" || taskId === "merge-all-orders") {
     const requestedWeek = Number(body.payload?.weekIndex);
-    if (requestedWeek !== currentWeekIndex()) {
+    // The merge story is pinned to the demo cycle (W28) — never the wall clock,
+    // which crosses into W29 mid-demo for anyone running this after Jul 22.
+    if (requestedWeek !== DEMO_AUCTION_WEEK_INDEX) {
       return NextResponse.json({ ok: false, error: "merge run is stale; refresh the current cycle" }, { status: 409 });
     }
     const rawGroups = Array.isArray(body.payload?.groups) ? body.payload.groups : [];
