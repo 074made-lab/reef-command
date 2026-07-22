@@ -9,7 +9,7 @@ import { num } from "./format";
 type CampaignSpec = Extract<ComponentSpec, { kind: "campaign_card" }>;
 
 export function CampaignCard({ spec }: { spec: CampaignSpec }) {
-  const { campaignId, phase, audience, preview, schedule, actions } = spec;
+  const { campaignId, title, phase, audience, preview, schedule, actions } = spec;
   const tiers = Object.entries(audience.byTier) as ["1" | "2" | "3" | "4", number][];
   const maxTier = Math.max(...tiers.map(([, n]) => n), 1);
   return (
@@ -22,6 +22,10 @@ export function CampaignCard({ spec }: { spec: CampaignSpec }) {
         </span>
       }
     >
+      <div className="mb-4">
+        <p className="text-[18px] font-semibold tracking-[-0.02em] text-ink">{title}</p>
+        <p className="mt-1 text-[12px] text-dim">Separate review and approval · no external send until the button is clicked</p>
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <p className="font-mono text-[10px] tracking-widest text-mute">AUDIENCE</p>

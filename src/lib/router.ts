@@ -20,6 +20,7 @@ import {
   revenuePulse,
   shippingCommand,
   shippingBlockerBoard,
+  thursdayAnnouncementPlan,
   winnerNextSteps,
   weeklyReport,
 } from "./tools";
@@ -74,8 +75,9 @@ async function documents(): Promise<ChatResponse> {
 }
 
 async function weekdayShipCommand(message: string): Promise<ChatResponse> {
-  const day = parseDemoDayContext(message) === "wednesday" ? "wednesday" : "tuesday";
-  const scope = /monitor every tuesday shipment|mominito|overnight shipment|fedex.*movement.*delivery/i.test(message)
+  const selected = parseDemoDayContext(message);
+  const day = selected === "thursday" ? "thursday" : selected === "wednesday" ? "wednesday" : "tuesday";
+  const scope = /monitor every (?:tuesday|wednesday) shipment|mominito|overnight shipment|fedex.*movement.*delivery/i.test(message)
     ? "monitor"
     : "ship";
   const components = shippingCommand(day, scope);
@@ -85,6 +87,13 @@ async function weekdayShipCommand(message: string): Promise<ChatResponse> {
       ? `${plural(board.shipments.length, "shipment")} are on the ${scope === "monitor" ? "overnight watch" : "ship-day manifest"}; clear the linked exceptions now.`
       : "The shipment command board is ready.",
     components,
+  };
+}
+
+async function thursdayDrafts(): Promise<ChatResponse> {
+  return {
+    verdict: "Four Thursday launch drafts are ready for separate approval. No external message has been sent.",
+    components: await thursdayAnnouncementPlan(pg),
   };
 }
 
@@ -234,7 +243,7 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await blockers();
     if (/shipping document board|print-ready shipping|packing slips?.*fedex|product label.*coral bag/.test(q))
       return await documents();
-    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments|final regular ship[- ]day|monitor every tuesday shipment|mominito.*fedex/.test(q))
+    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments|final regular ship[- ]day|monitor every (?:tuesday|wednesday) shipment|mominito.*fedex/.test(q))
       return await weekdayShipCommand(message);
     if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
       return await attention();
@@ -244,6 +253,8 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await addOns();
     if (/next-auction announcement|announce next auction|email and sms recipient counts|demo send button/.test(q))
       return await announcement();
+    if (/four separate 12:00 pm launch drafts|auction sms.*arrivals sms.*auction email.*arrivals email/.test(q))
+      return await thursdayDrafts();
     if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
       return await listings(q);
     if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))

@@ -65,7 +65,7 @@ type Body = { taskId?: string; payload?: Record<string, unknown> };
 
 const SAFE_DEMO_ACTIONS: Record<string, {
   risk: "auto" | "gated";
-  payloadKey: "caseId" | "taskId" | "issueId";
+  payloadKey: "caseId" | "taskId" | "issueId" | "campaignId";
   allowed: string[];
   note: Record<string, string>;
 }> = {
@@ -99,6 +99,7 @@ const SAFE_DEMO_ACTIONS: Record<string, {
     allowed: [
       "ADDR-WED-01", "DOA-WED-02", "QUESTION-WED-03", "PACK-WED-04",
       "EXC-WED-11", "DELAY-WED-12", "CARE-WED-13", "STALL-WED-14", "DOA-WED-15",
+      "DELAY-THU-21", "DOA-THU-22", "ADDR-THU-23", "EXC-THU-24", "CARE-THU-25",
     ],
     note: {
       "ADDR-WED-01": "synthetic Wednesday address confirmed and label preview refreshed",
@@ -110,6 +111,25 @@ const SAFE_DEMO_ACTIONS: Record<string, {
       "CARE-WED-13": "simulated coral recovery guidance recorded; no external message sent",
       "STALL-WED-14": "owner reminder and no-movement carrier escalation recorded",
       "DOA-WED-15": "immediate care guidance and DOA claim path recorded; no external message sent",
+      "DELAY-THU-21": "owner reminder to contact FedEx recorded for the delayed Wednesday shipment",
+      "DOA-THU-22": "immediate guidance and DOA claim path recorded; no external message sent",
+      "ADDR-THU-23": "customer-confirmed address correction recorded for carrier follow-up",
+      "EXC-THU-24": "delivery exception and indoor-box confirmation recorded",
+      "CARE-THU-25": "simulated coral recovery guidance recorded; no external message sent",
+    },
+  },
+  "send-demo-thursday-draft": {
+    risk: "gated",
+    payloadKey: "campaignId",
+    allowed: [
+      "CMP-W29-THU-AUCTION-SMS", "CMP-W29-THU-ARRIVALS-SMS",
+      "CMP-W29-THU-AUCTION-EMAIL", "CMP-W29-THU-ARRIVALS-EMAIL",
+    ],
+    note: {
+      "CMP-W29-THU-AUCTION-SMS": "auction SMS approval recorded; simulated send only",
+      "CMP-W29-THU-ARRIVALS-SMS": "Shopify arrivals SMS approval recorded; simulated send only",
+      "CMP-W29-THU-AUCTION-EMAIL": "auction email approval recorded; simulated send only",
+      "CMP-W29-THU-ARRIVALS-EMAIL": "Shopify arrivals email approval recorded; simulated send only",
     },
   },
   "activate-demo-listing-agent": {

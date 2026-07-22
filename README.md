@@ -56,16 +56,18 @@ timing, thresholds, and decision rules are invented fixtures.
 | Monday | Shipping Documents | Clear shipping blockers, combine eligible orders, prepare shipping docs |
 | Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
 | Wednesday | Ship + Weekly Report | Finish today's shipments, monitor Tuesday's overnight shipments, open the weekly operational report |
-| Thursday | Auction Opens | Check the live auction, verify the opening status, answer buyer questions |
+| Thursday | Auction Opens | Monitor the full leaderboard, approve four noon-launch drafts, monitor Wednesday's shipments |
 | Friday | Auction Momentum | Check bid movement, review last-call ads, clear buyer questions |
 | Saturday | Closing Night + Winners | Confirm final results, review winner next steps, watch add-on orders |
 
 Tuesday's synthetic plan targets Thursday for ReefnBid publication and prepares
 new Shopify arrivals. Human staff verify physical inventory and update Shopify
 directly; the demo treats eBay as an automatic mirror of the Shopify catalog.
-Wednesday, Friday, and Sunday campaign work remains a reviewable draft until a
-human approves it; the public demo never claims an external listing or message
-was actually published or sent.
+Thursday, Friday, Saturday, and Sunday campaign work remains a reviewable draft
+until a human approves it; the public demo never claims an external listing or
+message was actually published or sent. Thursday's auction opens at 12:00 PM ET,
+and its auction SMS, arrivals SMS, auction email, and arrivals email each retain
+an independent approval.
 
 Because live corals are shipped overnight, shipment delays and post-delivery
 problems are highly time-sensitive. The system must identify and escalate these

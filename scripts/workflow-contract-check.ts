@@ -5,9 +5,11 @@ import { DEMO_DAYS } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
 import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
 import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
+import { AUCTION_OPEN_OFFSET_MS } from "../src/lib/synth/schedule";
 import {
   tuesdayListingPlan,
   tuesdayShippingCommand,
+  thursdayWednesdayShipmentWatch,
   wednesdayShippingCommand,
   wednesdayTuesdayShipmentWatch,
 } from "../src/lib/week-workflows";
@@ -16,8 +18,9 @@ const monday = DEMO_DAYS.find((day) => day.id === "monday");
 const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
 const wednesday = DEMO_DAYS.find((day) => day.id === "wednesday");
 const friday = DEMO_DAYS.find((day) => day.id === "friday");
+const thursday = DEMO_DAYS.find((day) => day.id === "thursday");
 const sunday = DEMO_DAYS.find((day) => day.id === "sunday");
-assert.ok(monday && tuesday && wednesday && friday && sunday);
+assert.ok(monday && tuesday && wednesday && thursday && friday && sunday);
 
 assert.deepEqual(
   monday.priorities.map((priority) => priority.label),
@@ -107,6 +110,18 @@ for (const issue of tuesdayWatchSpec.issues) {
 assert.match(wednesday.priorities[2].prompt ?? "", /existing general weekly operational report.*distinct.*Saturday auction settlement/i);
 const readmeSource = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 assert.match(readmeSource, /Because live corals are shipped overnight, shipment delays and post-delivery\s+problems are highly time-sensitive\. The system must identify and escalate these\s+issues quickly so staff can respond before coral health deteriorates further\./);
+assert.deepEqual(
+  thursday.priorities.map((priority) => priority.label),
+  ["Monitor auction leaderboard", "Approve four launch drafts", "Monitor Wednesday boxes"],
+);
+assert.equal(AUCTION_OPEN_OFFSET_MS, 12 * 60 * 60_000, "Thursday auction must open at 12:00 PM");
+const thursdayWatchSpec = thursdayWednesdayShipmentWatch()[0];
+assert.equal(thursdayWatchSpec.kind, "shipment_command_board");
+if (thursdayWatchSpec.kind !== "shipment_command_board") throw new Error("Thursday shipment watch missing");
+assert.equal(thursdayWatchSpec.shipments.length, 4, "Thursday must watch every Wednesday shipment");
+assert.equal(thursdayWatchSpec.issues.length, 5);
+assert.ok(thursdayWatchSpec.issues.some((issue) => /contact FedEx immediately/i.test(issue.recommendation)));
+assert.ok(thursdayWatchSpec.issues.some((issue) => /\/shop\/doa-claim/i.test(issue.recommendation)));
 assert.equal(friday.priorities[1].label, "Review last-call ads");
 assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
@@ -226,6 +241,8 @@ assert.match(agentSource, /Tuesday Step 2 calls listingPlan with scope=listings.
   "Tuesday listing and inventory routines must stay distinct");
 assert.match(agentSource, /Wednesday Step 1 calls shippingCommand with day=wednesday and scope=ship.*Wednesday Step 2 calls shippingCommand with day=wednesday and scope=monitor.*Wednesday Step 3 calls the existing weeklyReport tool/,
   "Wednesday's ship, overnight watch, and report routines must stay distinct");
+assert.match(agentSource, /Thursday Step 1 calls auctionBoard with day=thursday.*Thursday Step 2 calls thursdayAnnouncements.*Thursday Step 3 calls shippingCommand with day=thursday and scope=monitor/,
+  "Thursday's leaderboard, four drafts, and Wednesday shipment watch must stay distinct");
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
@@ -242,14 +259,16 @@ assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
   "offline fallback must route exceptions to attention before the generic order rule");
 assert.match(routerSource, /inventory reminder\|inventory check/,
   "offline fallback must route Tuesday inventory work to the listing plan");
-assert.match(routerSource, /ship\[- \]today manifest[\s\S]*monitor every tuesday shipment[\s\S]*return await weekdayShipCommand/,
-  "offline fallback must route Tuesday and Wednesday shipping routines to the shipment command board");
+assert.match(routerSource, /ship\[- \]today manifest[\s\S]*monitor every \(\?:tuesday\|wednesday\) shipment[\s\S]*return await weekdayShipCommand/,
+  "offline fallback must route Tuesday through Thursday shipping routines to the shipment command board");
 assert.match(routerSource, /announcement\|last\[ -\]call/,
   "offline fallback must route promotion routines before auction keywords");
 assert.match(routerSource, /add-on orders\? board[\s\S]*return await addOns/,
   "offline fallback must route the Sunday monitor to its board");
 assert.match(routerSource, /next-auction announcement[\s\S]*return await announcement/,
   "offline fallback must route the Sunday announcement to its review package");
+assert.match(routerSource, /four separate 12:00 pm launch drafts[\s\S]*return await thursdayDrafts/,
+  "offline fallback must route Thursday's four drafts to separate campaign cards");
 assert.match(routerSource, /shipping blocker board[\s\S]*return await blockers/,
   "offline fallback must route Monday blockers before generic attention");
 assert.match(routerSource, /shipping document board[\s\S]*return await documents/,
@@ -270,6 +289,21 @@ assert.match(rendererSource, /case "shipping_document_board"/,
   "Monday documents must render as a printable document and packing board");
 assert.match(rendererSource, /case "shipment_command_board"/,
   "Tuesday shipments must render a dedicated exception and manifest board");
+
+const auctionToolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
+assert.match(auctionToolSource, /type = 'auction_opened'[\s\S]*openedLots[\s\S]*recentBidCount/,
+  "auction monitor must join all opened lots and preserve recent change signals");
+assert.match(auctionToolSource, /title: "Auction SMS"[\s\S]*title: "Shopify new-arrivals SMS"[\s\S]*title: "Auction email"[\s\S]*title: "Shopify new-arrivals email"/,
+  "Thursday must render four separate launch drafts");
+assert.ok((auctionToolSource.match(/taskId: "send-demo-thursday-draft"/g) ?? []).length >= 4,
+  "every Thursday draft must have its own approval action");
+assert.ok((auctionToolSource.match(/12:00 PM ET/g) ?? []).length >= 4,
+  "every Thursday draft must state the noon auction opening");
+const auctionBoardSource = readFileSync(new URL("../src/components/specs/AuctionBoard.tsx", import.meta.url), "utf8");
+assert.match(auctionBoardSource, /BIDS[\s\S]*ACTIVE[\s\S]*LOW[\s\S]*NO BIDS/,
+  "Thursday board must display activity and low/no-engagement signals");
+assert.match(auctionBoardSource, /RECENT/,
+  "Thursday board must display important recent bid changes");
 assert.match(rendererSource, /case "staff_agent_board"/,
   "Tuesday listing and inventory work must render a dedicated staff-agent board");
 

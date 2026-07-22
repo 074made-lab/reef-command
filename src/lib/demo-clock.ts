@@ -67,13 +67,13 @@ export const DEMO_DAYS: DemoDay[] = [
   },
   {
     id: "thursday", phase: "auction_live", short: "THU", weekday: "Thursday", time: "20:45", label: "Auction Opens",
-    goal: "Open the weekly auction and watch bids and buyer questions in real time.",
+    goal: "Monitor the live auction, approve four launch drafts, and protect Wednesday arrivals.",
     priorities: [
-      { label: "Check the live auction", time: "18:00", detail: "See leaders, bid activity, and lots that need attention.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Verify the opening status", time: "18:10", detail: "Make sure the customer view and internal board agree on auction timing.", cue: "watch", prompt: "How's the auction going?" },
-      { label: "Answer buyer questions", time: "20:45", detail: "Clear buyer questions and order issues while bidding is active.", cue: "watch", prompt: "What needs my attention?" },
+      { label: "Monitor auction leaderboard", time: "20:45", detail: "See leaders, highest values, activity, low-engagement lots, and recent changes.", cue: "do-now", prompt: "Open Thursday's live auction leaderboard with leaders, highest-value lots, bid activity, low or no activity, and important changes." },
+      { label: "Approve four launch drafts", time: "11:45", detail: "Review auction and Shopify-arrival SMS and email drafts separately.", cue: "human-gate", prompt: "Show Thursday's four separate 12:00 PM launch drafts: auction SMS, arrivals SMS, auction email, and arrivals email, each with approval." },
+      { label: "Monitor Wednesday boxes", time: "09:20", detail: "Escalate delays, exceptions, address issues, coral-health reports, and care questions.", cue: "do-now", prompt: "Monitor every Wednesday shipment and show FedEx, delivery, address, coral-health, care, and DOA actions." },
     ],
-    reminder: "The board must always show the real auction state: open or closed.",
+    reminder: "Auction opens at 12:00 PM ET; every message and shipment response remains separately reviewable.",
   },
   {
     id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "18:30", label: "Auction Momentum",

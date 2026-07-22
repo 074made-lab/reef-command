@@ -15,11 +15,12 @@ import type {
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
-import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
+import { DEMO_AUCTION_WEEK_INDEX, DEMO_DAYS, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 import {
   tuesdayListingPlan,
   tuesdayShippingCommand,
+  thursdayWednesdayShipmentWatch,
   wednesdayShippingCommand,
   wednesdayTuesdayShipmentWatch,
 } from "./week-workflows";
@@ -293,26 +294,61 @@ export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Pro
   const wi = dayId ? DEMO_AUCTION_WEEK_INDEX : currentWeekIndex(now);
   const w = weekWindow(wi);
   const weekStart = ANCHOR + wi * WEEK_MS;
-  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 18:00 (shared with the generator)
+  const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 12:00 (shared with the generator)
   const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
-  const queryEnd = fmt(Math.min(now, closesMs, ANCHOR + (wi + 1) * WEEK_MS));
-  const lots = await queryRows<{ lot: string; sku: string; bid: string; n: string; leader: string }>(ch, `
+  const queryEndMs = Math.min(now, closesMs, ANCHOR + (wi + 1) * WEEK_MS);
+  const queryEnd = fmt(queryEndMs);
+  const [lots, opened] = await Promise.all([
+    queryRows<{ lot: string; sku: string; bid: string; n: string; leader: string; recent: string }>(ch, `
     SELECT JSONExtractString(meta,'lotId') AS lot, sku,
            max(amount_cents) AS bid, count() AS n,
-           argMax(JSONExtractString(meta,'bidder'), ts) AS leader
+           argMax(JSONExtractString(meta,'bidder'), ts) AS leader,
+           countIf(ts >= {recent:DateTime}) AS recent
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
-    GROUP BY lot, sku ORDER BY bid DESC`, { start: w.start, end: queryEnd });
+    GROUP BY lot, sku ORDER BY bid DESC`, {
+      start: w.start,
+      end: queryEnd,
+      recent: fmt(queryEndMs - 30 * 60_000),
+    }),
+    queryRows<{ meta: string }>(ch, `
+      SELECT meta FROM events
+      WHERE type = 'auction_opened' AND ts >= {start:DateTime} AND ts < {end:DateTime}
+      ORDER BY ts DESC LIMIT 1`, { start: w.start, end: w.end }),
+  ]);
   const closesAt = new Date(closesMs).toISOString();
   const state: "upcoming" | "live" | "closed" =
     now < opensAt ? "upcoming" : now >= closesMs ? "closed" : "live";
-  const board: LotPrice[] = lots.map((l) => {
-    const item = bySku.get(l.sku);
+  const bidByLot = new Map(lots.map((lot) => [lot.lot, lot]));
+  const openedLots = (() => {
+    try {
+      return (JSON.parse(opened[0]?.meta ?? "{}") as { lots?: { lotId: string; sku: string }[] }).lots ?? [];
+    } catch {
+      return [];
+    }
+  })();
+  const lotRows = openedLots.length ? openedLots : lots.map((lot) => ({ lotId: lot.lot, sku: lot.sku }));
+  const board: LotPrice[] = lotRows.map((openedLot) => {
+    const bid = bidByLot.get(openedLot.lotId);
+    const item = bySku.get(openedLot.sku);
     return {
-      lotId: l.lot, sku: l.sku, name: item?.name ?? l.sku, category: item?.category ?? "other",
-      currentBidCents: Number(l.bid), bidCount: Number(l.n), leader: l.leader, closesAt,
+      lotId: openedLot.lotId,
+      sku: openedLot.sku,
+      name: item?.name ?? openedLot.sku,
+      category: item?.category ?? "other",
+      currentBidCents: Number(bid?.bid ?? 0),
+      bidCount: Number(bid?.n ?? 0),
+      leader: bid?.leader || "—",
+      closesAt,
+      recentBidCount: Number(bid?.recent ?? 0),
     };
-  });
-  return [{ kind: "auction_board", lots: board, closesAt, state }];
+  }).sort((a, b) => b.currentBidCents - a.currentBidCents || b.bidCount - a.bidCount);
+  return [{
+    kind: "auction_board",
+    lots: board,
+    closesAt,
+    state,
+    asOf: dayId ? `${dayId.slice(0, 3).toUpperCase()} · ${DEMO_DAYS.find((day) => day.id === dayId)?.time ?? ""} ET` : undefined,
+  }];
 }
 
 /** Public-safe Saturday handoff. This is a review artifact, not a send action. */
@@ -593,11 +629,60 @@ export async function auctionAnnouncement(pg: Pool): Promise<ComponentSpec[]> {
   }];
 }
 
+function campaignAudience(total: number, platform: "auction" | "web", criteria: string) {
+  const b1 = Math.floor(total * 0.16);
+  const b2 = Math.floor(total * 0.24);
+  const b3 = Math.floor(total * 0.29);
+  return {
+    total,
+    byTier: { "1": b1, "2": b2, "3": b3, "4": total - b1 - b2 - b3 },
+    byPlatform: { [platform]: total },
+    criteria,
+  };
+}
+
+/** Four independent Thursday launch drafts with separate human approvals. */
+export async function thursdayAnnouncementPlan(pg: Pool): Promise<ComponentSpec[]> {
+  const audience = await announcementRecipients(pg);
+  const auctionEmail = campaignAudience(audience.emailIds.length, "auction", "Synthetic email-capable ReefnBid audience");
+  const auctionSms = campaignAudience(audience.smsIds.length, "auction", "Synthetic SMS-capable ReefnBid audience");
+  const arrivalsEmail = campaignAudience(audience.emailIds.length, "web", "Synthetic email-capable Shopify arrivals audience");
+  const arrivalsSms = campaignAudience(audience.smsIds.length, "web", "Synthetic SMS-capable Shopify arrivals audience");
+  const drafts: Extract<ComponentSpec, { kind: "campaign_card" }>[] = [
+    {
+      kind: "campaign_card", campaignId: "CMP-W29-THU-AUCTION-SMS", title: "Auction SMS",
+      phase: "auction_live", audience: auctionSms, schedule: "THU · 11:45 ET · review",
+      preview: { channel: "sms", body: "ReefnBid opens today at 12:00 PM ET. See the new coral lots, follow current bids, and join before Saturday's close." },
+      actions: [{ taskId: "send-demo-thursday-draft", label: "Approve auction SMS", payload: { campaignId: "CMP-W29-THU-AUCTION-SMS" }, risk: "gated" }],
+    },
+    {
+      kind: "campaign_card", campaignId: "CMP-W29-THU-ARRIVALS-SMS", title: "Shopify new-arrivals SMS",
+      phase: "auction_live", audience: arrivalsSms, schedule: "THU · 11:47 ET · review",
+      preview: { channel: "sms", body: "New coral arrivals land in the Shopify collection today. Browse the fresh lineup alongside the 12:00 PM ET ReefnBid opening." },
+      actions: [{ taskId: "send-demo-thursday-draft", label: "Approve arrivals SMS", payload: { campaignId: "CMP-W29-THU-ARRIVALS-SMS" }, risk: "gated" }],
+    },
+    {
+      kind: "campaign_card", campaignId: "CMP-W29-THU-AUCTION-EMAIL", title: "Auction email",
+      phase: "auction_live", audience: auctionEmail, schedule: "THU · 11:50 ET · review",
+      preview: { channel: "email", subject: "ReefnBid opens today at noon", body: "The weekly ReefnBid auction begins today at 12:00 PM ET. Preview the coral lineup, watch the current leaders, and place your bids before Saturday's close." },
+      actions: [{ taskId: "send-demo-thursday-draft", label: "Approve auction email", payload: { campaignId: "CMP-W29-THU-AUCTION-EMAIL" }, risk: "gated" }],
+    },
+    {
+      kind: "campaign_card", campaignId: "CMP-W29-THU-ARRIVALS-EMAIL", title: "Shopify new-arrivals email",
+      phase: "auction_live", audience: arrivalsEmail, schedule: "THU · 11:52 ET · review",
+      preview: { channel: "email", subject: "Fresh coral arrivals are ready", body: "Explore today's new Shopify coral arrivals, then visit ReefnBid when the auction opens at 12:00 PM ET. Every item and price shown in this demo is synthetic." },
+      actions: [{ taskId: "send-demo-thursday-draft", label: "Approve arrivals email", payload: { campaignId: "CMP-W29-THU-ARRIVALS-EMAIL" }, risk: "gated" }],
+    },
+  ];
+  return drafts;
+}
+
 /** Detailed weekday shipping command or prior-day overnight watch. */
 export function shippingCommand(
-  day: "tuesday" | "wednesday" = "tuesday",
+  day: "tuesday" | "wednesday" | "thursday" = "tuesday",
   scope: "ship" | "monitor" = "ship",
 ): ComponentSpec[] {
+  if (day === "thursday") return thursdayWednesdayShipmentWatch();
   if (day === "wednesday") {
     return scope === "monitor" ? wednesdayTuesdayShipmentWatch() : wednesdayShippingCommand();
   }

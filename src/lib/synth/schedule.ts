@@ -4,14 +4,14 @@
  * Single source of truth: the generator (which EMITS the auction_opened event)
  * and the tools layer (which COMPUTES live/closed state from the clock) both
  * import these, so the open/close instants can never drift apart again. Before
- * this module the generator opened the auction THU 18:00 while the tools layer
- * assumed THU 00:00, so a Thursday-morning board read "live" 18h early (Codex
+ * this module the generator opened the auction THU 12:00 while the tools layer
+ * assumed THU 00:00, so a Thursday-morning board read "live" 12h early (Codex
  * R3-P2).
  */
 const MIN = 60_000;
 
-/** THU 18:00 — auction opens (matches generator `day(0, 18)`). */
-export const AUCTION_OPEN_OFFSET_MS = (18 * 60) * MIN;
+/** THU 12:00 — auction opens and the four launch announcements reference it. */
+export const AUCTION_OPEN_OFFSET_MS = (12 * 60) * MIN;
 
 /** SAT 22:45 — auction closes (matches generator `day(2, 22, 45)`). */
 export const AUCTION_CLOSE_OFFSET_MS = ((2 * 24 + 22) * 60 + 45) * MIN;

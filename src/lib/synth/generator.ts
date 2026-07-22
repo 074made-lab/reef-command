@@ -6,7 +6,7 @@
  *                                       scheduled task calls this)
  *
  * The week (store-local ≈ UTC for simplicity; anchor = Thursday):
- *   THU 18:00        auction opens (12 lots)
+ *   THU 12:00        auction opens (12 lots)
  *   THU–SAT eve      bids, ramping hard Saturday night
  *   SAT ~22:45       close → synthetic winner events
  *   SUN–MON          add-on wave: winners order on web/marketplace with codes
@@ -128,7 +128,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   const day = (d: number, h: number, m = 0) => w0 + ((d * 24 + h) * 60 + m) * MIN;
   // d: 0=THU 1=FRI 2=SAT 3=SUN 4=MON 5=TUE 6=WED
 
-  // --- lots + auction open (THU 18:00 / close SAT 22:45 — shared offsets so the
+  // --- lots + auction open (THU 12:00 / close SAT 22:45 — shared offsets so the
   //     tools layer's live/closed computation reads the same instants)
   const opensMs = w0 + AUCTION_OPEN_OFFSET_MS;
   const closesMs = w0 + AUCTION_CLOSE_OFFSET_MS;

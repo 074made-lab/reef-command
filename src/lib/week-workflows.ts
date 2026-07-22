@@ -388,3 +388,70 @@ export function wednesdayTuesdayShipmentWatch(): ComponentSpec[] {
     ],
   }];
 }
+
+/** Thursday watches all Wednesday boxes against the same live-animal contract. */
+export function thursdayWednesdayShipmentWatch(): ComponentSpec[] {
+  return [{
+    kind: "shipment_command_board",
+    day: "thursday",
+    title: "Monitor Wednesday's overnight shipments",
+    asOf: "THU · 09:20 ET",
+    mode: "monitor",
+    shipDate: "Shipped Wednesday · Jul 29, 2026",
+    carrierCutoff: "Overnight health response · immediate",
+    shipments: [
+      { ...wednesdayShipments[0], status: "delayed", blockerIds: ["DELAY-THU-21"] },
+      { ...wednesdayShipments[1], status: "delivered", blockerIds: ["DOA-THU-22"] },
+      { ...wednesdayShipments[2], status: "exception", blockerIds: ["ADDR-THU-23"] },
+      { ...wednesdayShipments[3], status: "delivered", blockerIds: ["EXC-THU-24", "CARE-THU-25"] },
+    ],
+    issues: [
+      {
+        id: "DELAY-THU-21", kind: "carrier_delay", severity: "urgent",
+        customer: "kelp_arcade", orderId: "RNB-2902", shipmentId: "SHP-WED-201",
+        tracking: "7814 0936 3104", detectedAt: "THU · 08:37 ET",
+        headline: "Overnight box is delayed at the regional hub",
+        whyBlocked: "The expected Thursday delivery scan is missing for a live-coral package.",
+        recommendation: "Remind the owner to contact FedEx immediately and record the exact tracking escalation.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Remind owner · contact FedEx", payload: { issueId: "DELAY-THU-21" }, risk: "gated" }],
+      },
+      {
+        id: "DOA-THU-22", kind: "doa", severity: "urgent",
+        customer: "torchkeeper", orderId: "WEB-7416", shipmentId: "SHP-WED-207",
+        tracking: "7814 0936 3278", detectedAt: "THU · 08:49 ET",
+        headline: "Customer reports a coral arrived dead",
+        whyBlocked: "The report arrived shortly after delivery and needs immediate evidence preservation and claim direction.",
+        recommendation: "Respond now, preserve delivery evidence, provide safe stabilization guidance, and direct the customer to /shop/doa-claim.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Send guidance + DOA path", payload: { issueId: "DOA-THU-22" }, risk: "gated" }],
+      },
+      {
+        id: "ADDR-THU-23", kind: "address_change", severity: "urgent",
+        customer: "currentgarden", orderId: "EBY-4488", shipmentId: "SHP-WED-214",
+        tracking: "7814 0936 3351", detectedAt: "THU · 08:56 ET",
+        headline: "Carrier flagged a destination address mismatch",
+        whyBlocked: "Delivery cannot complete until the customer-confirmed street suffix is relayed to the station.",
+        currentValue: "17 Beacon Rd, Boston, MA 02108",
+        recommendation: "Confirm 17 Beacon Road and record the carrier address correction against this shipment.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Confirm address correction", payload: { issueId: "ADDR-THU-23" }, risk: "gated" }],
+      },
+      {
+        id: "EXC-THU-24", kind: "delivery_exception", severity: "urgent",
+        customer: "blue_tide88", orderId: "RNB-2918", shipmentId: "SHP-WED-219",
+        tracking: "7814 0936 3487", detectedAt: "THU · 09:03 ET",
+        headline: "Delivered box was left outside the requested handoff point",
+        whyBlocked: "The customer found the live-coral box after an exception scan and needs immediate next steps.",
+        recommendation: "Record the delivery exception, confirm the box is indoors, and continue with the prepared health check.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Record delivery exception", payload: { issueId: "EXC-THU-24" }, risk: "gated" }],
+      },
+      {
+        id: "CARE-THU-25", kind: "customer_question", severity: "urgent",
+        customer: "blue_tide88", orderId: "RNB-2918", shipmentId: "SHP-WED-219",
+        tracking: "7814 0936 3487", detectedAt: "THU · 09:11 ET",
+        headline: "Customer asks how to help a stressed coral recover",
+        whyBlocked: "A time-sensitive post-delivery care question is still unanswered.",
+        recommendation: "Send the prepared stable-temperature and gentle-flow guidance, then point to the DOA claim path if the coral declines.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Send recovery guidance", payload: { issueId: "CARE-THU-25" }, risk: "gated" }],
+      },
+    ],
+  }];
+}

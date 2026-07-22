@@ -189,6 +189,7 @@ export type LotPrice = {
   bidCount: number;
   leader: string;         // bidder handle
   closesAt: string;
+  recentBidCount?: number; // activity inside the selected demo moment's last 30 minutes
 };
 
 export type FunnelStep = {
@@ -333,11 +334,11 @@ export type ComponentSpec =
   | { kind: "metric_row"; metrics: Metric[] }
   | { kind: "timeseries"; title: string; series: Series[]; annotations?: Annotation[] }
   | { kind: "auction_board"; lots: LotPrice[]; closesAt: string;
-      state: "upcoming" | "live" | "closed" }
+      state: "upcoming" | "live" | "closed"; asOf?: string }
   | { kind: "funnel"; title: string; steps: FunnelStep[] }
   | { kind: "report"; weekLabel: string; sections: ReportSection[] }
   // operations
-  | { kind: "campaign_card"; campaignId: string; phase: WeekPhase;
+  | { kind: "campaign_card"; campaignId: string; title: string; phase: WeekPhase;
       audience: AudienceBreakdown; preview: MessagePreview;
       schedule: string; actions: ActionChip[] }
   | { kind: "addon_order_board"; windowLabel: string; totalOrders: number;

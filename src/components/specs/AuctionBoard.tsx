@@ -9,12 +9,18 @@ export function AuctionBoard({
   lots,
   closesAt,
   state = "live",
+  asOf,
 }: {
   lots: LotPrice[];
   closesAt: string;
   state?: "upcoming" | "live" | "closed";
+  asOf?: string;
 }) {
   const top = Math.max(...lots.map((l) => l.currentBidCents), 1);
+  const bids = lots.reduce((sum, lot) => sum + lot.bidCount, 0);
+  const active = lots.filter((lot) => lot.bidCount > 0).length;
+  const low = lots.filter((lot) => lot.bidCount > 0 && lot.bidCount <= 1).length;
+  const noBids = lots.filter((lot) => lot.bidCount === 0).length;
   const badge =
     state === "closed"
       ? { cls: "border-mute/50 text-mute", text: `closed · ${shortTime(closesAt)}` }
@@ -26,6 +32,17 @@ export function AuctionBoard({
       tag="AUCTION BOARD"
       right={<Chip className={badge.cls}>{badge.text}</Chip>}
     >
+      {state === "live" ? (
+        <div className="mb-3 grid grid-cols-4 overflow-hidden rounded-lg bg-abyss/45">
+          {[[bids, "BIDS"], [active, "ACTIVE"], [low, "LOW"], [noBids, "NO BIDS"]].map(([value, label], index) => (
+            <div key={String(label)} className={`px-3 py-2.5 ${index ? "border-l border-line/60" : ""}`}>
+              <p className={`font-mono text-[19px] font-semibold tabular-nums ${label === "LOW" || label === "NO BIDS" ? "text-warn" : "text-tealhi"}`}>{value}</p>
+              <p className="font-mono text-[9px] tracking-[0.07em] text-mute">{label}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {asOf ? <p className="mb-2 font-mono text-[10px] tracking-[0.05em] text-mute">{asOf} · HIGHEST VALUE FIRST · 30-MINUTE CHANGE SIGNALS</p> : null}
       {lots.length === 0 ? (
         <p className="py-2 text-center font-mono text-xs text-mute">
           no bids on the board this cycle
@@ -48,7 +65,12 @@ export function AuctionBoard({
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] text-ink">{l.name}</p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-[14px] text-ink">{l.name}</p>
+                    {l.bidCount === 0 ? <Chip className="border-danger/45 text-danger">NO BIDS</Chip> : null}
+                    {l.bidCount === 1 ? <Chip className="border-warn/45 text-warn">LOW</Chip> : null}
+                    {(l.recentBidCount ?? 0) >= 2 ? <Chip className="border-teal/45 text-tealhi">↗ {l.recentBidCount} RECENT</Chip> : null}
+                  </div>
                   <p className="font-mono text-[12px] text-mute">
                     {l.category} · {l.lotId}
                   </p>
@@ -62,7 +84,7 @@ export function AuctionBoard({
                     {usd(l.currentBidCents)}
                   </p>
                   <p className="font-mono text-[12px] text-dim">
-                    {l.leader} · {l.bidCount} bid{l.bidCount === 1 ? "" : "s"}
+                    {l.bidCount ? `${l.leader} · ` : "waiting · "}{l.bidCount} bid{l.bidCount === 1 ? "" : "s"}
                   </p>
                 </div>
               </div>
