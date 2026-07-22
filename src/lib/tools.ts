@@ -290,8 +290,12 @@ export async function shippingBlockerBoard(ch: ClickHouseClient, pg: Pool): Prom
 
 // ---------------------------------------------------------------- auction
 
-export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Promise<ComponentSpec[]> {
-  const now = dayId ? demoAuctionMoment(dayId) : Date.now();
+export async function auctionBoard(
+  ch: ClickHouseClient,
+  dayId?: DemoDayId,
+  options?: { now?: number; asOf?: string },
+): Promise<ComponentSpec[]> {
+  const now = options?.now ?? (dayId ? demoAuctionMoment(dayId) : Date.now());
   const wi = dayId ? DEMO_AUCTION_WEEK_INDEX : currentWeekIndex(now);
   const w = weekWindow(wi);
   const weekStart = ANCHOR + wi * WEEK_MS;
@@ -348,7 +352,7 @@ export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Pro
     lots: board,
     closesAt,
     state,
-    asOf: dayId ? `${dayId.slice(0, 3).toUpperCase()} · ${DEMO_DAYS.find((day) => day.id === dayId)?.time ?? ""} ET` : undefined,
+    asOf: options?.asOf ?? (dayId ? `${dayId.slice(0, 3).toUpperCase()} · ${DEMO_DAYS.find((day) => day.id === dayId)?.time ?? ""} ET` : undefined),
   }];
 }
 
@@ -676,6 +680,147 @@ export async function thursdayAnnouncementPlan(pg: Pool): Promise<ComponentSpec[
     },
   ];
   return drafts;
+}
+
+/** Saturday pre-close SMS and email drafts populated from the live 21:30 board. */
+export async function saturdayLastCall(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
+  const closeMoment = demoAuctionMoment("saturday");
+  const boardSpec = (await auctionBoard(ch, "saturday", {
+    now: closeMoment - 77 * 60_000,
+    asOf: "SAT · 21:30 ET",
+  }))[0];
+  if (boardSpec.kind !== "auction_board") return [];
+  const leaders = boardSpec.lots.filter((lot) => lot.bidCount > 0).slice(0, 3);
+  const bidLine = leaders.map((lot) => `${lot.name} $${usd(lot.currentBidCents)}`).join(" · ");
+  const audience = await announcementRecipients(pg);
+  return [
+    {
+      kind: "campaign_card",
+      campaignId: "CMP-W28-SAT-LASTCALL-SMS",
+      title: "Last-minute auction SMS",
+      phase: "auction_live",
+      audience: campaignAudience(audience.smsIds.length, "auction", "Synthetic SMS-capable ReefnBid audience"),
+      preview: {
+        channel: "sms",
+        body: `Closing night is moving: ${bidLine}. ReefnBid ends soon at 10:45 PM ET. Come back to place or increase a bid if one of these corals is on your list.`,
+      },
+      schedule: "SAT · 21:30 ET · review",
+      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call SMS", payload: { campaignId: "CMP-W28-SAT-LASTCALL-SMS" }, risk: "gated" }],
+    },
+    {
+      kind: "campaign_card",
+      campaignId: "CMP-W28-SAT-LASTCALL-EMAIL",
+      title: "Last-minute auction email",
+      phase: "auction_live",
+      audience: campaignAudience(audience.emailIds.length, "auction", "Synthetic email-capable ReefnBid audience"),
+      preview: {
+        channel: "email",
+        subject: "ReefnBid closes soon: see where the leading corals stand",
+        body: `The auction is in its final stretch. Current highlights: ${bidLine}. ReefnBid closes at 10:45 PM ET tonight. Return to review your lots and place or increase a bid if it still makes sense for you.`,
+      },
+      schedule: "SAT · 21:32 ET · review",
+      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call email", payload: { campaignId: "CMP-W28-SAT-LASTCALL-EMAIL" }, risk: "gated" }],
+    },
+  ];
+}
+
+/** Post-close, winner-by-winner review package. No external email is sent automatically. */
+export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<ComponentSpec[]> {
+  const boardSpec = (await auctionBoard(ch, "saturday"))[0];
+  if (boardSpec.kind !== "auction_board" || boardSpec.state !== "closed") return [];
+  const grouped = new Map<string, LotPrice[]>();
+  for (const lot of boardSpec.lots.filter((row) => row.bidCount > 0)) {
+    grouped.set(lot.leader, [...(grouped.get(lot.leader) ?? []), lot]);
+  }
+  const winners = [...grouped.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([winner, lots], index) => {
+      const id = `WIN-W28-${String(index + 1).padStart(2, "0")}`;
+      const totalCents = lots.reduce((sum, lot) => sum + lot.currentBidCents, 0);
+      const addonCode = `RC28-${String(index + 1).padStart(3, "0")}`;
+      const itemLine = lots.map((lot) => `${lot.name} (${lot.lotId}) — $${usd(lot.currentBidCents)}`).join("\n");
+      return {
+        id,
+        winner,
+        items: lots.map((lot) => ({ lotId: lot.lotId, name: lot.name, priceCents: lot.currentBidCents })),
+        totalCents,
+        subject: `Your ReefnBid wins · ${lots.length} coral${lots.length === 1 ? "" : "s"}`,
+        body: `You won:\n${itemLine}\n\nComplete the synthetic winner checkout by Monday, Jul 20 at 8:00 PM ET. Choose Tuesday or Wednesday shipping by the same deadline. Live-arrival issues use /shop/doa-claim. Add eligible Shopify items before the deadline with code ${addonCode}; the store confirms whether items can share the shipment. This is a public demo policy summary, not a production promise.`,
+        paymentDeadline: "MON · JUL 20 · 20:00 ET",
+        shippingDeadline: "MON · JUL 20 · 20:00 ET",
+        addonCode,
+        action: { taskId: "send-demo-winner-email", label: "Approve winner email", payload: { winnerId: id }, risk: "gated" as const },
+      };
+    });
+  return [{
+    kind: "winner_email_board",
+    title: "Review every winner email",
+    asOf: "SAT · 22:55 ET",
+    note: "Each winner sees only their items, totals, deadlines, shipping steps, add-on code, and public demo policy path. Every send is simulated.",
+    winners,
+  }];
+}
+
+/** Auction-only settlement, intentionally separate from Wednesday operations. */
+export async function auctionSettlementReport(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
+  const boardSpec = (await auctionBoard(ch, "saturday"))[0];
+  if (boardSpec.kind !== "auction_board" || boardSpec.state !== "closed") return [];
+  const window = weekWindow(DEMO_AUCTION_WEEK_INDEX);
+  const [orders, items] = await Promise.all([
+    pg.query<{
+      orders: string; paid: string; unpaid: string; shipping: string; discounted: string;
+    }>(`SELECT count(*) AS orders,
+          count(*) FILTER (WHERE status IN ('paid','labeled','shipped','delivered')) AS paid,
+          count(*) FILTER (WHERE status NOT IN ('paid','labeled','shipped','delivered','cancelled')) AS unpaid,
+          coalesce(sum(shipping_cents),0) AS shipping,
+          count(*) FILTER (WHERE discount_code IS NOT NULL) AS discounted
+        FROM orders
+        WHERE platform = 'auction' AND ordered_at >= $1::timestamptz AND ordered_at < $2::timestamptz`,
+      [window.start, window.end]),
+    pg.query<{ sold: string }>(`SELECT coalesce(sum(oi.qty),0) AS sold
+        FROM order_items oi JOIN orders o ON o.id = oi.order_id
+        WHERE o.platform = 'auction' AND o.ordered_at >= $1::timestamptz AND o.ordered_at < $2::timestamptz`,
+      [window.start, window.end]),
+  ]);
+  const row = orders.rows[0];
+  const paidOrders = Number(row?.paid ?? 0);
+  const unpaidOrders = Number(row?.unpaid ?? 0);
+  const shippingChargesCents = Number(row?.shipping ?? 0);
+  const orderCount = Number(row?.orders ?? 0);
+  const winnerCount = new Set(boardSpec.lots.filter((lot) => lot.bidCount > 0).map((lot) => lot.leader)).size;
+  return [{
+    kind: "auction_settlement_report",
+    auctionLabel: "ReefnBid W28 final settlement",
+    asOf: "SAT · 23:05 ET",
+    totalRevenueCents: boardSpec.lots.reduce((sum, lot) => sum + lot.currentBidCents, 0),
+    orderCount,
+    winnerCount,
+    soldItems: Number(items.rows[0]?.sold ?? 0),
+    paidOrders,
+    unpaidOrders,
+    shippingChargesCents,
+    discountsCreditsCents: 0,
+    issues: [
+      {
+        id: "SETTLE-PAYMENT",
+        label: "Payment status",
+        detail: unpaidOrders ? `${unpaidOrders} auction order(s) still require payment.` : `All ${paidOrders} auction orders are paid in the synthetic ledger.`,
+        status: unpaidOrders ? "open" : "clear",
+      },
+      {
+        id: "SETTLE-SHIPPING",
+        label: "Shipping selections",
+        detail: shippingChargesCents ? `$${usd(shippingChargesCents)} in auction shipping charges is recorded.` : "Winner shipping selections remain due Monday; no auction shipping charge is recorded yet.",
+        status: shippingChargesCents ? "clear" : "open",
+      },
+      {
+        id: "SETTLE-DISCOUNT",
+        label: "Discounts and credits",
+        detail: Number(row?.discounted ?? 0) ? "Discount-code usage is present; no auction settlement credit amount is recorded." : "No auction settlement discount or credit is recorded.",
+        status: "clear",
+      },
+    ],
+  }];
 }
 
 /** Detailed weekday shipping command or prior-day overnight watch. */

@@ -65,7 +65,7 @@ type Body = { taskId?: string; payload?: Record<string, unknown> };
 
 const SAFE_DEMO_ACTIONS: Record<string, {
   risk: "auto" | "gated";
-  payloadKey: "caseId" | "taskId" | "issueId" | "campaignId";
+  payloadKey: "caseId" | "taskId" | "issueId" | "campaignId" | "winnerId";
   allowed: string[];
   note: Record<string, string>;
 }> = {
@@ -165,6 +165,24 @@ const SAFE_DEMO_ACTIONS: Record<string, {
       "FRI-ADDR-35": "confirmed address and delivered scan attached to the synthetic audit trail",
       "FRI-ORDER-36": "prepared order answer recorded; no external message sent",
     },
+  },
+  "send-demo-saturday-last-call": {
+    risk: "gated",
+    payloadKey: "campaignId",
+    allowed: ["CMP-W28-SAT-LASTCALL-SMS", "CMP-W28-SAT-LASTCALL-EMAIL"],
+    note: {
+      "CMP-W28-SAT-LASTCALL-SMS": "last-call SMS approval recorded; simulated send only",
+      "CMP-W28-SAT-LASTCALL-EMAIL": "last-call email approval recorded; simulated send only",
+    },
+  },
+  "send-demo-winner-email": {
+    risk: "gated",
+    payloadKey: "winnerId",
+    allowed: Array.from({ length: 12 }, (_, index) => `WIN-W28-${String(index + 1).padStart(2, "0")}`),
+    note: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
+      const winnerId = `WIN-W28-${String(index + 1).padStart(2, "0")}`;
+      return [winnerId, `${winnerId} email approval recorded; simulated send only`];
+    })),
   },
 };
 

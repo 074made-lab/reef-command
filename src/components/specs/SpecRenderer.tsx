@@ -5,6 +5,7 @@ import type { ComponentSpec } from "@/lib/protocol";
 import { AttentionFeed } from "./AttentionFeed";
 import { AddonOrderBoard } from "./AddonOrderBoard";
 import { AuctionBoard } from "./AuctionBoard";
+import { AuctionSettlementReport } from "./AuctionSettlementReport";
 import { AuctionAnnouncement } from "./AuctionAnnouncement";
 import { CampaignCard } from "./CampaignCard";
 import { CustomerResolutionBoard } from "./CustomerResolutionBoard";
@@ -26,6 +27,7 @@ import { StaffAgentBoard } from "./StaffAgentBoard";
 import { Timeseries } from "./Timeseries";
 import { VerdictCard } from "./VerdictCard";
 import { WeatherStrip } from "./WeatherStrip";
+import { WinnerEmailBoard } from "./WinnerEmailBoard";
 
 export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
   switch (spec.kind) {
@@ -73,6 +75,10 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <StaffAgentBoard spec={spec} />;
     case "customer_resolution_board":
       return <CustomerResolutionBoard spec={spec} />;
+    case "winner_email_board":
+      return <WinnerEmailBoard spec={spec} />;
+    case "auction_settlement_report":
+      return <AuctionSettlementReport spec={spec} />;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

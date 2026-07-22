@@ -14,11 +14,14 @@ import {
   attentionFeed,
   auctionAnnouncement,
   auctionBoard,
+  auctionSettlementReport,
   fridayPlan,
   listingPlan,
   mergeScan,
   promotionPlan,
   revenuePulse,
+  saturdayLastCall,
+  saturdayWinnerEmails,
   shippingCommand,
   shippingBlockerBoard,
   thursdayAnnouncementPlan,
@@ -105,6 +108,27 @@ async function fridayCommand(message: string): Promise<ChatResponse> {
       ? "The actionable social-team reminder is ready. The SMS is simulated and posting remains with staff."
       : "Every remaining prior-cycle customer issue has an explicit next action below.",
     components: fridayPlan(scope),
+  };
+}
+
+async function saturdayLastCallCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "The live-bid last-call SMS and email are ready for separate approval. Nothing has been sent externally.",
+    components: await saturdayLastCall(ch, pg),
+  };
+}
+
+async function saturdayWinnerEmailCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "Every closed-auction winner email is ready for individual review and simulated approval.",
+    components: await saturdayWinnerEmails(ch),
+  };
+}
+
+async function saturdaySettlementCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "The auction-only settlement is below, separate from Wednesday's operating report.",
+    components: await auctionSettlementReport(ch, pg),
   };
 }
 
@@ -256,6 +280,12 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await documents();
     if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments|final regular ship[- ]day|monitor every (?:tuesday|wednesday) shipment|mominito.*fedex/.test(q))
       return await weekdayShipCommand(message);
+    if (/last-minute auction sms and email drafts.*current bid prices|last-call sms.*last-call email/.test(q))
+      return await saturdayLastCallCommand();
+    if (/email for every auction winner|every winner.*won items.*payment.*shipping/.test(q))
+      return await saturdayWinnerEmailCommand();
+    if (/auction-only settlement report|settlement.*paid.*unpaid.*shipping/.test(q))
+      return await saturdaySettlementCommand();
     if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))

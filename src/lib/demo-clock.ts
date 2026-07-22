@@ -87,13 +87,13 @@ export const DEMO_DAYS: DemoDay[] = [
   },
   {
     id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Closing Night + Winners",
-    goal: "Close the auction, confirm winners, and start the two-day add-on window.",
+    goal: "Approve the final call, review every winner email, and close the auction settlement cleanly.",
     priorities: [
-      { label: "Confirm final results", time: "22:47", detail: "Lock the closed state and show final hammer prices.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Review winner next steps", time: "22:55", detail: "Check the payment, add-on, and shipping instructions before they go out.", cue: "do-now", prompt: "Review the closed auction board and show the synthetic winner next steps for payment, add-on, and shipping. Do not send or claim a message." },
-      { label: "Watch add-on orders", time: "23:05", detail: "Watch for new orders that may belong in the same shipment.", cue: "watch", prompt: "Any orders to merge?" },
+      { label: "Approve last-minute call", time: "21:30", detail: "Review an inviting SMS and email with current bids before the auction closes.", cue: "human-gate", prompt: "Open Saturday's last-minute auction SMS and email drafts with current bid prices and separate approval controls." },
+      { label: "Review winner emails", time: "22:55", detail: "Check each winner's items, payment, shipping, policy, add-on code, and deadlines.", cue: "human-gate", prompt: "Open Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines." },
+      { label: "Auction settlement report", time: "23:05", detail: "Review auction-only revenue, orders, winners, sold items, payment, shipping, credits, and issues.", cue: "watch", prompt: "Open Saturday's auction-only settlement report with revenue, orders, winners, sold items, payment, shipping, discounts or credits, and remaining issues." },
     ],
-    reminder: "Every winner needs payment steps, an add-on code, and a ship date.",
+    reminder: "Last-call and winner emails require review; settlement stays separate from Wednesday's report.",
   },
 ];
 

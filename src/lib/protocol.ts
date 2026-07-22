@@ -324,6 +324,26 @@ export type CustomerResolutionItem = {
   action: ActionChip;
 };
 
+export type WinnerEmail = {
+  id: string;
+  winner: string;
+  items: { lotId: string; name: string; priceCents: number }[];
+  totalCents: number;
+  subject: string;
+  body: string;
+  paymentDeadline: string;
+  shippingDeadline: string;
+  addonCode: string;
+  action: ActionChip;
+};
+
+export type SettlementIssue = {
+  id: string;
+  label: string;
+  detail: string;
+  status: "open" | "clear";
+};
+
 // ---------- actions ----------
 
 /** An executable action. `gated` requires an explicit human click. */
@@ -384,6 +404,13 @@ export type ComponentSpec =
       note: string; tasks: StaffAgentTask[] }
   | { kind: "customer_resolution_board"; title: string; asOf: string;
       note: string; items: CustomerResolutionItem[] }
+  | { kind: "winner_email_board"; title: string; asOf: string;
+      note: string; winners: WinnerEmail[] }
+  | { kind: "auction_settlement_report"; auctionLabel: string; asOf: string;
+      totalRevenueCents: number; orderCount: number; winnerCount: number;
+      soldItems: number; paidOrders: number; unpaidOrders: number;
+      shippingChargesCents: number; discountsCreditsCents: number;
+      issues: SettlementIssue[] }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;

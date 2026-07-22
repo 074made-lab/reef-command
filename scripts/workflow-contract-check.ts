@@ -20,8 +20,9 @@ const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
 const wednesday = DEMO_DAYS.find((day) => day.id === "wednesday");
 const friday = DEMO_DAYS.find((day) => day.id === "friday");
 const thursday = DEMO_DAYS.find((day) => day.id === "thursday");
+const saturday = DEMO_DAYS.find((day) => day.id === "saturday");
 const sunday = DEMO_DAYS.find((day) => day.id === "sunday");
-assert.ok(monday && tuesday && wednesday && thursday && friday && sunday);
+assert.ok(monday && tuesday && wednesday && thursday && friday && saturday && sunday);
 
 assert.deepEqual(
   monday.priorities.map((priority) => priority.label),
@@ -147,6 +148,11 @@ assert.deepEqual(
   new Set(["unanswered_message", "shipping_problem", "doa", "replacement_credit", "address_issue", "order_question"]),
 );
 assert.ok(fridayIssues.items.every((item) => item.action.taskId === "resolve-demo-customer-issue"));
+assert.deepEqual(
+  saturday.priorities.map((priority) => priority.label),
+  ["Approve last-minute call", "Review winner emails", "Auction settlement report"],
+);
+assert.deepEqual(saturday.priorities.map((priority) => priority.time), ["21:30", "22:55", "23:05"]);
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
 assert.match(sunday.priorities[0].prompt ?? "", /only the Sunday add-on orders board.*Shopify or eBay add-on.*ReefnBid anchor/i);
 assert.match(sunday.priorities[0].prompt ?? "", /Do not open merge controls yet/i);
@@ -268,6 +274,8 @@ assert.match(agentSource, /Thursday Step 1 calls auctionBoard with day=thursday.
   "Thursday's leaderboard, four drafts, and Wednesday shipment watch must stay distinct");
 assert.match(agentSource, /Friday Step 1 calls auctionBoard with day=friday.*Friday Step 2 calls fridayOperations with scope=social.*Friday Step 3 calls fridayOperations with scope=issues/,
   "Friday's leaderboard, social reminder, and issue closure must stay distinct");
+assert.match(agentSource, /Saturday Step 1 calls saturdayLastCall.*Saturday Step 2 calls saturdayWinnerEmails.*Saturday Step 3 calls auctionSettlement/,
+  "Saturday's last call, winner emails, and settlement must stay distinct");
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
@@ -296,6 +304,12 @@ assert.match(routerSource, /four separate 12:00 pm launch drafts[\s\S]*return aw
   "offline fallback must route Thursday's four drafts to separate campaign cards");
 assert.match(routerSource, /actionable staff sms.*instagram.*tiktok[\s\S]*return await fridayCommand/,
   "offline fallback must route Friday's staff SMS to the dedicated command");
+assert.match(routerSource, /last-minute auction sms and email drafts.*current bid prices[\s\S]*return await saturdayLastCallCommand/,
+  "offline fallback must route Saturday's pre-close last call before generic auction intent");
+assert.match(routerSource, /email for every auction winner[\s\S]*return await saturdayWinnerEmailCommand/,
+  "offline fallback must route winner emails to the closed-auction package");
+assert.match(routerSource, /auction-only settlement report[\s\S]*return await saturdaySettlementCommand/,
+  "offline fallback must keep Saturday settlement distinct from the weekly report");
 assert.match(routerSource, /shipping blocker board[\s\S]*return await blockers/,
   "offline fallback must route Monday blockers before generic attention");
 assert.match(routerSource, /shipping document board[\s\S]*return await documents/,
@@ -318,6 +332,8 @@ assert.match(rendererSource, /case "shipment_command_board"/,
   "Tuesday shipments must render a dedicated exception and manifest board");
 assert.match(rendererSource, /case "customer_resolution_board"/,
   "Friday issues must render a dedicated resolution board");
+assert.match(rendererSource, /case "winner_email_board"[\s\S]*case "auction_settlement_report"/,
+  "Saturday winner emails and settlement must have dedicated renderers");
 
 const auctionToolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
 assert.match(auctionToolSource, /type = 'auction_opened'[\s\S]*openedLots[\s\S]*recentBidCount/,
@@ -328,6 +344,12 @@ assert.ok((auctionToolSource.match(/taskId: "send-demo-thursday-draft"/g) ?? [])
   "every Thursday draft must have its own approval action");
 assert.ok((auctionToolSource.match(/12:00 PM ET/g) ?? []).length >= 4,
   "every Thursday draft must state the noon auction opening");
+assert.match(auctionToolSource, /saturdayLastCall[\s\S]*SAT · 21:30 ET[\s\S]*currentBidCents[\s\S]*send-demo-saturday-last-call/,
+  "Saturday last-call drafts must use current live bids and separate approvals");
+assert.match(auctionToolSource, /saturdayWinnerEmails[\s\S]*grouped[\s\S]*paymentDeadline[\s\S]*shippingDeadline[\s\S]*addonCode[\s\S]*send-demo-winner-email/,
+  "winner emails must cover every required post-close instruction");
+assert.match(auctionToolSource, /auctionSettlementReport[\s\S]*totalRevenueCents[\s\S]*orderCount[\s\S]*winnerCount[\s\S]*soldItems[\s\S]*paidOrders[\s\S]*unpaidOrders[\s\S]*shippingChargesCents[\s\S]*discountsCreditsCents/,
+  "Saturday settlement must remain an auction-only financial close");
 const auctionBoardSource = readFileSync(new URL("../src/components/specs/AuctionBoard.tsx", import.meta.url), "utf8");
 assert.match(auctionBoardSource, /BIDS[\s\S]*ACTIVE[\s\S]*LOW[\s\S]*NO BIDS/,
   "Thursday board must display activity and low/no-engagement signals");
@@ -341,6 +363,8 @@ assert.match(actionRouteSource, /send-demo-auction-announcement/,
   "the announcement approval must have a wired action");
 assert.match(actionRouteSource, /send-demo-social-reminder[\s\S]*resolve-demo-customer-issue/,
   "Friday staff and customer actions must be allowlisted and auditable");
+assert.match(actionRouteSource, /send-demo-saturday-last-call[\s\S]*send-demo-winner-email/,
+  "Saturday last-call and winner sends must be explicit simulated approvals");
 assert.match(actionRouteSource, /merge-all-orders/,
   "the combined-order routine must wire Merge all");
 assert.match(actionRouteSource, /UPDATE orders SET shipment_id/,
@@ -446,6 +470,9 @@ console.log("✓ Monday prepares shipping documents; exception routing opens att
 console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");
 console.log("✓ Sunday reconciles ReefnBid anchors, add-on totals, Merge all, and the announcement package");
 console.log("✓ Wednesday closes final-day shipments, watches overnight health risk, and reuses the operational report");
+console.log("✓ Thursday monitors every lot, separates four launch approvals, and watches Wednesday boxes");
+console.log("✓ Friday tracks bid movement, activates the social task, and closes six customer issue lanes");
+console.log("✓ Saturday uses live bids, reviews every winner email, and keeps settlement auction-only");
 console.log("✓ DOA approval closes 3 replacements into tomorrow's updated shipment");
 console.log("✓ Customer reply remains a draft and is never auto-sent");
 console.log("✓ Concierge answers the supported combine FAQ; DOA and human handoff stay explicit");

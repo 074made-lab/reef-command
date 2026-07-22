@@ -33,11 +33,14 @@ assert.equal(new Set(DEMO_DAYS.map((day) => day.id)).size, 7, "weekday ids must 
 
 const saturday = DEMO_DAYS.find((day) => day.id === "saturday");
 assert.ok(saturday, "Saturday must exist");
-assert.equal(saturday.priorities[1].label, "Review winner next steps");
-assert.match(saturday.priorities[1].prompt ?? "", /payment.*add-on.*shipping/i);
-assert.match(saturday.priorities[1].prompt ?? "", /do not send|do not.*claim/i);
+assert.deepEqual(
+  saturday.priorities.map((priority) => priority.label),
+  ["Approve last-minute call", "Review winner emails", "Auction settlement report"],
+);
+assert.match(saturday.priorities[1].prompt ?? "", /every auction winner.*payment.*shipping.*policy.*add-on.*codes.*deadlines/i);
+assert.match(saturday.priorities[2].prompt ?? "", /auction-only settlement report.*revenue.*orders.*winners.*sold items.*payment.*shipping.*discounts or credits.*remaining issues/i);
 assert.notEqual(saturday.priorities[0].prompt, saturday.priorities[1].prompt,
-  "Saturday result review and winner handoff must be distinct tasks");
+  "Saturday last call and winner email review must be distinct tasks");
 
 for (const day of DEMO_DAYS) {
   assert.equal(day.priorities.length, 3, `${day.weekday} must have three priorities`);
