@@ -13,5 +13,5 @@ const MIN = 60_000;
 /** THU 12:00 — auction opens and the four launch announcements reference it. */
 export const AUCTION_OPEN_OFFSET_MS = (12 * 60) * MIN;
 
-/** SAT 22:45 — auction closes (matches generator `day(2, 22, 45)`). */
-export const AUCTION_CLOSE_OFFSET_MS = ((2 * 24 + 22) * 60 + 45) * MIN;
+/** SAT 20:00 — auction closes, matching the announced public-demo deadline. */
+export const AUCTION_CLOSE_OFFSET_MS = ((2 * 24 + 20) * 60) * MIN;

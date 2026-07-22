@@ -24,7 +24,7 @@ export function CampaignCard({ spec }: { spec: CampaignSpec }) {
     >
       <div className="mb-4">
         <p className="text-[18px] font-semibold tracking-[-0.02em] text-ink">{title}</p>
-        <p className="mt-1 text-[12px] text-dim">Separate review and approval · no external send until the button is clicked</p>
+        <p className="mt-1 text-[12px] text-dim">Separate review and approval · the button records a simulated send only</p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div>

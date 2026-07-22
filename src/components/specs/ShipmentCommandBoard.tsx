@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import type { ComponentSpec, ShipmentCommandIssue } from "@/lib/protocol";
 import { ActionRow } from "./ActionChips";
 import { Chip, SpecCard, StatusChip } from "./bits";
+import { usePersistentResolution } from "./usePersistentResolution";
 
 type ShipmentCommandSpec = Extract<ComponentSpec, { kind: "shipment_command_board" }>;
 
@@ -19,7 +19,11 @@ const ISSUE_LABEL: Record<ShipmentCommandIssue["kind"], string> = {
 };
 
 export function ShipmentCommandBoard({ spec }: { spec: ShipmentCommandSpec }) {
-  const [resolved, setResolved] = useState<Set<string>>(() => new Set());
+  const issueIds = spec.issues.map((issue) => issue.id);
+  const { resolved, resolve } = usePersistentResolution(
+    `shipment:${spec.day}:${spec.mode}:${spec.shipDate}`,
+    issueIds,
+  );
   const openIssues = spec.issues.filter((issue) => !resolved.has(issue.id));
   const urgent = openIssues.filter((issue) => issue.severity === "urgent").length;
   const ready = spec.shipments.filter((shipment) =>
@@ -86,7 +90,7 @@ export function ShipmentCommandBoard({ spec }: { spec: ShipmentCommandSpec }) {
                   <p className="mt-2 border-l border-teal/35 pl-2.5 text-[12px] leading-relaxed text-tealhi">{issue.recommendation}</p>
                 )}
                 {!done ? (
-                  <ActionRow actions={issue.actions} onComplete={() => setResolved((current) => new Set(current).add(issue.id))} />
+                  <ActionRow actions={issue.actions} onComplete={() => resolve(issue.id)} />
                 ) : (
                   <p className="mt-2 font-mono text-[10px] text-ok">✓ ACTION RECORDED · synthetic demo state</p>
                 )}
@@ -119,7 +123,7 @@ export function ShipmentCommandBoard({ spec }: { spec: ShipmentCommandSpec }) {
             <tbody className="divide-y divide-line/45">
               {spec.shipments.map((shipment) => {
                 const cleared = shipment.blockerIds.length > 0 && shipment.blockerIds.every((id) => resolved.has(id));
-                const status = cleared ? "ready" : shipment.status;
+                const status = spec.mode === "ship" && cleared ? "ready" : shipment.status;
                 return (
                   <tr key={shipment.shipmentId} className="bg-panel/25 transition-colors hover:bg-teal/[0.035]">
                     <td className="px-3 py-2.5">
@@ -132,7 +136,12 @@ export function ShipmentCommandBoard({ spec }: { spec: ShipmentCommandSpec }) {
                     </td>
                     <td className="px-3 py-2.5 text-dim">{shipment.destination}</td>
                     <td className="px-3 py-2.5 font-mono text-dim">{shipment.coralUnits} · {shipment.pack}</td>
-                    <td className="px-3 py-2.5"><StatusChip s={status} /></td>
+                    <td className="px-3 py-2.5">
+                      <StatusChip s={status} />
+                      {spec.mode === "monitor" && cleared ? (
+                        <p className="mt-1 font-mono text-[9px] text-ok">RESPONSE LOGGED</p>
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}

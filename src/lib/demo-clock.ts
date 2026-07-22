@@ -86,12 +86,12 @@ export const DEMO_DAYS: DemoDay[] = [
     reminder: "Staff own filming and posting; customer remedies remain explicit human decisions.",
   },
   {
-    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Closing Night + Winners",
+    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "20:02", label: "Closing Night + Winners",
     goal: "Approve the final call, review every winner email, and close the auction settlement cleanly.",
     priorities: [
-      { label: "Approve last-minute call", time: "21:30", detail: "Review an inviting SMS and email with current bids before the auction closes.", cue: "human-gate", prompt: "Open Saturday's last-minute auction SMS and email drafts with current bid prices and separate approval controls." },
-      { label: "Review winner emails", time: "22:55", detail: "Check each winner's items, payment, shipping, policy, add-on code, and deadlines.", cue: "human-gate", prompt: "Open Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines." },
-      { label: "Auction settlement report", time: "23:05", detail: "Review auction-only revenue, orders, winners, sold items, payment, shipping, credits, and issues.", cue: "watch", prompt: "Open Saturday's auction-only settlement report with revenue, orders, winners, sold items, payment, shipping, discounts or credits, and remaining issues." },
+      { label: "Approve last-minute call", time: "19:30", detail: "Review an inviting SMS and email with current bids before the auction closes.", cue: "human-gate", prompt: "Open Saturday's last-minute auction SMS and email drafts with current bid prices and separate approval controls." },
+      { label: "Review winner emails", time: "20:10", detail: "Check each winner's items, payment, shipping, policy, add-on code, and deadlines.", cue: "human-gate", prompt: "Open Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines." },
+      { label: "Auction settlement report", time: "20:20", detail: "Review auction-only revenue, orders, winners, sold items, payment, shipping, credits, and issues.", cue: "watch", prompt: "Open Saturday's auction-only settlement report with revenue, orders, winners, sold items, payment, shipping, discounts or credits, and remaining issues." },
     ],
     reminder: "Last-call and winner emails require review; settlement stays separate from Wednesday's report.",
   },
@@ -123,10 +123,10 @@ export function isDemoDayId(value: string | null): value is DemoDayId {
 }
 
 /**
- * Stable ClickHouse cycle used by the selectable synthetic week. W28 has the
- * complete deterministic auction arc in the seeded world: THU open through
- * SAT close, followed by SUN-WED operations. Keeping this explicit prevents a
- * wall clock from silently swapping the interface to a different cycle.
+ * Completed auction cycle behind the selected Sunday-Wednesday operations.
+ * The same visible week then advances to W29 for Thursday-Saturday's next
+ * auction. Keeping that handoff explicit makes the Sunday announcement, ship
+ * dates, auction board, winner emails, and settlement one chronological story.
  */
 export const DEMO_AUCTION_WEEK_INDEX = 28;
 
@@ -143,11 +143,17 @@ const CYCLE_DAY: Record<DemoDayId, number> = {
   wednesday: 6,
 };
 
-/** Synthetic timestamp for a selected day inside the stable demo cycle. */
+/** Auction cycle that owns a selected day's data. */
+export function demoAuctionWeekIndex(dayId: DemoDayId): number {
+  return DEMO_AUCTION_WEEK_INDEX +
+    (dayId === "thursday" || dayId === "friday" || dayId === "saturday" ? 1 : 0);
+}
+
+/** Synthetic timestamp for a selected day inside the chronological demo week. */
 export function demoAuctionMoment(dayId: DemoDayId): number {
   const day = demoDay(dayId);
   const [hour, minute] = day.time.split(":").map(Number);
-  return DEMO_WEEK_ANCHOR + DEMO_AUCTION_WEEK_INDEX * WEEK_MS +
+  return DEMO_WEEK_ANCHOR + demoAuctionWeekIndex(dayId) * WEEK_MS +
     CYCLE_DAY[dayId] * DAY_MS + hour * 60 * 60_000 + minute * 60_000;
 }
 

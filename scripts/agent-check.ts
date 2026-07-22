@@ -120,17 +120,15 @@ const PROBES: Probe[] = [
     },
   },
   {
-    q: "[SYNTHETIC DEMO TODAY: SATURDAY — CLOSE + WINNERS]\n[SYNTHETIC ROUTINE: priority=2; structured_component_required=true]\nReview the closed auction board and show the synthetic winner next steps for payment, add-on, and shipping. Do not send or claim a message.",
-    expect: "winnerNextSteps → fresh closed board + unsent structured handoff on repeated routine turns",
+    q: "[SYNTHETIC DEMO TODAY: SATURDAY — CLOSING NIGHT + WINNERS]\n[SYNTHETIC ROUTINE: priority=2; command_time=SAT · 20:10 ET; structured_component_required=true]\nOpen Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines.",
+    expect: "saturdayWinnerEmails → complete winner_email_board",
     check: (c) => {
-      if (!called(c, "winnerNextSteps") || !has(c, "auction_board") || !has(c, "verdict_card"))
+      if (!called(c, "saturdayWinnerEmails") || !has(c, "winner_email_board"))
         return "routine did not call the dedicated structured tool";
-      const board = c.components.find((s) => s.kind === "auction_board");
-      const handoff = c.components.find((s) => s.kind === "verdict_card");
-      if (board?.kind !== "auction_board" || board.state !== "closed") return "winner board is not closed";
-      return handoff?.kind === "verdict_card" && /no customer message has been sent/i.test(handoff.verdict)
+      const board = c.components.find((s) => s.kind === "winner_email_board");
+      return board?.kind === "winner_email_board" && board.winners.length > 0
         ? null
-        : "handoff does not preserve the unsent boundary";
+        : "winner email board is empty";
     },
   },
   {

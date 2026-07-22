@@ -57,9 +57,11 @@ import {
 } from "@/lib/tools";
 import { labelDay } from "@/trigger/label-day";
 import { resetInProgressResponse, tryDemoOperation } from "@/lib/demo-operation-lock";
+import { demoAuctionWeekIndex } from "@/lib/demo-clock";
 
 let chSingleton: ClickHouseClient | undefined;
 const ch = () => (chSingleton ??= chClient());
+const saturdayAuctionWeek = demoAuctionWeekIndex("saturday");
 
 type Body = { taskId?: string; payload?: Record<string, unknown> };
 
@@ -169,18 +171,18 @@ const SAFE_DEMO_ACTIONS: Record<string, {
   "send-demo-saturday-last-call": {
     risk: "gated",
     payloadKey: "campaignId",
-    allowed: ["CMP-W28-SAT-LASTCALL-SMS", "CMP-W28-SAT-LASTCALL-EMAIL"],
+    allowed: [`CMP-W${saturdayAuctionWeek}-SAT-LASTCALL-SMS`, `CMP-W${saturdayAuctionWeek}-SAT-LASTCALL-EMAIL`],
     note: {
-      "CMP-W28-SAT-LASTCALL-SMS": "last-call SMS approval recorded; simulated send only",
-      "CMP-W28-SAT-LASTCALL-EMAIL": "last-call email approval recorded; simulated send only",
+      [`CMP-W${saturdayAuctionWeek}-SAT-LASTCALL-SMS`]: "last-call SMS approval recorded; simulated send only",
+      [`CMP-W${saturdayAuctionWeek}-SAT-LASTCALL-EMAIL`]: "last-call email approval recorded; simulated send only",
     },
   },
   "send-demo-winner-email": {
     risk: "gated",
     payloadKey: "winnerId",
-    allowed: Array.from({ length: 12 }, (_, index) => `WIN-W28-${String(index + 1).padStart(2, "0")}`),
+    allowed: Array.from({ length: 12 }, (_, index) => `WIN-W${saturdayAuctionWeek}-${String(index + 1).padStart(2, "0")}`),
     note: Object.fromEntries(Array.from({ length: 12 }, (_, index) => {
-      const winnerId = `WIN-W28-${String(index + 1).padStart(2, "0")}`;
+      const winnerId = `WIN-W${saturdayAuctionWeek}-${String(index + 1).padStart(2, "0")}`;
       return [winnerId, `${winnerId} email approval recorded; simulated send only`];
     })),
   },
@@ -231,6 +233,7 @@ async function stageMergePlans(
   client: PoolClient,
   taskId: "merge-orders" | "merge-all-orders",
   plans: AddonMergePlan[],
+  operator: string,
 ) {
   let sourceOrders = 0;
   let coralUnits = 0;
@@ -358,7 +361,7 @@ async function stageMergePlans(
       INSERT INTO merge_runs (
         merge_code, week_index, customer_id, anchor_order_id, addon_order_ids,
         source_order_ids, coral_units, total_cents, shipment_id, status, approved_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending_event','merchant-click')`, [
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending_event',$10)`, [
       code,
       plan.weekIndex,
       plan.customer.customerId,
@@ -368,15 +371,17 @@ async function stageMergePlans(
       plan.totalCoralUnits,
       plan.totalCents,
       shipmentId,
+      operator,
     ]);
     newRuns++;
   }
   if (newRuns) {
     await client.query(`
       INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
-      VALUES ($1,'gated',$2,'merchant-click','pending_event')`, [
+      VALUES ($1,'gated',$2,$3,'pending_event')`, [
       taskId,
       JSON.stringify({ weekIndex: plans[0].weekIndex, mergeCodes }),
+      operator,
     ]);
   }
   return { sourceOrders, coralUnits, mergeCodes };
@@ -453,6 +458,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid JSON body" }, { status: 400 });
   }
   const taskId = typeof body.taskId === "string" ? body.taskId : null;
+
+  const safeDemoAction = taskId ? SAFE_DEMO_ACTIONS[taskId] : undefined;
+  const requiresOwner = taskId === "merge-orders"
+    || taskId === "merge-all-orders"
+    || taskId === "send-demo-auction-announcement"
+    || safeDemoAction?.risk === "gated";
+  let actionOperator: string | null = null;
+  if (requiresOwner) {
+    try {
+      ({ operator: actionOperator } = await requireOwner());
+    } catch (error) {
+      if (error instanceof OwnerAuthError) {
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: error.reason === "unconfigured" ? 503 : 401 },
+        );
+      }
+      throw error;
+    }
+  }
 
   if (taskId === "approve-label-batch" || taskId === "purchase-shipping-labels") {
     // Owner-only, fail-closed: no valid owner session (or no owner token
@@ -580,7 +605,7 @@ export async function POST(req: Request) {
           );
         }
         shipmentCount = selected.length;
-        totals = await stageMergePlans(client, taskId, selected);
+        totals = await stageMergePlans(client, taskId, selected, actionOperator!);
       }
       await client.query("COMMIT");
     } catch (error) {
@@ -659,12 +684,13 @@ export async function POST(req: Request) {
             FROM unnest($2::bigint[]) AS recipient_id`, [campaignDbId, recipients.smsIds]);
         }
         await client.query(`
-          UPDATE campaigns SET approved_by = 'merchant-click', sent_at = now()
-          WHERE id = $1`, [campaignDbId]);
+          UPDATE campaigns SET approved_by = $2, sent_at = now()
+          WHERE id = $1`, [campaignDbId, actionOperator]);
         await client.query(`
           INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
-          VALUES ('send-demo-auction-announcement','gated',$1,'merchant-click','ok')`, [
+          VALUES ('send-demo-auction-announcement','gated',$1,$2,'ok')`, [
           JSON.stringify({ campaignId, emailCount, smsCount, simulated: true }),
+          actionOperator,
         ]);
       }
       await client.query("COMMIT");
@@ -695,7 +721,6 @@ export async function POST(req: Request) {
     });
   }
 
-  const safeDemoAction = taskId ? SAFE_DEMO_ACTIONS[taskId] : undefined;
   if (taskId && safeDemoAction) {
     const scope = body.payload?.[safeDemoAction.payloadKey];
     if (typeof scope !== "string" || !safeDemoAction.allowed.includes(scope)) {
@@ -706,30 +731,68 @@ export async function POST(req: Request) {
       simulated: true,
       externalWrite: false,
     };
-    const audit = await pgPool().query<{ id: string }>(`
-      INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
-      VALUES ($1,$2,$3::jsonb,$4,'pending_event')
-      RETURNING id`, [
-      taskId,
-      safeDemoAction.risk,
-      JSON.stringify(payload),
-      safeDemoAction.risk === "gated" ? "merchant-click" : null,
-    ]);
-    const auditId = audit.rows[0]?.id;
+    const db = pgPool();
+    const client = await db.connect();
+    let auditId: string;
+    let alreadyRecorded = false;
     try {
-      await insertEvents(ch(), [{
-        ts: new Date().toISOString(),
-        type: "action_executed",
-        platform: "system",
-        orderId: `demo-action:${auditId}`,
-        meta: { taskId, scope, simulated: true, externalWrite: false },
-      }]);
-      await pgPool().query(
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${taskId}:${scope}`]);
+      const prior = await client.query<{ id: string; outcome: string }>(`
+        SELECT id, outcome FROM action_log
+        WHERE task_id = $1 AND payload = $2::jsonb
+        ORDER BY executed_at DESC LIMIT 1`, [taskId, JSON.stringify(payload)]);
+      if (prior.rows[0]?.outcome === "ok") {
+        auditId = prior.rows[0].id;
+        alreadyRecorded = true;
+      } else if (prior.rows[0]) {
+        auditId = prior.rows[0].id;
+        await client.query(
+          `UPDATE action_log SET outcome = 'pending_event', error = NULL WHERE id = $1`,
+          [auditId],
+        );
+      } else {
+        const audit = await client.query<{ id: string }>(`
+          INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
+          VALUES ($1,$2,$3::jsonb,$4,'pending_event')
+          RETURNING id`, [
+          taskId,
+          safeDemoAction.risk,
+          JSON.stringify(payload),
+          safeDemoAction.risk === "gated" ? actionOperator : null,
+        ]);
+        auditId = audit.rows[0]!.id;
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    if (alreadyRecorded) {
+      return NextResponse.json({ ok: true, note: `already recorded · ${safeDemoAction.note[scope]}` });
+    }
+    try {
+      const duplicate = await queryRows<{ n: string }>(ch(), `
+        SELECT count() AS n FROM events
+        WHERE type = 'action_executed' AND order_id = {eventId:String}`,
+      { eventId: `demo-action:${auditId}` });
+      if (Number(duplicate[0]?.n ?? 0) === 0) {
+        await insertEvents(ch(), [{
+          ts: new Date().toISOString(),
+          type: "action_executed",
+          platform: "system",
+          orderId: `demo-action:${auditId}`,
+          meta: { taskId, scope, simulated: true, externalWrite: false },
+        }]);
+      }
+      await db.query(
         `UPDATE action_log SET outcome = 'ok' WHERE id = $1 AND outcome = 'pending_event'`,
         [auditId],
       );
     } catch (error) {
-      await pgPool().query(
+      await db.query(
         `UPDATE action_log SET outcome = 'error', error = $2 WHERE id = $1`,
         [auditId, error instanceof Error ? error.message : String(error)],
       );

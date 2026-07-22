@@ -1,11 +1,12 @@
 /** Offline contract gate for the synthetic operational workflows. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DEMO_DAYS } from "../src/lib/demo-clock";
+import { DEMO_DAYS, demoAuctionWeekIndex } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
 import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
 import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
-import { AUCTION_OPEN_OFFSET_MS } from "../src/lib/synth/schedule";
+import { AUCTION_CLOSE_OFFSET_MS, AUCTION_OPEN_OFFSET_MS } from "../src/lib/synth/schedule";
+import { generateBackfill } from "../src/lib/synth/generator";
 import {
   fridayOperations,
   tuesdayListingPlan,
@@ -49,6 +50,7 @@ const tuesdayShipSpec = tuesdayShippingCommand()[0];
 assert.equal(tuesdayShipSpec.kind, "shipment_command_board");
 if (tuesdayShipSpec.kind !== "shipment_command_board") throw new Error("Tuesday shipment board missing");
 assert.equal(tuesdayShipSpec.asOf, "TUE · 08:10 ET");
+assert.equal(tuesdayShipSpec.shipDate, "Tuesday · Jul 21, 2026");
 assert.equal(tuesdayShipSpec.shipments.length, 5, "Tuesday must show the complete ship-today manifest");
 assert.deepEqual(
   new Set(tuesdayShipSpec.issues.map((issue) => issue.kind)),
@@ -83,6 +85,7 @@ assert.deepEqual(wednesday.priorities.map((priority) => priority.time), ["09:30"
 const wednesdayShipSpec = wednesdayShippingCommand()[0];
 assert.equal(wednesdayShipSpec.kind, "shipment_command_board");
 if (wednesdayShipSpec.kind !== "shipment_command_board") throw new Error("Wednesday ship board missing");
+assert.equal(wednesdayShipSpec.shipDate, "Wednesday · Jul 22, 2026");
 assert.equal(wednesdayShipSpec.shipments.length, 4);
 assert.equal(wednesdayShipSpec.issues.length, 4);
 assert.ok(wednesdayShipSpec.issues.some((issue) => issue.kind === "packing_incomplete"));
@@ -91,6 +94,7 @@ const tuesdayWatchSpec = wednesdayTuesdayShipmentWatch()[0];
 assert.equal(tuesdayWatchSpec.kind, "shipment_command_board");
 if (tuesdayWatchSpec.kind !== "shipment_command_board") throw new Error("Tuesday overnight watch missing");
 assert.equal(tuesdayWatchSpec.asOf, "WED · 10:05 ET");
+assert.equal(tuesdayWatchSpec.shipDate, "Shipped Tuesday · Jul 21, 2026");
 assert.equal(tuesdayWatchSpec.shipments.length, 5, "Wednesday must monitor every Tuesday shipment");
 assert.ok(tuesdayWatchSpec.shipments.some((shipment) => shipment.customer === "mominito"));
 assert.deepEqual(
@@ -117,9 +121,12 @@ assert.deepEqual(
   ["Monitor auction leaderboard", "Approve four launch drafts", "Monitor Wednesday boxes"],
 );
 assert.equal(AUCTION_OPEN_OFFSET_MS, 12 * 60 * 60_000, "Thursday auction must open at 12:00 PM");
+assert.equal(AUCTION_CLOSE_OFFSET_MS, (2 * 24 + 20) * 60 * 60_000,
+  "Saturday auction must close at the announced 8:00 PM deadline");
 const thursdayWatchSpec = thursdayWednesdayShipmentWatch()[0];
 assert.equal(thursdayWatchSpec.kind, "shipment_command_board");
 if (thursdayWatchSpec.kind !== "shipment_command_board") throw new Error("Thursday shipment watch missing");
+assert.equal(thursdayWatchSpec.shipDate, "Shipped Wednesday · Jul 22, 2026");
 assert.equal(thursdayWatchSpec.shipments.length, 4, "Thursday must watch every Wednesday shipment");
 assert.equal(thursdayWatchSpec.issues.length, 5);
 assert.ok(thursdayWatchSpec.issues.some((issue) => /contact FedEx immediately/i.test(issue.recommendation)));
@@ -152,7 +159,7 @@ assert.deepEqual(
   saturday.priorities.map((priority) => priority.label),
   ["Approve last-minute call", "Review winner emails", "Auction settlement report"],
 );
-assert.deepEqual(saturday.priorities.map((priority) => priority.time), ["21:30", "22:55", "23:05"]);
+assert.deepEqual(saturday.priorities.map((priority) => priority.time), ["19:30", "20:10", "20:20"]);
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
 assert.match(sunday.priorities[0].prompt ?? "", /only the Sunday add-on orders board.*Shopify or eBay add-on.*ReefnBid anchor/i);
 assert.match(sunday.priorities[0].prompt ?? "", /Do not open merge controls yet/i);
@@ -164,6 +171,9 @@ assert.match(sunday.priorities[2].prompt ?? "", /email and SMS recipient counts.
 const announcementMeta = nextAuctionAnnouncementMeta();
 assert.equal(announcementMeta.dateRange, "Thu, Jul 23, 2026 – Sat, Jul 25, 2026");
 assert.equal(announcementMeta.closeTime, "Saturday at 8:00 PM ET");
+assert.equal(demoAuctionWeekIndex("sunday"), 28);
+assert.equal(demoAuctionWeekIndex("thursday"), 29);
+assert.equal(demoAuctionWeekIndex("saturday"), 29);
 
 assert.equal(DEMO_DOA_REVIEW.caseId, "DOA-DEMO-2401");
 assert.equal(DEMO_DOA_REVIEW.claimedItems.length, 3);
@@ -338,13 +348,15 @@ assert.match(rendererSource, /case "winner_email_board"[\s\S]*case "auction_sett
 const auctionToolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
 assert.match(auctionToolSource, /type = 'auction_opened'[\s\S]*openedLots[\s\S]*recentBidCount/,
   "auction monitor must join all opened lots and preserve recent change signals");
+assert.match(auctionToolSource, /argMax\(JSONExtractString\(meta,'bidder'\), amount_cents\) AS leader/,
+  "auction leaders must be the bidder attached to the maximum price, not the latest timestamp");
 assert.match(auctionToolSource, /title: "Auction SMS"[\s\S]*title: "Shopify new-arrivals SMS"[\s\S]*title: "Auction email"[\s\S]*title: "Shopify new-arrivals email"/,
   "Thursday must render four separate launch drafts");
 assert.ok((auctionToolSource.match(/taskId: "send-demo-thursday-draft"/g) ?? []).length >= 4,
   "every Thursday draft must have its own approval action");
 assert.ok((auctionToolSource.match(/12:00 PM ET/g) ?? []).length >= 4,
   "every Thursday draft must state the noon auction opening");
-assert.match(auctionToolSource, /saturdayLastCall[\s\S]*SAT · 21:30 ET[\s\S]*currentBidCents[\s\S]*send-demo-saturday-last-call/,
+assert.match(auctionToolSource, /saturdayLastCall[\s\S]*SAT · 19:30 ET[\s\S]*currentBidCents[\s\S]*send-demo-saturday-last-call/,
   "Saturday last-call drafts must use current live bids and separate approvals");
 assert.match(auctionToolSource, /saturdayWinnerEmails[\s\S]*grouped[\s\S]*paymentDeadline[\s\S]*shippingDeadline[\s\S]*addonCode[\s\S]*send-demo-winner-email/,
   "winner emails must cover every required post-close instruction");
@@ -365,6 +377,10 @@ assert.match(actionRouteSource, /send-demo-social-reminder[\s\S]*resolve-demo-cu
   "Friday staff and customer actions must be allowlisted and auditable");
 assert.match(actionRouteSource, /send-demo-saturday-last-call[\s\S]*send-demo-winner-email/,
   "Saturday last-call and winner sends must be explicit simulated approvals");
+assert.match(actionRouteSource, /safeDemoAction\?\.risk === "gated"[\s\S]*await requireOwner\(\)/,
+  "every gated simulated approval must be owner-authenticated on the server");
+assert.match(actionRouteSource, /pg_advisory_xact_lock\(hashtext\(\$1\)\)[\s\S]*alreadyRecorded/,
+  "synthetic action retries must serialize and reuse the existing audit result");
 assert.match(actionRouteSource, /merge-all-orders/,
   "the combined-order routine must wire Merge all");
 assert.match(actionRouteSource, /UPDATE orders SET shipment_id/,
@@ -465,6 +481,30 @@ assert.match(generatorSource, /addonUnitsByCustomer/,
   "shipment fixtures must use actual add-on coral units");
 assert.doesNotMatch(generatorSource, /addon \? 2 : 0/,
   "shipment fixtures must never hardcode two add-on units");
+
+const maxBidByLot = new Map<string, { amount: number; customerId: number }>();
+const winnerByLot = new Map<string, { amount: number; customerId: number }>();
+const w29CloseMs = Date.UTC(2026, 6, 23) + AUCTION_CLOSE_OFFSET_MS;
+for (const chunk of generateBackfill("2026-07-23T00:00:00.000Z", "2026-07-26T00:00:00.000Z", 1)) {
+  for (const event of chunk) {
+    const lotId = typeof event.meta?.lotId === "string" ? event.meta.lotId : null;
+    if (!lotId || event.customerId === undefined || event.amountCents === undefined) continue;
+    if (event.type === "bid_placed") {
+      assert.ok(Date.parse(event.ts) < w29CloseMs, `${lotId} must never receive a bid after auction close`);
+      const prior = maxBidByLot.get(lotId);
+      if (!prior || event.amountCents > prior.amount) {
+        maxBidByLot.set(lotId, { amount: event.amountCents, customerId: event.customerId });
+      }
+    } else if (event.type === "auction_won") {
+      winnerByLot.set(lotId, { amount: event.amountCents, customerId: event.customerId });
+    }
+  }
+}
+assert.equal(maxBidByLot.size, 12, "W29 must expose twelve deterministic auction lots");
+assert.equal(winnerByLot.size, 12, "W29 must close with twelve deterministic winners");
+for (const [lotId, maxBid] of maxBidByLot) {
+  assert.deepEqual(winnerByLot.get(lotId), maxBid, `${lotId} winner must own its maximum bid`);
+}
 
 console.log("✓ Monday prepares shipping documents; exception routing opens attention, not a manifest");
 console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");

@@ -1,8 +1,8 @@
 "use client";
 
-/** Executable action chips. `gated` = human-only click (coral); `auto` (teal).
- *  Clicking POSTs to /api/actions. The label-batch approval is owner-gated: the
- *  chip loads owner-auth state, and if the caller has no owner session it prompts
+/** Executable action chips. `gated` = owner-authenticated click (coral); `auto` (teal).
+ *  Clicking POSTs to /api/actions. Every gated chip loads owner-auth state,
+ *  and if the caller has no owner session it prompts
  *  for the passphrase INLINE (never gating the rest of the cockpit — R3-P1
  *  rescope), then — on unlock — asks the owner to click Approve again rather than
  *  auto-buying. If REEF_OWNER_TOKEN isn't configured the chip is disabled with a
@@ -30,10 +30,10 @@ function ChipButton({ chip, onComplete }: {
   const [note, setNote] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
 
-  const isApproval = chip.taskId === "approve-label-batch" || chip.taskId === "purchase-shipping-labels";
+  const isApproval = chip.risk === "gated";
   const payloadRunId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
 
-  // Owner-auth state (approval chip only): drives disabled/unlock/go.
+  // Owner-auth state for every gated chip: drives disabled/unlock/go.
   const [auth, setAuth] = useState<Auth | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [pass, setPass] = useState("");

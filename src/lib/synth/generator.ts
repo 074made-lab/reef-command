@@ -8,7 +8,7 @@
  * The week (store-local ≈ UTC for simplicity; anchor = Thursday):
  *   THU 12:00        auction opens (12 lots)
  *   THU–SAT eve      bids, ramping hard Saturday night
- *   SAT ~22:45       close → synthetic winner events
+ *   SAT 20:00        close → synthetic winner events
  *   SUN–MON          add-on wave: winners order on web/marketplace with codes
  *                    (cross-platform orders = merge fodder for Task 3.1)
  *   MON 09–15        pre-ship requests (cancel / hold / address change / late add-on)
@@ -128,7 +128,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   const day = (d: number, h: number, m = 0) => w0 + ((d * 24 + h) * 60 + m) * MIN;
   // d: 0=THU 1=FRI 2=SAT 3=SUN 4=MON 5=TUE 6=WED
 
-  // --- lots + auction open (THU 12:00 / close SAT 22:45 — shared offsets so the
+  // --- lots + auction open (THU 12:00 / close SAT 20:00 — shared offsets so the
   //     tools layer's live/closed computation reads the same instants)
   const opensMs = w0 + AUCTION_OPEN_OFFSET_MS;
   const closesMs = w0 + AUCTION_CLOSE_OFFSET_MS;
@@ -141,7 +141,7 @@ function weekScript(weekIndex: number, seed: number): Script {
     meta: { lots: lots.map((l) => ({ lotId: l.lotId, sku: l.item.sku })), closesAt: new Date(closesMs).toISOString() },
   });
 
-  // --- bids over three evenings; last bidder wins
+  // --- bids over three evenings; the highest generated bid wins
   const winners: { lot: typeof lots[number]; cust: SynthCustomer; hammerCents: number }[] = [];
   for (const lot of lots) {
     const nBids = 8 + Math.floor(rng() * 18);
@@ -149,7 +149,7 @@ function weekScript(weekIndex: number, seed: number): Script {
     let bidder: SynthCustomer = pick(rng, pool.auction);
     for (let b = 0; b < nBids; b++) {
       const r = rng();
-      const [d, h0, h1] = r < 0.2 ? [0, 19, 23] : r < 0.45 ? [1, 19, 23] : [2, 17, 22];
+      const [d, h0, h1] = r < 0.2 ? [0, 19, 23] : r < 0.45 ? [1, 19, 23] : [2, 17, 20];
       const ms = day(d, h0) + Math.floor(rng() * (h1 - h0) * 60) * MIN;
       price += Math.round(lot.item.basePriceCents * (0.06 + rng() * 0.09));
       bidder = pick(rng, pool.auction);
@@ -162,7 +162,7 @@ function weekScript(weekIndex: number, seed: number): Script {
     winners.push({ lot, cust: bidder, hammerCents: price });
   }
 
-  // --- close (SAT 22:45): won + auction orders + discount codes
+  // --- close (SAT 20:00): won + auction orders + discount codes
   const closeMs = closesMs;
   at(script, closeMs, {
     ts: new Date(closeMs).toISOString(), type: "auction_closed", platform: "auction",

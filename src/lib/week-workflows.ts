@@ -78,7 +78,7 @@ export function tuesdayShippingCommand(): ComponentSpec[] {
     title: "Clear blockers + check today's shipments",
     asOf: "TUE · 08:10 ET",
     mode: "ship",
-    shipDate: "Tuesday · Jul 28, 2026",
+    shipDate: "Tuesday · Jul 21, 2026",
     carrierCutoff: "FedEx handoff · 17:00 ET",
     shipments: tuesdayShipments,
     issues: [
@@ -277,7 +277,7 @@ export function wednesdayShippingCommand(): ComponentSpec[] {
     title: "Finish today's final regular shipments",
     asOf: "WED · 09:30 ET",
     mode: "ship",
-    shipDate: "Wednesday · Jul 29, 2026",
+    shipDate: "Wednesday · Jul 22, 2026",
     carrierCutoff: "Final regular FedEx handoff · 16:30 ET",
     shipments: wednesdayShipments,
     issues: [
@@ -330,7 +330,7 @@ export function wednesdayTuesdayShipmentWatch(): ComponentSpec[] {
     title: "Monitor Tuesday's overnight shipments",
     asOf: "WED · 10:05 ET",
     mode: "monitor",
-    shipDate: "Shipped Tuesday · Jul 28, 2026",
+    shipDate: "Shipped Tuesday · Jul 21, 2026",
     carrierCutoff: "Overnight health response · immediate",
     shipments: [
       { ...tuesdayShipments[0], status: "exception", blockerIds: ["EXC-WED-11"] },
@@ -397,7 +397,7 @@ export function thursdayWednesdayShipmentWatch(): ComponentSpec[] {
     title: "Monitor Wednesday's overnight shipments",
     asOf: "THU · 09:20 ET",
     mode: "monitor",
-    shipDate: "Shipped Wednesday · Jul 29, 2026",
+    shipDate: "Shipped Wednesday · Jul 22, 2026",
     carrierCutoff: "Overnight health response · immediate",
     shipments: [
       { ...wednesdayShipments[0], status: "delayed", blockerIds: ["DELAY-THU-21"] },

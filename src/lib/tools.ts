@@ -15,7 +15,13 @@ import type {
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
-import { DEMO_AUCTION_WEEK_INDEX, DEMO_DAYS, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
+import {
+  DEMO_AUCTION_WEEK_INDEX,
+  DEMO_DAYS,
+  demoAuctionMoment,
+  demoAuctionWeekIndex,
+  demoPriorityTimestamp,
+} from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 import {
   fridayOperations,
@@ -296,18 +302,18 @@ export async function auctionBoard(
   options?: { now?: number; asOf?: string },
 ): Promise<ComponentSpec[]> {
   const now = options?.now ?? (dayId ? demoAuctionMoment(dayId) : Date.now());
-  const wi = dayId ? DEMO_AUCTION_WEEK_INDEX : currentWeekIndex(now);
+  const wi = dayId ? demoAuctionWeekIndex(dayId) : currentWeekIndex(now);
   const w = weekWindow(wi);
   const weekStart = ANCHOR + wi * WEEK_MS;
   const opensAt = weekStart + AUCTION_OPEN_OFFSET_MS;   // THU 12:00 (shared with the generator)
-  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 22:45 (shared with the generator)
+  const closesMs = weekStart + AUCTION_CLOSE_OFFSET_MS; // SAT 20:00 (shared with the generator)
   const queryEndMs = Math.min(now, closesMs, ANCHOR + (wi + 1) * WEEK_MS);
   const queryEnd = fmt(queryEndMs);
   const [lots, opened] = await Promise.all([
     queryRows<{ lot: string; sku: string; bid: string; n: string; leader: string; recent: string }>(ch, `
     SELECT JSONExtractString(meta,'lotId') AS lot, sku,
            max(amount_cents) AS bid, count() AS n,
-           argMax(JSONExtractString(meta,'bidder'), ts) AS leader,
+           argMax(JSONExtractString(meta,'bidder'), amount_cents) AS leader,
            countIf(ts >= {recent:DateTime}) AS recent
     FROM events WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}
     GROUP BY lot, sku ORDER BY bid DESC`, {
@@ -682,12 +688,13 @@ export async function thursdayAnnouncementPlan(pg: Pool): Promise<ComponentSpec[
   return drafts;
 }
 
-/** Saturday pre-close SMS and email drafts populated from the live 21:30 board. */
+/** Saturday pre-close SMS and email drafts populated from the live 19:30 board. */
 export async function saturdayLastCall(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
-  const closeMoment = demoAuctionMoment("saturday");
+  const selectedMoment = demoAuctionMoment("saturday");
+  const auctionWeek = demoAuctionWeekIndex("saturday");
   const boardSpec = (await auctionBoard(ch, "saturday", {
-    now: closeMoment - 77 * 60_000,
-    asOf: "SAT · 21:30 ET",
+    now: selectedMoment - 32 * 60_000,
+    asOf: "SAT · 19:30 ET",
   }))[0];
   if (boardSpec.kind !== "auction_board") return [];
   const leaders = boardSpec.lots.filter((lot) => lot.bidCount > 0).slice(0, 3);
@@ -696,36 +703,37 @@ export async function saturdayLastCall(ch: ClickHouseClient, pg: Pool): Promise<
   return [
     {
       kind: "campaign_card",
-      campaignId: "CMP-W28-SAT-LASTCALL-SMS",
+      campaignId: `CMP-W${auctionWeek}-SAT-LASTCALL-SMS`,
       title: "Last-minute auction SMS",
       phase: "auction_live",
       audience: campaignAudience(audience.smsIds.length, "auction", "Synthetic SMS-capable ReefnBid audience"),
       preview: {
         channel: "sms",
-        body: `Closing night is moving: ${bidLine}. ReefnBid ends soon at 10:45 PM ET. Come back to place or increase a bid if one of these corals is on your list.`,
+        body: `Closing night is moving: ${bidLine}. ReefnBid ends soon at 8:00 PM ET. Come back to place or increase a bid if one of these corals is on your list.`,
       },
-      schedule: "SAT · 21:30 ET · review",
-      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call SMS", payload: { campaignId: "CMP-W28-SAT-LASTCALL-SMS" }, risk: "gated" }],
+      schedule: "SAT · 19:30 ET · review",
+      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call SMS", payload: { campaignId: `CMP-W${auctionWeek}-SAT-LASTCALL-SMS` }, risk: "gated" }],
     },
     {
       kind: "campaign_card",
-      campaignId: "CMP-W28-SAT-LASTCALL-EMAIL",
+      campaignId: `CMP-W${auctionWeek}-SAT-LASTCALL-EMAIL`,
       title: "Last-minute auction email",
       phase: "auction_live",
       audience: campaignAudience(audience.emailIds.length, "auction", "Synthetic email-capable ReefnBid audience"),
       preview: {
         channel: "email",
         subject: "ReefnBid closes soon: see where the leading corals stand",
-        body: `The auction is in its final stretch. Current highlights: ${bidLine}. ReefnBid closes at 10:45 PM ET tonight. Return to review your lots and place or increase a bid if it still makes sense for you.`,
+        body: `The auction is in its final stretch. Current highlights: ${bidLine}. ReefnBid closes at 8:00 PM ET tonight. Return to review your lots and place or increase a bid if it still makes sense for you.`,
       },
-      schedule: "SAT · 21:32 ET · review",
-      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call email", payload: { campaignId: "CMP-W28-SAT-LASTCALL-EMAIL" }, risk: "gated" }],
+      schedule: "SAT · 19:32 ET · review",
+      actions: [{ taskId: "send-demo-saturday-last-call", label: "Approve last-call email", payload: { campaignId: `CMP-W${auctionWeek}-SAT-LASTCALL-EMAIL` }, risk: "gated" }],
     },
   ];
 }
 
 /** Post-close, winner-by-winner review package. No external email is sent automatically. */
 export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<ComponentSpec[]> {
+  const auctionWeek = demoAuctionWeekIndex("saturday");
   const boardSpec = (await auctionBoard(ch, "saturday"))[0];
   if (boardSpec.kind !== "auction_board" || boardSpec.state !== "closed") return [];
   const grouped = new Map<string, LotPrice[]>();
@@ -735,9 +743,9 @@ export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<Compon
   const winners = [...grouped.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([winner, lots], index) => {
-      const id = `WIN-W28-${String(index + 1).padStart(2, "0")}`;
+      const id = `WIN-W${auctionWeek}-${String(index + 1).padStart(2, "0")}`;
       const totalCents = lots.reduce((sum, lot) => sum + lot.currentBidCents, 0);
-      const addonCode = `RC28-${String(index + 1).padStart(3, "0")}`;
+      const addonCode = `RC${auctionWeek}-${String(index + 1).padStart(3, "0")}`;
       const itemLine = lots.map((lot) => `${lot.name} (${lot.lotId}) — $${usd(lot.currentBidCents)}`).join("\n");
       return {
         id,
@@ -745,9 +753,9 @@ export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<Compon
         items: lots.map((lot) => ({ lotId: lot.lotId, name: lot.name, priceCents: lot.currentBidCents })),
         totalCents,
         subject: `Your ReefnBid wins · ${lots.length} coral${lots.length === 1 ? "" : "s"}`,
-        body: `You won:\n${itemLine}\n\nComplete the synthetic winner checkout by Monday, Jul 20 at 8:00 PM ET. Choose Tuesday or Wednesday shipping by the same deadline. Live-arrival issues use /shop/doa-claim. Add eligible Shopify items before the deadline with code ${addonCode}; the store confirms whether items can share the shipment. This is a public demo policy summary, not a production promise.`,
-        paymentDeadline: "MON · JUL 20 · 20:00 ET",
-        shippingDeadline: "MON · JUL 20 · 20:00 ET",
+        body: `You won:\n${itemLine}\n\nComplete the synthetic winner checkout by Monday, Jul 27 at 8:00 PM ET. Choose Jul 28 or Jul 29 shipping by the same deadline. Live-arrival issues use /shop/doa-claim. Add eligible Shopify items before the deadline with code ${addonCode}; the store confirms whether items can share the shipment. This is a public demo policy summary, not a production promise.`,
+        paymentDeadline: "MON · JUL 27 · 20:00 ET",
+        shippingDeadline: "MON · JUL 27 · 20:00 ET",
         addonCode,
         action: { taskId: "send-demo-winner-email", label: "Approve winner email", payload: { winnerId: id }, risk: "gated" as const },
       };
@@ -755,7 +763,7 @@ export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<Compon
   return [{
     kind: "winner_email_board",
     title: "Review every winner email",
-    asOf: "SAT · 22:55 ET",
+    asOf: "SAT · 20:10 ET",
     note: "Each winner sees only their items, totals, deadlines, shipping steps, add-on code, and public demo policy path. Every send is simulated.",
     winners,
   }];
@@ -765,7 +773,8 @@ export async function saturdayWinnerEmails(ch: ClickHouseClient): Promise<Compon
 export async function auctionSettlementReport(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
   const boardSpec = (await auctionBoard(ch, "saturday"))[0];
   if (boardSpec.kind !== "auction_board" || boardSpec.state !== "closed") return [];
-  const window = weekWindow(DEMO_AUCTION_WEEK_INDEX);
+  const auctionWeek = demoAuctionWeekIndex("saturday");
+  const window = weekWindow(auctionWeek);
   const [orders, items] = await Promise.all([
     pg.query<{
       orders: string; paid: string; unpaid: string; shipping: string; discounted: string;
@@ -790,8 +799,8 @@ export async function auctionSettlementReport(ch: ClickHouseClient, pg: Pool): P
   const winnerCount = new Set(boardSpec.lots.filter((lot) => lot.bidCount > 0).map((lot) => lot.leader)).size;
   return [{
     kind: "auction_settlement_report",
-    auctionLabel: "ReefnBid W28 final settlement",
-    asOf: "SAT · 23:05 ET",
+    auctionLabel: `ReefnBid W${auctionWeek} final settlement`,
+    asOf: "SAT · 20:20 ET",
     totalRevenueCents: boardSpec.lots.reduce((sum, lot) => sum + lot.currentBidCents, 0),
     orderCount,
     winnerCount,

@@ -24,11 +24,16 @@ SUN  eligible add-ons consolidate + next-auction announcement draft
 MON  shipping documents: product labels + shipping labels (weight calc,
      weather check, gated batch purchase)
 TUE  combined shipping + Thursday listing drafts + human inventory check
-WED  combined shipping + email/SMS auction and new-arrival promotion drafts
-THU  auction opens on the auction platform (ReefnBid-style)
-FRI  auction momentum + last-call advertisement drafts
-SAT  auction closes → winner handoff + add-on window
+WED  final regular shipping + Tuesday-box monitoring + weekly operations report
+THU  auction opens + four launch drafts + Wednesday-box monitoring
+FRI  auction momentum + social task + prior-cycle customer resolutions
+SAT  last-call approvals → auction close → winner emails + settlement
 ```
+
+The selectable story is chronological: W28's completed auction feeds Sunday
+through Wednesday operations (Jul 19–22), Sunday announces W29, and W29 powers
+the Thursday through Saturday auction (Jul 23–25). The public demo auction
+opens Thursday at noon and closes Saturday at 8:00 PM ET.
 
 Live-animal fulfillment has little room for missed handoffs: a customer change
 can affect packing, carrier state, and the merchant at once. The public demo

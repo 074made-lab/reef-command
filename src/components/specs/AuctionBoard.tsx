@@ -19,7 +19,15 @@ export function AuctionBoard({
   const top = Math.max(...lots.map((l) => l.currentBidCents), 1);
   const bids = lots.reduce((sum, lot) => sum + lot.bidCount, 0);
   const active = lots.filter((lot) => lot.bidCount > 0).length;
-  const low = lots.filter((lot) => lot.bidCount > 0 && lot.bidCount <= 1).length;
+  const positiveBidCounts = lots
+    .map((lot) => lot.bidCount)
+    .filter((count) => count > 0)
+    .sort((a, b) => a - b);
+  const lowBidCeiling = positiveBidCounts.length > 1
+    && positiveBidCounts[0] !== positiveBidCounts.at(-1)
+    ? positiveBidCounts[Math.max(0, Math.ceil(positiveBidCounts.length * 0.25) - 1)]
+    : 0;
+  const low = lots.filter((lot) => lot.bidCount > 0 && lot.bidCount <= lowBidCeiling).length;
   const noBids = lots.filter((lot) => lot.bidCount === 0).length;
   const badge =
     state === "closed"
@@ -34,7 +42,7 @@ export function AuctionBoard({
     >
       {state === "live" ? (
         <div className="mb-3 grid grid-cols-4 overflow-hidden rounded-lg bg-abyss/45">
-          {[[bids, "BIDS"], [active, "ACTIVE"], [low, "LOW"], [noBids, "NO BIDS"]].map(([value, label], index) => (
+          {[[bids, "BIDS"], [active, "ACTIVE"], [low, lowBidCeiling ? `LOW ≤${lowBidCeiling}` : "LOW"], [noBids, "NO BIDS"]].map(([value, label], index) => (
             <div key={String(label)} className={`px-3 py-2.5 ${index ? "border-l border-line/60" : ""}`}>
               <p className={`font-mono text-[19px] font-semibold tabular-nums ${label === "LOW" || label === "NO BIDS" ? "text-warn" : "text-tealhi"}`}>{value}</p>
               <p className="font-mono text-[9px] tracking-[0.07em] text-mute">{label}</p>
@@ -68,7 +76,7 @@ export function AuctionBoard({
                   <div className="flex min-w-0 items-center gap-2">
                     <p className="truncate text-[14px] text-ink">{l.name}</p>
                     {l.bidCount === 0 ? <Chip className="border-danger/45 text-danger">NO BIDS</Chip> : null}
-                    {l.bidCount === 1 ? <Chip className="border-warn/45 text-warn">LOW</Chip> : null}
+                    {l.bidCount > 0 && l.bidCount <= lowBidCeiling ? <Chip className="border-warn/45 text-warn">LOW</Chip> : null}
                     {(l.recentBidCount ?? 0) >= 1 ? <Chip className="border-teal/45 text-tealhi">↗ {l.recentBidCount} RECENT</Chip> : null}
                   </div>
                   <p className="font-mono text-[12px] text-mute">

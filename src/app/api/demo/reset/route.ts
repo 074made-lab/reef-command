@@ -4,6 +4,9 @@ import { acquireDemoReset } from "@/lib/demo-operation-lock";
 import { OwnerAuthError, requireOwner } from "@/lib/owner-auth";
 import { pgPool } from "@/lib/store/postgres";
 import { resetSyntheticPostgres, type DemoSeedSummary } from "@/lib/synth/reset-postgres";
+import { chClient } from "@/lib/store/clickhouse";
+import { demoAuctionMoment, demoAuctionWeekIndex } from "@/lib/demo-clock";
+import { ensureSyntheticAuctionWeek } from "@/lib/synth/ensure-auction-week";
 
 export const maxDuration = 60;
 
@@ -44,7 +47,14 @@ function runReset() {
     const operation = await acquireDemoReset(pgPool());
     try {
       await stopActiveDemoRuns();
-      const summary = await resetSyntheticPostgres(operation.client);
+      const demoHorizon = new Date(demoAuctionMoment("saturday") + 2 * 60_000);
+      const analytics = chClient();
+      try {
+        await ensureSyntheticAuctionWeek(analytics, demoAuctionWeekIndex("saturday"));
+      } finally {
+        await analytics.close();
+      }
+      const summary = await resetSyntheticPostgres(operation.client, { now: demoHorizon });
       await stopActiveDemoRuns();
       return summary;
     } finally {

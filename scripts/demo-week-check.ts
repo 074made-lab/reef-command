@@ -5,6 +5,7 @@ import {
   DEMO_AUCTION_WEEK_INDEX,
   DEMO_DAY_STORAGE_KEY,
   demoAuctionMoment,
+  demoAuctionWeekIndex,
   dayBriefSpec,
   isDemoDayId,
   parseDemoDayContext,
@@ -85,11 +86,27 @@ for (const day of DEMO_DAYS) {
   assert.equal(stripDemoDayContext(contextual), "What matters now?");
   assert.equal(
     Math.floor((demoAuctionMoment(day.id) - Date.UTC(2026, 0, 1)) / (7 * 24 * 60 * 60_000)),
-    DEMO_AUCTION_WEEK_INDEX,
-    `${day.weekday} must stay inside the stable auction cycle`,
+    demoAuctionWeekIndex(day.id),
+    `${day.weekday} must stay inside its declared auction cycle`,
   );
   console.log(`✓ ${day.short} ${day.weekday.padEnd(9)} → ${day.label}`);
 }
+
+assert.deepEqual(
+  DEMO_DAYS.map((day) => demoAuctionWeekIndex(day.id)),
+  [28, 28, 28, 28, 29, 29, 29],
+  "Sunday-Wednesday must finish W28 before Thursday-Saturday advances to W29",
+);
+assert.deepEqual(
+  DEMO_DAYS.map((day) => new Date(demoAuctionMoment(day.id)).toISOString().slice(0, 10)),
+  ["2026-07-19", "2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25"],
+  "the selected days must form one chronological July 19-25 story",
+);
+assert.ok(
+  DEMO_DAYS.every((day, index) => index === 0 || demoAuctionMoment(day.id) > demoAuctionMoment(DEMO_DAYS[index - 1].id)),
+  "every selected day must advance the synthetic clock",
+);
+assert.equal(DEMO_AUCTION_WEEK_INDEX, 28, "W28 remains the completed-auction base cycle");
 
 const traceMessage = withDemoDayContext(
   "tuesday",

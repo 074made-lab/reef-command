@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import type { ComponentSpec, CustomerResolutionItem } from "@/lib/protocol";
 import { ActionRow } from "./ActionChips";
 import { Chip, SpecCard } from "./bits";
+import { usePersistentResolution } from "./usePersistentResolution";
 
 type ResolutionSpec = Extract<ComponentSpec, { kind: "customer_resolution_board" }>;
 
@@ -17,7 +17,10 @@ const LABEL: Record<CustomerResolutionItem["kind"], string> = {
 };
 
 export function CustomerResolutionBoard({ spec }: { spec: ResolutionSpec }) {
-  const [resolved, setResolved] = useState<Set<string>>(() => new Set());
+  const { resolved, resolve } = usePersistentResolution(
+    `customer-resolution:${spec.asOf}`,
+    spec.items.map((item) => item.id),
+  );
   const open = spec.items.length - resolved.size;
 
   return (
@@ -52,7 +55,7 @@ export function CustomerResolutionBoard({ spec }: { spec: ResolutionSpec }) {
               {done ? (
                 <p className="mt-2 font-mono text-[10px] text-ok">✓ NEXT ACTION RECORDED · synthetic demo state</p>
               ) : (
-                <ActionRow actions={[item.action]} onComplete={() => setResolved((current) => new Set(current).add(item.id))} />
+                <ActionRow actions={[item.action]} onComplete={() => resolve(item.id)} />
               )}
             </article>
           );

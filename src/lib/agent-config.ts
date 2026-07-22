@@ -292,7 +292,7 @@ export const reefTools = {
   }),
   saturdayLastCall: tool({
     description:
-      "Call this only for Saturday Step 1. It reads the live 21:30 auction board and returns one inviting last-call SMS plus one email, both populated with current bid prices and each requiring a separate human-gated simulated-send approval.",
+      "Call this only for Saturday Step 1. It reads the live 19:30 auction board and returns one inviting last-call SMS plus one email, both populated with current bid prices and each requiring a separate human-gated simulated-send approval.",
     inputSchema: z.object({}),
     execute: async () => saturdayLastCall(ch(), pg()),
     toModelOutput: (output) => asText(summarize(output)),
