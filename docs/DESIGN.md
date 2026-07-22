@@ -90,12 +90,12 @@ lands in Postgres (transactional truth), emits events to ClickHouse, and the
 affected charts update live on screen — see §4 for the two closed loops
 (order merge, label batch purchase).
 
-1. **Real-time monitoring + merge.** All three platforms' new orders stream
-   in (auction wins, add-ons, and each platform's own organic sales). Every
-   new order pings the attention feed; every order triggers a merge check
-   against the CRM — when the same customer orders on different platforms,
-   the two order cards visibly merge into one combined order on screen.
-2. **Shipping documents (MON).** A scheduled durable task: per-order weight from item
+1. **Real-time monitoring + merge.** The synthetic event stream combines
+   auction wins, add-ons, and organic sales across three platforms. The live
+   merge scan checks those orders against the CRM — when the same customer
+   orders on different platforms, the cards can be consolidated into one
+   combined shipment with an owner-gated click.
+2. **Shipping documents (MON).** A durable Trigger.dev task: per-order weight from item
    count (per-coral unit weight + per-platform box tare, with a minimum
    billable floor; constants generic) → per-destination weather check
    (heat/cold pack verdicts) → two
@@ -239,8 +239,8 @@ Trigger.dev event-generator scheduled task  │
   seam B: TaskRunner (actions; simulated carrier + message sender behind it)
 ```
 
-- **Seam A (`DataStore`)**: all reads/writes through one interface; agent
-  logic never imports a DB client.
+- **Seam A (typed tool layer)**: model-facing agent logic stays portable while
+  the typed tools own ClickHouse and Postgres access.
 - **Seam B (`TaskRunner`)**: actions are named tasks with payloads; the
   simulated carrier and message sender sit behind it, so real services are
   drop-ins later.
@@ -248,7 +248,8 @@ Trigger.dev event-generator scheduled task  │
 ### OLTP + OLAP closed loop (bonus category)
 
 Postgres holds transactional truth; ClickHouse holds the append-only event
-stream and powers every visual. The label-day loop executes end to end:
+stream and powers the event-backed operational and analytical visuals. The
+label-day loop executes end to end:
 
 - Label manifest approved (owner-gated) → Postgres label rows + spend → label
   events → ClickHouse → ship-radar and cost components update, with recoverable
@@ -267,7 +268,7 @@ contract.
 
 | Action | Tier |
 |---|---|
-| Order merge (same-customer detection) | auto, with visible card + undo |
+| Order merge (same-customer detection) | owner-gated click with visible card |
 | Label batch purchase | gated (one click per manifest) |
 | Synthetic ship-day timing change | auto: packing hold + demo label void + report |
 | After-sales first response | auto, codified templates only |
