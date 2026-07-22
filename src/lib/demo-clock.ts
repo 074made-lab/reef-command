@@ -39,7 +39,7 @@ export const DEMO_DAYS: DemoDay[] = [
     id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Shipping Documents",
     goal: "Clear shipment issues, combine eligible orders, and prepare shipping documents for carrier review.",
     priorities: [
-      { label: "Clear shipping blockers", time: "08:30", detail: "Review hold requests, replacement items, and customer questions before documents are prepared.", cue: "do-now", prompt: "Open Monday's shipping blocker board for hold order requests, replacement items, and customer questions, with the detailed queue below. Do not prepare shipping documents yet." },
+      { label: "Clear shipping blockers", time: "08:30", detail: "Review hold requests, replacement items, and customer questions before documents are prepared.", cue: "do-now", prompt: "Open Monday's compact shipping blocker board for approval. Keep the issue summary collapsed." },
       { label: "Combine eligible orders", time: "11:00", detail: "Recheck ReefnBid anchors and combine eligible Shopify or eBay add-ons into one shipment.", cue: "do-now", prompt: "Run Monday's eligible-order check using the same ReefnBid-anchor rule and show the reconciled Merge all board." },
       { label: "Prepare shipping docs", time: "16:30", detail: "Prepare print-ready packing slips, FedEx previews, coral bag labels, weather packs, and box sizes.", cue: "human-gate", prompt: "Prepare Monday's print-ready shipping document board with packing slips, FedEx label previews, one product label per coral bag, weather pack checks, box sizes, and miniature examples. Do not purchase carrier labels." },
     ],

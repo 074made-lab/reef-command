@@ -259,7 +259,7 @@ export async function shippingBlockerBoard(ch: ClickHouseClient, pg: Pool): Prom
     asOf: demoPriorityTimestamp("monday", 0),
     groups,
     openCount,
-  }, ...feed];
+  }];
 }
 
 // ---------------------------------------------------------------- auction

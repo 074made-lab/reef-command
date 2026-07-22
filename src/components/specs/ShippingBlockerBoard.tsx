@@ -1,12 +1,21 @@
+"use client";
+
+import { useState } from "react";
 import type { ComponentSpec, ShippingBlockerGroup } from "@/lib/protocol";
 import { Chip, SpecCard } from "./bits";
 
 type BlockerSpec = Extract<ComponentSpec, { kind: "shipping_blocker_board" }>;
 
 const TONE: Record<ShippingBlockerGroup["kind"], string> = {
-  hold_requests: "border-warn/35 bg-warn/[0.04] text-warn",
-  replacement_items: "border-coral/35 bg-coral/[0.04] text-coralhi",
-  customer_questions: "border-teal/35 bg-teal/[0.04] text-tealhi",
+  hold_requests: "text-warn",
+  replacement_items: "text-coralhi",
+  customer_questions: "text-tealhi",
+};
+
+const SHORT_DETAIL: Record<ShippingBlockerGroup["kind"], string> = {
+  hold_requests: "Ship timing and address conflicts",
+  replacement_items: "DOA replacements joining slips + bag labels",
+  customer_questions: "Availability, care, and order instructions",
 };
 
 function countLabel(group: ShippingBlockerGroup) {
@@ -15,55 +24,79 @@ function countLabel(group: ShippingBlockerGroup) {
 }
 
 export function ShippingBlockerBoard({ spec }: { spec: BlockerSpec }) {
+  const [handled, setHandled] = useState(false);
+  const holds = spec.groups.find((group) => group.kind === "hold_requests");
+  const replacements = spec.groups.find((group) => group.kind === "replacement_items");
+  const questions = spec.groups.find((group) => group.kind === "customer_questions");
+  const hasOpenItems = spec.openCount > 0;
+
+  const queueSummary = [
+    holds ? `${countLabel(holds)} hold labels` : null,
+    replacements ? `${countLabel(replacements)} join packing` : null,
+    questions ? `${countLabel(questions)} need review` : null,
+  ].filter(Boolean).join(" · ");
+
   return (
     <SpecCard
       tag="MONDAY SHIPPING BLOCKERS"
-      tone="coral"
-      right={<Chip className="border-coral/45 text-coralhi">{spec.asOf}</Chip>}
+      tone={handled ? "teal" : "coral"}
+      right={<Chip className={handled ? "border-ok/45 text-ok" : "border-coral/45 text-coralhi"}>{spec.asOf}</Chip>}
     >
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[13px] font-medium tracking-[0.06em] text-mute uppercase">Clear before document lock</p>
-          <p className="mt-1 text-[14px] leading-relaxed text-dim">
-            Holds stop carrier labels. Approved replacements join the packing slip. Customer answers prevent bad addresses and missed instructions.
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="text-[13px] font-semibold tracking-[0.06em] text-ink uppercase">Clear before document lock</p>
+            <span className={`font-mono text-[12px] ${handled || !hasOpenItems ? "text-ok" : "text-warn"}`}>
+              {handled ? `✓ ${spec.openCount} handled` : hasOpenItems ? `${spec.openCount} open` : "✓ queue clear"}
+            </span>
+          </div>
+          <p className="mt-1 text-[13px] leading-relaxed text-dim">
+            {handled ? "Review complete. Shipping documents can move forward." : queueSummary}
           </p>
         </div>
-        <span className={`font-mono text-[13px] ${spec.openCount ? "text-warn" : "text-ok"}`}>
-          {spec.openCount ? `${spec.openCount} open queue records` : "✓ blocker queue clear"}
-        </span>
+
+        <button
+          type="button"
+          onClick={() => setHandled(true)}
+          disabled={handled || !hasOpenItems}
+          className="shrink-0 rounded-md border border-coral/60 bg-coral px-4 py-2.5 font-mono text-[11px] font-semibold tracking-[0.06em] text-abyss transition duration-200 hover:-translate-y-0.5 hover:bg-coralhi focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral active:translate-y-0 disabled:cursor-default disabled:border-ok/35 disabled:bg-ok/10 disabled:text-ok"
+        >
+          {handled ? "✓ APPROVED · HANDLED" : hasOpenItems ? "APPROVE ALL · MARK HANDLED" : "✓ NOTHING TO APPROVE"}
+        </button>
       </div>
 
-      <div className="mt-4 grid gap-2 lg:grid-cols-3">
-        {spec.groups.map((group) => (
-          <section key={group.kind} className={`rounded-lg border p-3 ${TONE[group.kind]}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-mono text-[11px] tracking-[0.08em] uppercase opacity-80">{group.label}</p>
-                <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-ink">{countLabel(group)}</p>
+      <details className="group mt-3 overflow-hidden rounded-md border border-line/70 bg-raise/45">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-raise focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-coral">
+          <span className="font-mono text-[11px] font-medium tracking-[0.06em] text-ink">
+            {handled ? "REVIEWED ISSUE SUMMARY" : "REVIEW ISSUE SUMMARY"}
+          </span>
+          <span className="flex items-center gap-2 font-mono text-[10px] text-mute">
+            3 CATEGORIES
+            <span aria-hidden className="transition-transform duration-200 group-open:rotate-180">⌄</span>
+          </span>
+        </summary>
+
+        <div className="divide-y divide-line/55 border-t border-line/70">
+          {spec.groups.map((group) => (
+            <section key={group.kind} className="grid gap-1 px-3 py-2.5 sm:grid-cols-[11rem_1fr_auto] sm:items-center sm:gap-3">
+              <div className="flex items-baseline gap-2">
+                <span className={`font-mono text-[11px] font-semibold ${TONE[group.kind]}`}>{countLabel(group)}</span>
+                <span className="text-[11px] text-mute">{group.label}</span>
               </div>
-              <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-[0.05em] ${group.status === "clear" ? "border-ok/40 text-ok" : "border-current/35"}`}>
-                {group.status === "clear" ? "CLEAR" : "REVIEW"}
+              <p className="min-w-0 truncate text-[12px] text-dim" title={group.headlines[0] ?? SHORT_DETAIL[group.kind]}>
+                {group.headlines[0] ?? SHORT_DETAIL[group.kind]}
+                {group.headlines.length > 1 ? ` +${group.headlines.length - 1} more` : ""}
+              </p>
+              <span className={`font-mono text-[10px] ${handled || group.status === "clear" ? "text-ok" : "text-warn"}`}>
+                {handled ? "HANDLED" : group.status === "clear" ? "CLEAR" : "REVIEW"}
               </span>
-            </div>
-            <p className="mt-2 text-[12px] leading-relaxed text-dim">{group.detail}</p>
-            {group.headlines.length ? (
-              <ul className="mt-3 space-y-1.5 border-t border-current/15 pt-2">
-                {group.headlines.slice(0, 2).map((headline) => (
-                  <li key={headline} className="flex gap-2 text-[12px] leading-snug text-ink">
-                    <span aria-hidden className="opacity-70">•</span>
-                    <span>{headline}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 border-t border-current/15 pt-2 text-[12px] text-ok">Nothing waiting in this lane.</p>
-            )}
-          </section>
-        ))}
-      </div>
+            </section>
+          ))}
+        </div>
+      </details>
 
-      <p className="mt-3 font-mono text-[11px] leading-relaxed text-mute">
-        LIVE SYNTHETIC QUEUE · open the detailed rows below to review evidence, reply drafts, and hold requests
+      <p className="mt-2 font-mono text-[9px] tracking-[0.04em] text-mute">
+        DEMO APPROVAL ONLY · carrier purchases and customer sends stay gated
       </p>
     </SpecCard>
   );

@@ -18,8 +18,11 @@ assert.deepEqual(
   ["Clear shipping blockers", "Combine eligible orders", "Prepare shipping docs"],
   "Monday's visible shipping-document routine must stay plain and task-focused",
 );
-assert.match(monday.priorities[0].prompt ?? "", /hold order requests.*replacement items.*customer questions/i);
-assert.match(monday.priorities[0].prompt ?? "", /do not prepare shipping documents/i);
+assert.match(monday.priorities[0].prompt ?? "", /compact shipping blocker board.*approval/i);
+assert.match(monday.priorities[0].prompt ?? "", /summary collapsed/i);
+assert.ok((monday.priorities[0].prompt ?? "").length <= 110,
+  "Monday's blocker demo prompt must stay concise on screen");
+assert.doesNotMatch(monday.priorities[0].prompt ?? "", /detailed queue below/i);
 assert.match(monday.priorities[2].prompt ?? "", /packing slips.*FedEx label previews.*one product label per coral bag/i);
 assert.match(monday.priorities[2].prompt ?? "", /weather pack checks.*box sizes.*miniature examples/i);
 assert.deepEqual(monday.priorities.map((priority) => priority.time), ["08:30", "11:00", "16:30"]);
@@ -219,7 +222,7 @@ assert.match(toolSource, /kind: "merge_batch"[\s\S]*label: "Merge all"/,
 assert.match(toolSource, /groups: plans\.map/,
   "Merge all must bind the click to every exact group rendered on the board");
 assert.match(toolSource, /export async function shippingBlockerBoard/,
-  "Monday blockers must be built from the same live attention queue shown below them");
+  "Monday blockers must be built from the live attention queue");
 assert.match(toolSource, /attentionFeed\(ch, pg, 80\)/,
   "Monday blocker counts must use the full bounded queue, not the default ten-row display slice");
 assert.match(toolSource, /cases\.created_at DESC LIMIT 20[\s\S]*received_at DESC LIMIT 20/,
@@ -228,6 +231,8 @@ assert.match(toolSource, /ORDER BY ts ASC LIMIT 20[\s\S]*ORDER BY ts DESC LIMIT 
   "Monday blocker source reads must include the wider aging and fresh message queues");
 assert.match(toolSource, /item\.kind === "message" && !isHoldLane\(item\)/,
   "address and hold messages must not be double-counted as customer questions");
+assert.doesNotMatch(toolSource, /}, \.\.\.feed\];/,
+  "the compact Monday approval must not append the long detailed attention feed below it");
 
 const labelDaySource = readFileSync(new URL("../src/lib/label-day.ts", import.meta.url), "utf8");
 assert.match(labelDaySource, /FLOOR_LB = 4\.0/,

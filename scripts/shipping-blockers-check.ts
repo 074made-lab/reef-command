@@ -1,5 +1,6 @@
 /** Behavioral lane-conservation gate for Monday's blocker board. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { AttentionItem } from "../src/lib/protocol";
 import { categorizeShippingBlockers } from "../src/lib/tools";
 
@@ -33,7 +34,18 @@ assert.equal(openCount, 4, "openCount counts queue records, not replacement cora
 assert.ok(!groups.some((group) => group.headlines.some((headline) => /late addon/i.test(headline))),
   "late add-ons belong to the merge command, not the hold lane");
 
+const boardSource = readFileSync(new URL("../src/components/specs/ShippingBlockerBoard.tsx", import.meta.url), "utf8");
+assert.match(boardSource, /APPROVE ALL · MARK HANDLED/,
+  "the primary approval control must stay visible at the top of the compact blocker board");
+assert.match(boardSource, /<details[\s\S]*REVIEW ISSUE SUMMARY/,
+  "issue examples must use one progressive-disclosure summary instead of three long cards");
+assert.match(boardSource, /setHandled\(true\)/,
+  "the demo approval must visibly move the compact board into a handled state");
+assert.doesNotMatch(boardSource, /open the detailed rows below/,
+  "the blocker board must not promise a long queue beneath the approval control");
+
 console.log("✓ blocker lanes are mutually exclusive");
 console.log("✓ late add-ons stay out of hold requests");
 console.log("✓ replacement coral units and open queue records remain distinct");
+console.log("✓ compact top approval and issue-summary disclosure stay wired");
 console.log("\nALL PASS — Monday blocker-lane conservation");
