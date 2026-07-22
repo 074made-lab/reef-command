@@ -15,13 +15,22 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import type { Pool } from "pg";
 import { insertEvents, queryRows } from "./store/clickhouse";
-import { currentWeekIndex } from "./tools";
+import { demoCycleIsoWindow } from "./tools";
 import type { ReefEvent } from "./datastore";
 import type {
   ComponentSpec, ShipmentLine, WeatherFlag, CustomerRef, Platform,
   ShippingDocumentShipment,
 } from "./protocol";
-import { demoPriorityTimestamp } from "./demo-clock";
+import { DEMO_AUCTION_WEEK_INDEX, demoPriorityTimestamp } from "./demo-clock";
+
+/**
+ * Chronology boundary for Monday's (W28) manifests: only orders placed BEFORE
+ * the W29 cycle opens may enter a W28 shipping document or label purchase. The
+ * reset intentionally seeds the world through Saturday's W29 close so every
+ * selectable day works — without this bound, future AUC-29-* winner orders
+ * leaked into the Monday manifest the owner approves for real money.
+ */
+const DEMO_CYCLE_END_ISO = demoCycleIsoWindow(DEMO_AUCTION_WEEK_INDEX).end;
 
 // weight (lb) and cost (cents) — generic, deterministic
 const CORAL_LB = 0.6, TARE_LB = 1.0, PACK_LB = 0.8, FLOOR_LB = 4.0;
@@ -155,7 +164,7 @@ function compileManifest(rows: Row[], wi: number, weekLabel: string): Manifest {
 /** Read-only document view: reuse active current-week shipments, then fold
  * remaining unlinked orders into the customer's mutable planned shipment. */
 export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest> {
-  const wi = currentWeekIndex();
+  const wi = DEMO_AUCTION_WEEK_INDEX;
   const weekLabel = `W${wi}`;
   const res = await pg.query<Row>(`
     WITH planned_target AS (
@@ -179,6 +188,7 @@ export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest>
         AND active_shipment.ship_week = $1
         AND active_shipment.status IN ('planned','purchased','held','voided')
       WHERE o.status IN ('pending','paid','labeled','held')
+        AND o.ordered_at < $2::timestamptz
         AND (o.shipment_id IS NULL OR active_shipment.id IS NOT NULL)
     )
     SELECT c.id, c.primary_name, c.tier,
@@ -201,7 +211,7 @@ export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest>
     LEFT JOIN shipments ON shipments.id = document_orders.document_shipment_id
     GROUP BY c.id, document_orders.document_group_key
     ORDER BY max(document_orders.ordered_at) DESC
-    LIMIT 12`, [weekLabel]);
+    LIMIT 12`, [weekLabel, DEMO_CYCLE_END_ISO]);
 
   return compileManifest(res.rows, wi, weekLabel);
 }
@@ -257,7 +267,7 @@ export function selectShippingLabelPurchase(
  * the purchase workflow. Document review intentionally uses the broader read
  * model above, never this purchase payload. */
 export async function buildManifest(pg: Pool): Promise<Manifest> {
-  const wi = currentWeekIndex();
+  const wi = DEMO_AUCTION_WEEK_INDEX;
   const weekLabel = `W${wi}`;
   const res = await pg.query<Row>(`
     SELECT c.id, c.primary_name, c.tier,
@@ -278,9 +288,10 @@ export async function buildManifest(pg: Pool): Promise<Manifest> {
     JOIN customers c ON c.id = o.customer_id
     LEFT JOIN order_items oi ON oi.order_id = o.id
     WHERE o.status IN ('pending','paid') AND o.shipment_id IS NULL
+      AND o.ordered_at < $1::timestamptz
     GROUP BY c.id
     ORDER BY max(o.ordered_at) DESC
-    LIMIT 12`);
+    LIMIT 12`, [DEMO_CYCLE_END_ISO]);
   return compileManifest(res.rows, wi, weekLabel);
 }
 
