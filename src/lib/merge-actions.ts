@@ -49,12 +49,25 @@ export function selectRequestedMergePlans(
     }
     seen.add(group.customerId);
     const plan = plans.find((candidate) =>
-      candidate.customer.customerId === group.customerId && candidate.mergeState !== "review");
+      candidate.customer.customerId === group.customerId && candidate.mergeState === "ready");
     if (!plan || !sameIds(mergeOrderIds(plan), group.orderIds)) {
       throw new Error(`merge group for customer ${group.customerId} is stale`);
     }
     return plan;
   });
+}
+
+/** A fresh Merge all request must name every and only server-derived ready plan. */
+export function isExactReadyMergeSet(
+  plans: AddonMergePlan[],
+  selected: AddonMergePlan[],
+): boolean {
+  const ready = plans.filter((plan) => plan.mergeState === "ready");
+  if (selected.length !== ready.length || selected.some((plan) => plan.mergeState !== "ready")) {
+    return false;
+  }
+  const selectedCodes = new Set(selected.map(mergeCode));
+  return ready.every((plan) => selectedCodes.has(mergeCode(plan)));
 }
 
 /** Recover a fully committed batch without rebuilding eligibility from live orders. */

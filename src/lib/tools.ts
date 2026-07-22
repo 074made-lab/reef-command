@@ -225,6 +225,12 @@ export function categorizeShippingBlockers(items: AttentionItem[]): {
       status: holds.length ? "needs-review" : "clear",
       detail: "Verify ship timing and address changes before any carrier label enters the purchase queue.",
       headlines: holds.map((item) => item.headline),
+      items: holds.map((item) => ({
+        id: item.id,
+        headline: item.headline,
+        detail: item.detail ?? "Verify the requested shipping change before document lock.",
+        count: 1,
+      })),
     },
     {
       kind: "replacement_items",
@@ -234,6 +240,12 @@ export function categorizeShippingBlockers(items: AttentionItem[]): {
       status: replacementCases.length ? "needs-review" : "clear",
       detail: "Approved replacement corals must be added to both the packing slip and one-per-bag product-label count.",
       headlines: replacementCases.map((item) => item.headline),
+      items: replacementCases.map((item) => ({
+        id: item.id,
+        headline: item.headline,
+        detail: item.detail ?? "Review the replacement evidence before adding coral labels.",
+        count: item.doaReview?.claimedItems.length ?? 1,
+      })),
     },
     {
       kind: "customer_questions",
@@ -243,6 +255,12 @@ export function categorizeShippingBlockers(items: AttentionItem[]): {
       status: questions.length ? "needs-review" : "clear",
       detail: "Review the original question and editable reply draft before the shipping document set is locked.",
       headlines: questions.map((item) => item.headline),
+      items: questions.map((item) => ({
+        id: item.id,
+        headline: item.headline,
+        detail: item.draft ?? item.detail ?? "Review the customer question and reply draft.",
+        count: 1,
+      })),
     },
   ], openCount: holds.length + replacementCases.length + questions.length };
 }
@@ -616,29 +634,31 @@ export function promotionPlan(dayId: "wednesday" | "friday"): ComponentSpec[] {
 
 /** ReefnBid anchor shipments with winner-code Shopify/eBay add-ons this cycle. */
 export async function mergeScan(pg: Pool, dayId: "sunday" | "monday" = "sunday"): Promise<ComponentSpec[]> {
-  const plans = (await currentAddonMergePlans(pg)).filter((plan) => plan.mergeState === "ready");
+  const plans = (await currentAddonMergePlans(pg)).filter((plan) => plan.mergeState !== "review");
   if (!plans.length) return [];
+  const readyPlans = plans.filter((plan) => plan.mergeState === "ready");
   const batch: ComponentSpec = {
     kind: "merge_batch",
     weekLabel: `Synthetic W${currentWeekIndex()}`,
     candidates: plans.length,
+    readyCandidates: readyPlans.length,
     sourceOrders: plans.reduce((sum, plan) => sum + 1 + plan.addons.length, 0),
     addonOrders: plans.reduce((sum, plan) => sum + plan.addons.length, 0),
     coralUnits: plans.reduce((sum, plan) => sum + plan.totalCoralUnits, 0),
     totalCents: plans.reduce((sum, plan) => sum + plan.totalCents, 0),
     asOf: demoPriorityTimestamp(dayId, 1),
-    actions: [{
+    actions: readyPlans.length ? [{
       taskId: "merge-all-orders",
       label: "Merge all",
       payload: {
         weekIndex: currentWeekIndex(),
-        groups: plans.map((plan) => ({
+        groups: readyPlans.map((plan) => ({
           customerId: plan.customer.customerId,
           orderIds: [plan.anchor.orderId, ...plan.addons.map((addon) => addon.orderId)],
         })),
       },
       risk: "gated",
-    }],
+    }] : [],
   };
   return [batch, ...plans.map((plan): ComponentSpec => {
     const orders = [plan.anchor, ...plan.addons];
@@ -654,10 +674,11 @@ export async function mergeScan(pg: Pool, dayId: "sunday" | "monday" = "sunday")
         totalCents: plan.totalCents,
       },
       confidence: "high",
+      mergeState: plan.mergeState === "merged" ? "merged" : "ready",
       anchorOrderId: plan.anchor.orderId,
       addonOrderCount: plan.addons.length,
       totalCoralUnits: plan.totalCoralUnits,
-      actions: [{
+      actions: plan.mergeState === "ready" ? [{
         taskId: "merge-orders",
         label: "Merge this shipment",
         payload: {
@@ -668,7 +689,7 @@ export async function mergeScan(pg: Pool, dayId: "sunday" | "monday" = "sunday")
           }],
         },
         risk: "gated",
-      }],
+      }] : [],
     };
   })];
 }

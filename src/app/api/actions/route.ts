@@ -36,6 +36,7 @@ import {
 } from "@/lib/label-day";
 import {
   anchorShipmentCode,
+  isExactReadyMergeSet,
   mergeCode,
   mergeCodeForOrders,
   mergeOrderIds,
@@ -442,9 +443,9 @@ export async function POST(req: Request) {
             { status: 409 },
           );
         }
-        const eligible = plans.filter((plan) => plan.mergeState !== "review");
-        if ((taskId === "merge-orders" && selected.length !== 1)
-          || (taskId === "merge-all-orders" && selected.length !== eligible.length)) {
+        if ((taskId === "merge-orders"
+            && (selected.length !== 1 || selected[0].mergeState !== "ready"))
+          || (taskId === "merge-all-orders" && !isExactReadyMergeSet(plans, selected))) {
           await client.query("ROLLBACK");
           return NextResponse.json(
             { ok: false, error: "the requested merge scope no longer matches the board; refresh it" },

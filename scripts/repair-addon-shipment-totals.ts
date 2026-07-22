@@ -1,8 +1,9 @@
 /**
- * One-time fail-closed repair for the current synthetic W28 shipment fixture.
- * The original generator counted every add-on as two corals. This script uses
- * the canonical ReefnBid/add-on plans and changes only the matching shipment's
- * item/weight metadata; it never links orders or executes a merge.
+ * Fail-closed repair for the current synthetic shipment fixture. This
+ * script derives every count from the canonical ReefnBid/add-on plans instead
+ * of freezing totals that drift when the deterministic seed gains an order.
+ * It changes only matching shipment item/weight metadata; it never links
+ * orders or executes a merge.
  *
  * Dry run: node --import tsx scripts/repair-addon-shipment-totals.ts
  * Apply:   node --import tsx scripts/repair-addon-shipment-totals.ts --apply
@@ -25,11 +26,13 @@ async function main() {
     const plans = await currentAddonMergePlans(client);
     const sourceOrders = plans.reduce((sum, plan) => sum + 1 + plan.addons.length, 0);
     const coralUnits = plans.reduce((sum, plan) => sum + plan.totalCoralUnits, 0);
-    if (plans.length !== 4 || sourceOrders !== 8 || coralUnits !== 11) {
-      throw new Error(`refusing repair: expected 4 shipments / 8 source orders / 11 corals; got ${plans.length} / ${sourceOrders} / ${coralUnits}`);
+    if (!plans.length || plans.some((plan) => !plan.addons.length || plan.totalCoralUnits < 2)) {
+      throw new Error(`refusing repair: invalid canonical plan set (${plans.length} shipments / ${sourceOrders} source orders / ${coralUnits} corals)`);
     }
+    let matchedShipments = 0;
     for (const plan of plans) {
       const shipmentCode = anchorShipmentCode(plan);
+      const shipWeek = `W${plan.weekIndex}`;
       const row = await client.query<{
         id: string;
         status: string;
@@ -37,12 +40,17 @@ async function main() {
         weight_lb: string;
       }>(`
         SELECT id, status, items, weight_lb FROM shipments
-        WHERE shipment_code = $1 AND customer_id = $2 AND ship_week = 'W28'
+        WHERE shipment_code = $1 AND customer_id = $2 AND ship_week = $3
           AND status IN ('planned','purchased','held','voided')
-        FOR UPDATE`, [shipmentCode, plan.customer.customerId]);
-      if (row.rows.length !== 1) {
-        throw new Error(`refusing repair: ${shipmentCode} did not resolve to exactly one W28 shipment`);
+        FOR UPDATE`, [shipmentCode, plan.customer.customerId, shipWeek]);
+      if (row.rows.length > 1) {
+        throw new Error(`refusing repair: ${shipmentCode} resolved to multiple ${shipWeek} shipments`);
       }
+      if (!row.rows.length) {
+        console.log(`${shipmentCode}: no existing shipment row; merge execution will create it`);
+        continue;
+      }
+      matchedShipments += 1;
       const before = row.rows[0];
       console.log(`${shipmentCode}: ${before.items} -> ${plan.totalCoralUnits} corals`);
       if (apply) {
@@ -51,9 +59,12 @@ async function main() {
           WHERE id = $1`, [before.id, plan.totalCoralUnits, weightLb(plan.totalCoralUnits)]);
       }
     }
+    if (!matchedShipments) throw new Error("refusing repair: no canonical shipment rows matched");
     if (apply) await client.query("COMMIT");
     else await client.query("ROLLBACK");
-    console.log(apply ? "applied: 4 synthetic shipment totals now sum to 11" : "dry run only; pass --apply to repair");
+    console.log(apply
+      ? `applied: repaired ${matchedShipments} existing shipment rows from ${plans.length} canonical plans`
+      : `dry run only: ${plans.length} shipments / ${sourceOrders} source orders / ${coralUnits} corals; ${matchedShipments} existing rows would be repaired`);
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

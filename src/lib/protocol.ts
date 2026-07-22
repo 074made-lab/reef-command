@@ -245,6 +245,12 @@ export type ShippingBlockerGroup = {
   status: "needs-review" | "clear";
   detail: string;
   headlines: string[];
+  items: {
+    id: string;
+    headline: string;
+    detail: string;
+    count: number;
+  }[];
 };
 
 export type ShippingDocumentShipment = {
@@ -298,13 +304,14 @@ export type ComponentSpec =
       coralUnits: number; totalCents: number; combineReady: number;
       platformCounts: Partial<Record<Platform, number>>; orders: AddonOrderRow[] }
   | { kind: "merge_batch"; weekLabel: string; candidates: number;
-      sourceOrders: number; addonOrders: number; coralUnits: number;
+      readyCandidates: number; sourceOrders: number; addonOrders: number; coralUnits: number;
       totalCents: number; asOf?: string; actions: ActionChip[] }
   | { kind: "auction_announcement"; campaignId: string; dateRange: string;
       closeTime: string; emailRecipients: number; smsRecipients: number;
       emailPreview: MessagePreview; smsPreview: MessagePreview; actions: ActionChip[] }
   | { kind: "merge_card"; orders: OrderSummary[]; customer: CustomerRef;
       combined: OrderSummary; confidence: "high" | "low";
+      mergeState: "ready" | "merged";
       anchorOrderId: string; addonOrderCount: number; totalCoralUnits: number;
       actions?: ActionChip[] }          // low confidence ⇒ gated merge chip
   | { kind: "label_manifest"; weekLabel: string; shipments: ShipmentLine[];

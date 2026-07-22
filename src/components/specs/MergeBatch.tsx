@@ -8,6 +8,7 @@ type MergeBatchSpec = Extract<ComponentSpec, { kind: "merge_batch" }>;
 export function MergeBatch({ spec }: { spec: MergeBatchSpec }) {
   const metrics = [
     ["ELIGIBLE SHIPMENTS", num(spec.candidates)],
+    ["TO MERGE", num(spec.readyCandidates)],
     ["SOURCE ORDERS", num(spec.sourceOrders)],
     ["ADD-ON ORDERS", num(spec.addonOrders)],
     ["CORAL UNITS", num(spec.coralUnits)],
@@ -20,7 +21,9 @@ export function MergeBatch({ spec }: { spec: MergeBatchSpec }) {
       right={(
         <>
           {spec.asOf ? <Chip className="border-line text-mute">{spec.asOf}</Chip> : null}
-          <Chip className="border-coral/50 text-coralhi">READY TO MERGE</Chip>
+          <Chip className={spec.readyCandidates ? "border-coral/50 text-coralhi" : "border-ok/50 text-ok"}>
+            {spec.readyCandidates ? "READY TO MERGE" : "MERGED · RECONCILED"}
+          </Chip>
         </>
       )}
     >
@@ -41,7 +44,7 @@ export function MergeBatch({ spec }: { spec: MergeBatchSpec }) {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line lg:grid-cols-5">
         {metrics.map(([label, value]) => (
           <div key={label} className="bg-raise/70 px-3 py-3">
             <p className="font-mono text-[10px] tracking-[0.08em] text-mute">{label}</p>

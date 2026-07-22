@@ -219,8 +219,8 @@ assert.match(toolSource, /addon\.discount_code = concat\('RC', \$3::int, '-', ad
   "the add-on board and merge run must share the exact winner-code pairing rule");
 assert.match(toolSource, /kind: "merge_batch"[\s\S]*label: "Merge all"/,
   "the merge batch must expose one explicit Merge all action");
-assert.match(toolSource, /groups: plans\.map/,
-  "Merge all must bind the click to every exact group rendered on the board");
+assert.match(toolSource, /groups: readyPlans\.map/,
+  "Merge all must bind the click to every exact ready group rendered on the board");
 assert.match(toolSource, /export async function shippingBlockerBoard/,
   "Monday blockers must be built from the live attention queue");
 assert.match(toolSource, /attentionFeed\(ch, pg, 80\)/,

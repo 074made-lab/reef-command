@@ -152,11 +152,14 @@ async function merges(message: string): Promise<ChatResponse> {
   const day = selected === "monday" ? "monday" : "sunday";
   const specs = await mergeScan(pg, day);
   const n = specs.filter((s) => s.kind === "merge_card").length;
+  const batch = firstOf(specs, "merge_batch");
   return {
     verdict:
       n === 0
         ? "No ReefnBid shipments have winner-code Shopify or eBay add-ons waiting to merge."
-        : `${plural(n, "ReefnBid-anchored shipment")} can merge now. Add-on and coral totals are reconciled below.`,
+        : batch?.readyCandidates
+          ? `${plural(batch.readyCandidates, "ReefnBid-anchored shipment")} can merge now. Add-on and coral totals are reconciled below.`
+          : `${plural(n, "ReefnBid-anchored shipment")} already merged. The reconciled source-order and coral totals remain visible.`,
     components: specs,
   };
 }

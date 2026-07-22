@@ -1,7 +1,9 @@
 /** Behavioral checks for Sunday ReefnBid-anchor + add-on reconciliation. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   anchorShipmentCode,
+  isExactReadyMergeSet,
   mergeCode,
   mergeCodeForOrders,
   mergeOrderIds,
@@ -81,11 +83,21 @@ const requested = plans.map((item) => ({
 }));
 assert.deepEqual(selectRequestedMergePlans(plans, requested), plans,
   "the rendered batch must resolve to the same exact order groups");
-assert.equal(selectRequestedMergePlans([plan(4, 1, [2], "merged")], [requested[0]]).length, 1,
-  "an exact retry after the Postgres commit must still resolve");
+assert.throws(() => selectRequestedMergePlans([plan(4, 1, [2], "merged")], [requested[0]]), /stale/,
+  "non-recovered actions must reject a group that Postgres already marked merged");
 assert.throws(() => selectRequestedMergePlans([plan(4, 1, [2], "review")], [requested[0]]), /stale/);
 assert.throws(() => selectRequestedMergePlans(plans, [requested[0], requested[0]]), /duplicate/);
 assert.throws(() => selectRequestedMergePlans(plans, [{ ...requested[0], orderIds: ["AUC-28-4"] }]), /stale/);
+
+assert.equal(isExactReadyMergeSet(plans, plans), true,
+  "Merge all must accept the exact server-derived ready set");
+const mixedPlans = [plan(4, 1, [2], "merged"), plan(7, 1, [1], "ready")];
+assert.equal(isExactReadyMergeSet(mixedPlans, [mixedPlans[1]]), true,
+  "already merged plans remain visible but are excluded from the fresh action set");
+assert.equal(isExactReadyMergeSet(mixedPlans, [mixedPlans[0]]), false,
+  "an equal-size payload cannot substitute a merged plan for the ready plan");
+assert.equal(isExactReadyMergeSet(plans, plans.slice(0, 3)), false,
+  "a ready-plan subset cannot masquerade as Merge all");
 
 const persisted = requested.map((group) => ({
   mergeCode: mergeCodeForOrders(28, group.customerId, group.orderIds),
@@ -140,6 +152,15 @@ assert.throws(() => shipmentTargetDecision({
   destination: "Miami, FL", linkedOrderIds: ["AUC-28-99"],
 }, exactIds, 3, "Miami, FL", "SHP-28-4"), /different order set/);
 
+const toolsSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
+assert.match(toolsSource, /filter\(\(plan\) => plan\.mergeState !== "review"\)/,
+  "completed ReefnBid/add-on plans must remain visible instead of producing an empty board");
+assert.match(toolsSource, /readyCandidates: readyPlans\.length/,
+  "the batch must distinguish visible reconciled shipments from remaining merge actions");
+assert.match(toolsSource, /actions: readyPlans\.length \?/,
+  "Merge all must disappear after all visible shipments are merged");
+
 console.log("✓ exact ReefnBid-anchor/add-on groups conserve orders and coral units");
-console.log("✓ exact retries are allowed while stale, duplicate, and review groups fail closed");
+console.log("✓ persisted retries recover separately while stale, merged, duplicate, and review groups fail closed");
 console.log("✓ purchased/held labels stay immutable and require the exact anchor shipment");
+console.log("✓ completed merge plans remain visible while actions target only ready plans");

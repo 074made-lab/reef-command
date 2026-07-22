@@ -118,7 +118,7 @@ export function summarize(specs: ComponentSpec[]): string {
         break;
       case "merge_batch":
         parts.push(
-          `merge run: ${s.candidates} ReefnBid-anchored shipment(s), ${s.addonOrders} add-on order(s), ${s.coralUnits} total coral unit(s); Merge all requires a human click`,
+          `merge run: ${s.candidates} ReefnBid-anchored shipment(s), ${s.readyCandidates} still ready, ${s.addonOrders} add-on order(s), ${s.coralUnits} total coral unit(s)${s.readyCandidates ? "; Merge all requires a human click" : "; all reconciled merges remain visible"}`,
         );
         break;
       case "shipping_document_board":

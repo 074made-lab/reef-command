@@ -31,21 +31,31 @@ assert.equal(byKind.get("customer_questions")?.count, 1,
   "an address message must not be double-counted as a customer question");
 assert.equal(byKind.get("replacement_items")?.count, 3);
 assert.equal(openCount, 4, "openCount counts queue records, not replacement coral units");
+assert.equal(byKind.get("hold_requests")?.items.length, 2,
+  "every hold/address request must remain individually actionable");
+assert.equal(byKind.get("replacement_items")?.items[0]?.count, 3,
+  "one replacement approval must preserve its three-coral impact");
+assert.equal(byKind.get("customer_questions")?.items.length, 1,
+  "each customer question must have its own approval row");
 assert.ok(!groups.some((group) => group.headlines.some((headline) => /late addon/i.test(headline))),
   "late add-ons belong to the merge command, not the hold lane");
 
 const boardSource = readFileSync(new URL("../src/components/specs/ShippingBlockerBoard.tsx", import.meta.url), "utf8");
-assert.match(boardSource, /APPROVE ALL · MARK HANDLED/,
+assert.match(boardSource, /APPROVE ALL ·.*REQUESTS/,
   "the primary approval control must stay visible at the top of the compact blocker board");
 assert.match(boardSource, /<details[\s\S]*REVIEW ISSUE SUMMARY/,
   "issue examples must use one progressive-disclosure summary instead of three long cards");
-assert.match(boardSource, /setHandled\(true\)/,
-  "the demo approval must visibly move the compact board into a handled state");
+assert.match(boardSource, /approveOne\(item\.id\)/,
+  "every request in the dropdown must support one-by-one approval");
+assert.match(boardSource, /approveAll/,
+  "the compact board must retain one-click approval for the whole queue");
+assert.match(boardSource, /hasOpenItems \? `\$\{remaining\} open`/,
+  "the top open count must track one-by-one approvals instead of staying stale");
 assert.doesNotMatch(boardSource, /open the detailed rows below/,
   "the blocker board must not promise a long queue beneath the approval control");
 
 console.log("✓ blocker lanes are mutually exclusive");
 console.log("✓ late add-ons stay out of hold requests");
 console.log("✓ replacement coral units and open queue records remain distinct");
-console.log("✓ compact top approval and issue-summary disclosure stay wired");
+console.log("✓ compact top approval and per-request dropdown approvals stay wired");
 console.log("\nALL PASS — Monday blocker-lane conservation");

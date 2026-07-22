@@ -138,7 +138,12 @@ export function MergeCard({ spec }: { spec: MergeSpec }) {
 
   return (
     <div ref={rootRef}>
-      <SpecCard tag="MERGE CANDIDATE" right={<ConfidenceMeter level={confidence} />}>
+      <SpecCard
+        tag={spec.mergeState === "merged" ? "MERGED SHIPMENT" : "MERGE CANDIDATE"}
+        right={spec.mergeState === "merged"
+          ? <Chip className="border-ok/45 text-ok">✓ MERGED</Chip>
+          : <ConfidenceMeter level={confidence} />}
+      >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-ink">
           {customer.displayName}
