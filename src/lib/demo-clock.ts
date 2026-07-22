@@ -76,14 +76,14 @@ export const DEMO_DAYS: DemoDay[] = [
     reminder: "Auction opens at 12:00 PM ET; every message and shipment response remains separately reviewable.",
   },
   {
-    id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "18:30", label: "Auction Momentum",
-    goal: "Keep the auction accurate and clear buyer questions before Saturday's close.",
+    id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "21:30", label: "Auction Momentum",
+    goal: "Track auction movement, activate the social team, and close every prior-cycle customer issue.",
     priorities: [
-      { label: "Check bid movement", time: "12:00", detail: "Compare current bidding with Thursday's opening.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Review last-call ads", time: "17:30", detail: "Review the final-call email and SMS drafts before Saturday's close.", cue: "human-gate", prompt: "Review Friday's auction momentum and last-call advertisement drafts." },
-      { label: "Clear buyer questions", time: "18:30", detail: "Answer questions before the final-night rush.", cue: "watch", prompt: "What needs my attention?" },
+      { label: "Monitor auction leaderboard", time: "21:30", detail: "Track leaders, high-value items, bid changes, low engagement, and overall activity.", cue: "do-now", prompt: "Open Friday's live auction leaderboard with current leaders, high-value items, bid changes, low engagement, and overall activity." },
+      { label: "Send social team reminder", time: "15:30", detail: "Remind staff to film, prepare, and post the week's best corals on Instagram and TikTok.", cue: "do-now", prompt: "Open Friday's actionable staff SMS task for filming the best corals and posting on Instagram and TikTok." },
+      { label: "Resolve customer issues", time: "18:30", detail: "Close messages, shipping, DOA, remedy, address, and order-question follow-ups.", cue: "do-now", prompt: "Open Friday's remaining customer-issue board with unanswered messages, shipping, DOA, remedy, address, and order-question actions." },
     ],
-    reminder: "Last-call email and SMS remain drafts until approval; keep the live board accurate.",
+    reminder: "Staff own filming and posting; customer remedies remain explicit human decisions.",
   },
   {
     id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Closing Night + Winners",

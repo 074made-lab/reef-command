@@ -57,7 +57,7 @@ timing, thresholds, and decision rules are invented fixtures.
 | Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
 | Wednesday | Ship + Weekly Report | Finish today's shipments, monitor Tuesday's overnight shipments, open the weekly operational report |
 | Thursday | Auction Opens | Monitor the full leaderboard, approve four noon-launch drafts, monitor Wednesday's shipments |
-| Friday | Auction Momentum | Check bid movement, review last-call ads, clear buyer questions |
+| Friday | Auction Momentum | Monitor the live leaderboard, send the social-team reminder, resolve remaining customer issues |
 | Saturday | Closing Night + Winners | Confirm final results, review winner next steps, watch add-on orders |
 
 Tuesday's synthetic plan targets Thursday for ReefnBid publication and prepares

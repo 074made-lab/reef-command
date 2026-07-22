@@ -18,6 +18,7 @@ import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedul
 import { DEMO_AUCTION_WEEK_INDEX, DEMO_DAYS, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 import {
+  fridayOperations,
   tuesdayListingPlan,
   tuesdayShippingCommand,
   thursdayWednesdayShipmentWatch,
@@ -308,7 +309,7 @@ export async function auctionBoard(ch: ClickHouseClient, dayId?: DemoDayId): Pro
     GROUP BY lot, sku ORDER BY bid DESC`, {
       start: w.start,
       end: queryEnd,
-      recent: fmt(queryEndMs - 30 * 60_000),
+      recent: fmt(queryEndMs - 2 * 60 * 60_000),
     }),
     queryRows<{ meta: string }>(ch, `
       SELECT meta FROM events
@@ -692,6 +693,11 @@ export function shippingCommand(
 /** Public-safe listing or inventory handoff. It never publishes or updates stock. */
 export function listingPlan(scope: "listings" | "inventory" = "listings"): ComponentSpec[] {
   return tuesdayListingPlan(scope);
+}
+
+/** Friday staff reminder or explicit prior-cycle resolution queue. */
+export function fridayPlan(scope: "social" | "issues"): ComponentSpec[] {
+  return fridayOperations(scope);
 }
 
 /** Public-safe campaign review artifact. It never sends email or SMS. */

@@ -7,6 +7,7 @@ import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authorit
 import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
 import { AUCTION_OPEN_OFFSET_MS } from "../src/lib/synth/schedule";
 import {
+  fridayOperations,
   tuesdayListingPlan,
   tuesdayShippingCommand,
   thursdayWednesdayShipmentWatch,
@@ -122,8 +123,30 @@ assert.equal(thursdayWatchSpec.shipments.length, 4, "Thursday must watch every W
 assert.equal(thursdayWatchSpec.issues.length, 5);
 assert.ok(thursdayWatchSpec.issues.some((issue) => /contact FedEx immediately/i.test(issue.recommendation)));
 assert.ok(thursdayWatchSpec.issues.some((issue) => /\/shop\/doa-claim/i.test(issue.recommendation)));
-assert.equal(friday.priorities[1].label, "Review last-call ads");
-assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
+assert.deepEqual(
+  friday.priorities.map((priority) => priority.label),
+  ["Monitor auction leaderboard", "Send social team reminder", "Resolve customer issues"],
+);
+assert.equal(friday.time, "21:30", "Friday board must include the active Friday bid window");
+const fridaySocial = fridayOperations("social")[0];
+assert.equal(fridaySocial.kind, "staff_agent_board");
+if (fridaySocial.kind !== "staff_agent_board") throw new Error("Friday social task missing");
+assert.deepEqual(fridaySocial.tasks[0]?.checklist, [
+  "Film the best corals of the week",
+  "Prepare the short-form social content",
+  "Post the approved content on Instagram",
+  "Post the approved content on TikTok",
+]);
+assert.equal(fridaySocial.tasks[0]?.action.taskId, "send-demo-social-reminder");
+const fridayIssues = fridayOperations("issues")[0];
+assert.equal(fridayIssues.kind, "customer_resolution_board");
+if (fridayIssues.kind !== "customer_resolution_board") throw new Error("Friday customer resolution board missing");
+assert.equal(fridayIssues.items.length, 6);
+assert.deepEqual(
+  new Set(fridayIssues.items.map((item) => item.kind)),
+  new Set(["unanswered_message", "shipping_problem", "doa", "replacement_credit", "address_issue", "order_question"]),
+);
+assert.ok(fridayIssues.items.every((item) => item.action.taskId === "resolve-demo-customer-issue"));
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
 assert.match(sunday.priorities[0].prompt ?? "", /only the Sunday add-on orders board.*Shopify or eBay add-on.*ReefnBid anchor/i);
 assert.match(sunday.priorities[0].prompt ?? "", /Do not open merge controls yet/i);
@@ -243,6 +266,8 @@ assert.match(agentSource, /Wednesday Step 1 calls shippingCommand with day=wedne
   "Wednesday's ship, overnight watch, and report routines must stay distinct");
 assert.match(agentSource, /Thursday Step 1 calls auctionBoard with day=thursday.*Thursday Step 2 calls thursdayAnnouncements.*Thursday Step 3 calls shippingCommand with day=thursday and scope=monitor/,
   "Thursday's leaderboard, four drafts, and Wednesday shipment watch must stay distinct");
+assert.match(agentSource, /Friday Step 1 calls auctionBoard with day=friday.*Friday Step 2 calls fridayOperations with scope=social.*Friday Step 3 calls fridayOperations with scope=issues/,
+  "Friday's leaderboard, social reminder, and issue closure must stay distinct");
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
@@ -269,6 +294,8 @@ assert.match(routerSource, /next-auction announcement[\s\S]*return await announc
   "offline fallback must route the Sunday announcement to its review package");
 assert.match(routerSource, /four separate 12:00 pm launch drafts[\s\S]*return await thursdayDrafts/,
   "offline fallback must route Thursday's four drafts to separate campaign cards");
+assert.match(routerSource, /actionable staff sms.*instagram.*tiktok[\s\S]*return await fridayCommand/,
+  "offline fallback must route Friday's staff SMS to the dedicated command");
 assert.match(routerSource, /shipping blocker board[\s\S]*return await blockers/,
   "offline fallback must route Monday blockers before generic attention");
 assert.match(routerSource, /shipping document board[\s\S]*return await documents/,
@@ -289,6 +316,8 @@ assert.match(rendererSource, /case "shipping_document_board"/,
   "Monday documents must render as a printable document and packing board");
 assert.match(rendererSource, /case "shipment_command_board"/,
   "Tuesday shipments must render a dedicated exception and manifest board");
+assert.match(rendererSource, /case "customer_resolution_board"/,
+  "Friday issues must render a dedicated resolution board");
 
 const auctionToolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
 assert.match(auctionToolSource, /type = 'auction_opened'[\s\S]*openedLots[\s\S]*recentBidCount/,
@@ -310,6 +339,8 @@ assert.match(rendererSource, /case "staff_agent_board"/,
 const actionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
 assert.match(actionRouteSource, /send-demo-auction-announcement/,
   "the announcement approval must have a wired action");
+assert.match(actionRouteSource, /send-demo-social-reminder[\s\S]*resolve-demo-customer-issue/,
+  "Friday staff and customer actions must be allowlisted and auditable");
 assert.match(actionRouteSource, /merge-all-orders/,
   "the combined-order routine must wire Merge all");
 assert.match(actionRouteSource, /UPDATE orders SET shipment_id/,

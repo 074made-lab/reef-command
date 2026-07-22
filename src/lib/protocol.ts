@@ -310,6 +310,20 @@ export type StaffAgentTask = {
   action: ActionChip;
 };
 
+export type CustomerResolutionItem = {
+  id: string;
+  kind: "unanswered_message" | "shipping_problem" | "doa" | "replacement_credit" | "address_issue" | "order_question";
+  customer: string;
+  orderId: string;
+  shipmentId?: string;
+  tracking?: string;
+  openedAt: string;
+  headline: string;
+  detail: string;
+  nextAction: string;
+  action: ActionChip;
+};
+
 // ---------- actions ----------
 
 /** An executable action. `gated` requires an explicit human click. */
@@ -368,6 +382,8 @@ export type ComponentSpec =
       issues: ShipmentCommandIssue[] }
   | { kind: "staff_agent_board"; title: string; asOf: string;
       note: string; tasks: StaffAgentTask[] }
+  | { kind: "customer_resolution_board"; title: string; asOf: string;
+      note: string; items: CustomerResolutionItem[] }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;

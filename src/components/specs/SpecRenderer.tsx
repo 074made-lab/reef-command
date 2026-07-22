@@ -7,6 +7,7 @@ import { AddonOrderBoard } from "./AddonOrderBoard";
 import { AuctionBoard } from "./AuctionBoard";
 import { AuctionAnnouncement } from "./AuctionAnnouncement";
 import { CampaignCard } from "./CampaignCard";
+import { CustomerResolutionBoard } from "./CustomerResolutionBoard";
 import { CaseCard } from "./CaseCard";
 import { CycleTimeline } from "./CycleTimeline";
 import { DayBriefCard } from "./DayBriefCard";
@@ -70,6 +71,8 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <ShipmentCommandBoard spec={spec} />;
     case "staff_agent_board":
       return <StaffAgentBoard spec={spec} />;
+    case "customer_resolution_board":
+      return <CustomerResolutionBoard spec={spec} />;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

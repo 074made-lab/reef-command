@@ -14,6 +14,7 @@ import {
   attentionFeed,
   auctionAnnouncement,
   auctionBoard,
+  fridayPlan,
   listingPlan,
   mergeScan,
   promotionPlan,
@@ -94,6 +95,16 @@ async function thursdayDrafts(): Promise<ChatResponse> {
   return {
     verdict: "Four Thursday launch drafts are ready for separate approval. No external message has been sent.",
     components: await thursdayAnnouncementPlan(pg),
+  };
+}
+
+async function fridayCommand(message: string): Promise<ChatResponse> {
+  const scope = /social|instagram|tiktok|film/.test(message) ? "social" : "issues";
+  return {
+    verdict: scope === "social"
+      ? "The actionable social-team reminder is ready. The SMS is simulated and posting remains with staff."
+      : "Every remaining prior-cycle customer issue has an explicit next action below.",
+    components: fridayPlan(scope),
   };
 }
 
@@ -255,6 +266,8 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await announcement();
     if (/four separate 12:00 pm launch drafts|auction sms.*arrivals sms.*auction email.*arrivals email/.test(q))
       return await thursdayDrafts();
+    if (/actionable staff sms.*instagram.*tiktok|remaining customer-issue board|remedy.*address.*order-question/.test(q))
+      return await fridayCommand(q);
     if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
       return await listings(q);
     if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))

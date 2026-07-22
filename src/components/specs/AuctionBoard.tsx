@@ -42,7 +42,7 @@ export function AuctionBoard({
           ))}
         </div>
       ) : null}
-      {asOf ? <p className="mb-2 font-mono text-[10px] tracking-[0.05em] text-mute">{asOf} · HIGHEST VALUE FIRST · 30-MINUTE CHANGE SIGNALS</p> : null}
+      {asOf ? <p className="mb-2 font-mono text-[10px] tracking-[0.05em] text-mute">{asOf} · HIGHEST VALUE FIRST · 2-HOUR CHANGE SIGNALS</p> : null}
       {lots.length === 0 ? (
         <p className="py-2 text-center font-mono text-xs text-mute">
           no bids on the board this cycle
@@ -69,7 +69,7 @@ export function AuctionBoard({
                     <p className="truncate text-[14px] text-ink">{l.name}</p>
                     {l.bidCount === 0 ? <Chip className="border-danger/45 text-danger">NO BIDS</Chip> : null}
                     {l.bidCount === 1 ? <Chip className="border-warn/45 text-warn">LOW</Chip> : null}
-                    {(l.recentBidCount ?? 0) >= 2 ? <Chip className="border-teal/45 text-tealhi">↗ {l.recentBidCount} RECENT</Chip> : null}
+                    {(l.recentBidCount ?? 0) >= 1 ? <Chip className="border-teal/45 text-tealhi">↗ {l.recentBidCount} RECENT</Chip> : null}
                   </div>
                   <p className="font-mono text-[12px] text-mute">
                     {l.category} · {l.lotId}

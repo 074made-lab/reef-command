@@ -23,6 +23,7 @@ import {
   attentionFeed,
   auctionAnnouncement,
   auctionBoard,
+  fridayPlan,
   listingPlan,
   mergeScan,
   promotionPlan,
@@ -131,6 +132,9 @@ export function summarize(specs: ComponentSpec[]): string {
         break;
       case "staff_agent_board":
         parts.push(`${s.title} at ${s.asOf}: ${s.tasks.length} staff task(s); ${s.tasks.map((task) => `${task.title} → ${task.owner} / ${task.agent}`).join("; ")}; every SMS and agent activation is simulated`);
+        break;
+      case "customer_resolution_board":
+        parts.push(`${s.title} at ${s.asOf}: ${s.items.length} open item(s), covering ${s.items.map((item) => item.kind).join(", ")}; every next action remains explicit and simulated`);
         break;
       case "auction_announcement":
         parts.push(
@@ -270,6 +274,13 @@ export const reefTools = {
     execute: async () => thursdayAnnouncementPlan(pg()),
     toModelOutput: (output) => asText(summarize(output)),
   }),
+  fridayOperations: tool({
+    description:
+      "Call this for Friday Step 2 or 3. Use scope=social for the actionable team SMS task to film, prepare, and post on Instagram/TikTok. Use scope=issues for the complete prior-cycle message, shipping, DOA, remedy, address, and order-question resolution board.",
+    inputSchema: z.object({ scope: z.enum(["social", "issues"]) }),
+    execute: async ({ scope }) => fridayPlan(scope),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   scanMerges: tool({
     description:
       "Call this for Sunday or Monday Step 2 'Combine eligible orders', 'Merge all', or an explicit request to merge. Do not call it for Sunday's Step 1 add-on monitor. ReefnBid remains the anchor on both days. Pass the weekday from the synthetic marker so the command timestamp is correct.",
@@ -294,7 +305,7 @@ export const reefTools = {
 
 export const SYSTEM = `You are Reef Command, the merchant cockpit for a synthetic live-coral-store demo inspired by physical-commerce problems. The workflow, customer bands, account links, timing, economics, and rules are invented fixtures and are not TIA Coral's operating playbook. You are a calm, brief co-pilot ("Teddy") — never chatty.
 
-THE WEEK: SUN add-ons + next-auction announcement review → MON shipping documents → TUE shipping + ReefnBid/Shopify listing prep → WED shipping + email/SMS promotion review → THU ReefnBid opens → FRI auction momentum + last-call review → SAT closing night + winners. eBay mirrors Shopify in this synthetic demo, but human staff verify inventory and update Shopify directly. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
+THE WEEK: SUN add-ons + next-auction announcement review → MON shipping documents → TUE shipping + ReefnBid/Shopify listing prep → WED shipping + weekly report → THU ReefnBid opens → FRI auction momentum + social staff task + issue closure → SAT closing night + winners. eBay mirrors Shopify in this synthetic demo, but human staff verify inventory and update Shopify directly. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
 
 HOW YOU ANSWER — this is a visual product, not a wall of text:
 - For any question about the business, CALL THE RIGHT TOOL. The tool renders the real answer as interactive components on screen.
@@ -304,7 +315,7 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
 - When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
-- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday and Monday Step 2 call ONLY scanMerges with the selected day: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday Step 1 calls shippingCommand with day=tuesday and scope=ship. Tuesday Step 2 calls listingPlan with scope=listings. Tuesday Step 3 calls listingPlan with scope=inventory. Wednesday Step 1 calls shippingCommand with day=wednesday and scope=ship. Wednesday Step 2 calls shippingCommand with day=wednesday and scope=monitor. Wednesday Step 3 calls the existing weeklyReport tool. Thursday Step 1 calls auctionBoard with day=thursday. Thursday Step 2 calls thursdayAnnouncements. Thursday Step 3 calls shippingCommand with day=thursday and scope=monitor.
+- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday and Monday Step 2 call ONLY scanMerges with the selected day: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday Step 1 calls shippingCommand with day=tuesday and scope=ship. Tuesday Step 2 calls listingPlan with scope=listings. Tuesday Step 3 calls listingPlan with scope=inventory. Wednesday Step 1 calls shippingCommand with day=wednesday and scope=ship. Wednesday Step 2 calls shippingCommand with day=wednesday and scope=monitor. Wednesday Step 3 calls the existing weeklyReport tool. Thursday Step 1 calls auctionBoard with day=thursday. Thursday Step 2 calls thursdayAnnouncements. Thursday Step 3 calls shippingCommand with day=thursday and scope=monitor. Friday Step 1 calls auctionBoard with day=friday. Friday Step 2 calls fridayOperations with scope=social. Friday Step 3 calls fridayOperations with scope=issues.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 - A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
 - A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"

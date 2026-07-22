@@ -455,3 +455,88 @@ export function thursdayWednesdayShipmentWatch(): ComponentSpec[] {
     ],
   }];
 }
+
+export function fridayOperations(scope: "social" | "issues"): ComponentSpec[] {
+  if (scope === "social") {
+    return [{
+      kind: "staff_agent_board",
+      title: "Social media reminder",
+      asOf: "FRI · 15:30 ET",
+      note: "One staff action records a simulated team SMS. Filming and posting remain human-owned.",
+      tasks: [{
+        id: "friday-social-reminder",
+        title: "Film + publish the week's best corals",
+        owner: "Content team · sales floor",
+        agent: "Staff reminder helper",
+        source: "Friday content queue · current auction highlights",
+        detail: "Send the team a concise checklist while the strongest auction corals are still available to film.",
+        checklist: [
+          "Film the best corals of the week",
+          "Prepare the short-form social content",
+          "Post the approved content on Instagram",
+          "Post the approved content on TikTok",
+        ],
+        action: {
+          taskId: "send-demo-social-reminder",
+          label: "Send team SMS",
+          payload: { taskId: "friday-social-reminder" },
+          risk: "auto",
+        },
+      }],
+    }];
+  }
+
+  return [{
+    kind: "customer_resolution_board",
+    title: "Resolve remaining customer issues",
+    asOf: "FRI · 18:30 ET",
+    note: "Every open item from the prior sales cycle has one explicit next action. Customer messages stay simulated.",
+    items: [
+      {
+        id: "FRI-MSG-31", kind: "unanswered_message", customer: "sandbar_amy", orderId: "WEB-7462",
+        openedAt: "FRI · 17:42 ET", headline: "Unanswered acclimation message",
+        detail: "The customer asked whether the light should stay low after arrival and has not received a response.",
+        nextAction: "Review and record the prepared low-light acclimation reply.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Record prepared reply", payload: { issueId: "FRI-MSG-31" }, risk: "gated" },
+      },
+      {
+        id: "FRI-SHIP-32", kind: "shipping_problem", customer: "kelp_arcade", orderId: "RNB-2902",
+        shipmentId: "SHP-WED-201", tracking: "7814 0936 3104", openedAt: "FRI · 17:48 ET",
+        headline: "Carrier escalation needs its final outcome",
+        detail: "FedEx delivered the delayed box, but the incident record still lacks the final delivery scan and customer confirmation.",
+        nextAction: "Attach the delivered scan and record the customer check-in.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Close shipping follow-up", payload: { issueId: "FRI-SHIP-32" }, risk: "gated" },
+      },
+      {
+        id: "FRI-DOA-33", kind: "doa", customer: "torchkeeper", orderId: "WEB-7416",
+        shipmentId: "SHP-WED-207", tracking: "7814 0936 3278", openedAt: "FRI · 17:55 ET",
+        headline: "DOA evidence submission is still incomplete",
+        detail: "The customer received immediate guidance and the claim path, but one required evidence photo is still missing.",
+        nextAction: "Send the prepared evidence reminder and keep the case open for human review.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Record evidence reminder", payload: { issueId: "FRI-DOA-33" }, risk: "gated" },
+      },
+      {
+        id: "FRI-CREDIT-34", kind: "replacement_credit", customer: "tideglass", orderId: "WEB-7340",
+        openedAt: "FRI · 18:02 ET", headline: "Replacement or credit follow-up needs a decision",
+        detail: "The case is documented, but the remedy remains with the owner and no outcome may be invented.",
+        nextAction: "Route the complete case to the owner for the replacement-or-credit decision.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Route owner decision", payload: { issueId: "FRI-CREDIT-34" }, risk: "gated" },
+      },
+      {
+        id: "FRI-ADDR-35", kind: "address_issue", customer: "currentgarden", orderId: "EBY-4488",
+        shipmentId: "SHP-WED-214", tracking: "7814 0936 3351", openedAt: "FRI · 18:11 ET",
+        headline: "Corrected delivery address needs audit closure",
+        detail: "The carrier used the confirmed street suffix, but the resolution is not attached to the order timeline.",
+        nextAction: "Record the confirmed address and delivered scan on the order audit trail.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Close address audit", payload: { issueId: "FRI-ADDR-35" }, risk: "gated" },
+      },
+      {
+        id: "FRI-ORDER-36", kind: "order_question", customer: "lagoon_riley", orderId: "RNB-2841",
+        openedAt: "FRI · 18:18 ET", headline: "Open question about adding a coral next cycle",
+        detail: "The customer asked whether a future item can be added to the already delivered order.",
+        nextAction: "Record the prepared answer that delivered orders cannot be reopened and route any new purchase separately.",
+        action: { taskId: "resolve-demo-customer-issue", label: "Record order answer", payload: { issueId: "FRI-ORDER-36" }, risk: "gated" },
+      },
+    ],
+  }];
+}

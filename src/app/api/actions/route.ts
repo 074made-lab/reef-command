@@ -147,6 +147,25 @@ const SAFE_DEMO_ACTIONS: Record<string, {
     allowed: ["inventory-check"],
     note: { "inventory-check": "simulated inventory SMS logged for Morgan; physical verification remains human-owned" },
   },
+  "send-demo-social-reminder": {
+    risk: "auto",
+    payloadKey: "taskId",
+    allowed: ["friday-social-reminder"],
+    note: { "friday-social-reminder": "simulated team SMS logged; filming and Instagram/TikTok posting remain human-owned" },
+  },
+  "resolve-demo-customer-issue": {
+    risk: "gated",
+    payloadKey: "issueId",
+    allowed: ["FRI-MSG-31", "FRI-SHIP-32", "FRI-DOA-33", "FRI-CREDIT-34", "FRI-ADDR-35", "FRI-ORDER-36"],
+    note: {
+      "FRI-MSG-31": "prepared acclimation reply recorded; no external message sent",
+      "FRI-SHIP-32": "delivered scan and customer check-in recorded",
+      "FRI-DOA-33": "prepared evidence reminder recorded; claim remains open for human review",
+      "FRI-CREDIT-34": "complete case routed to the owner; no replacement or credit was auto-decided",
+      "FRI-ADDR-35": "confirmed address and delivered scan attached to the synthetic audit trail",
+      "FRI-ORDER-36": "prepared order answer recorded; no external message sent",
+    },
+  },
 };
 
 /** Best-effort audit of a gated approval — records the verified operator. The
