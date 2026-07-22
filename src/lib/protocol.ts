@@ -269,6 +269,46 @@ export type ShippingDocumentShipment = {
   productLabels: { sku: string; name: string; bag: string }[];
 };
 
+export type ShipmentCommandRow = {
+  shipmentId: string;
+  orderId: string;
+  customer: string;
+  tracking: string;
+  destination: string;
+  coralUnits: number;
+  pack: "none" | "heat" | "ice";
+  handoffAt: string;
+  status: "ready" | "blocked" | "held" | "in_transit" | "delayed" | "exception" | "delivered";
+  blockerIds: string[];
+};
+
+export type ShipmentCommandIssue = {
+  id: string;
+  kind: "doa" | "customer_question" | "address_change" | "weather" | "carrier_delay" | "delivery_exception" | "stalled";
+  severity: "urgent" | "watch";
+  customer: string;
+  orderId: string;
+  shipmentId: string;
+  tracking: string;
+  detectedAt: string;
+  headline: string;
+  whyBlocked: string;
+  currentValue?: string;
+  recommendation: string;
+  actions: ActionChip[];
+};
+
+export type StaffAgentTask = {
+  id: string;
+  title: string;
+  owner: string;
+  agent: string;
+  source: string;
+  detail: string;
+  checklist: string[];
+  action: ActionChip;
+};
+
 // ---------- actions ----------
 
 /** An executable action. `gated` requires an explicit human click. */
@@ -321,6 +361,12 @@ export type ComponentSpec =
       shipments: ShippingDocumentShipment[]; packingSlips: number;
       fedexLabels: number; productLabels: number; purchaseCostCents?: number;
       printNote: string; actions?: ActionChip[] }
+  | { kind: "shipment_command_board"; day: "tuesday" | "wednesday" | "thursday";
+      title: string; asOf: string; mode: "ship" | "monitor";
+      shipDate: string; carrierCutoff: string; shipments: ShipmentCommandRow[];
+      issues: ShipmentCommandIssue[] }
+  | { kind: "staff_agent_board"; title: string; asOf: string;
+      note: string; tasks: StaffAgentTask[] }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;

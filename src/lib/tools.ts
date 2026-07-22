@@ -17,6 +17,7 @@ import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
 import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
+import { tuesdayListingPlan, tuesdayShippingCommand } from "./week-workflows";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const DAY_MS = 24 * 3600_000;
@@ -587,19 +588,14 @@ export async function auctionAnnouncement(pg: Pool): Promise<ComponentSpec[]> {
   }];
 }
 
-/** Public-safe listing review artifact. It never publishes to a sales channel. */
-export function listingPlan(): ComponentSpec[] {
-  return [{
-    kind: "verdict_card",
-    verdict: "Tuesday's listing plan is staged for review. Nothing has been published.",
-    confidence: "high",
-    evidence: [
-      { label: "ReefnBid", detail: "Thursday is the target live day; the synthetic lot queue remains a draft." },
-      { label: "Shopify", detail: "New coral arrivals are prepared as draft products for review." },
-      { label: "eBay sync", detail: "Demo assumption: eBay mirrors the catalog after Shopify is updated." },
-      { label: "human check", detail: "Human staff must verify physical inventory and update Shopify directly before publish." },
-    ],
-  }];
+/** Tuesday's detailed shipping command board, including the complete manifest. */
+export function shippingCommand(): ComponentSpec[] {
+  return tuesdayShippingCommand();
+}
+
+/** Public-safe listing or inventory handoff. It never publishes or updates stock. */
+export function listingPlan(scope: "listings" | "inventory" = "listings"): ComponentSpec[] {
+  return tuesdayListingPlan(scope);
 }
 
 /** Public-safe campaign review artifact. It never sends email or SMS. */

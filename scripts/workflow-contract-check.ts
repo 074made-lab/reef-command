@@ -5,6 +5,7 @@ import { DEMO_DAYS } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
 import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
 import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
+import { tuesdayListingPlan, tuesdayShippingCommand } from "../src/lib/week-workflows";
 
 const monday = DEMO_DAYS.find((day) => day.id === "monday");
 const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
@@ -26,10 +27,44 @@ assert.doesNotMatch(monday.priorities[0].prompt ?? "", /detailed queue below/i);
 assert.match(monday.priorities[2].prompt ?? "", /packing slips.*FedEx label previews.*one product label per coral bag/i);
 assert.match(monday.priorities[2].prompt ?? "", /weather pack checks.*box sizes.*miniature examples/i);
 assert.deepEqual(monday.priorities.map((priority) => priority.time), ["08:30", "11:00", "16:30"]);
+assert.deepEqual(tuesday.priorities.map((priority) => priority.time), ["08:10", "13:00", "16:00"]);
+assert.equal(tuesday.priorities[0].label, "Clear blockers + check shipments");
+assert.match(tuesday.priorities[0].prompt ?? "", /clear-shipping-blockers.*ship-today manifest/i);
 assert.equal(tuesday.priorities[1].label, "Stage Thursday listings");
-assert.match(tuesday.priorities[1].prompt ?? "", /ReefnBid.*Shopify/i);
+assert.match(tuesday.priorities[1].prompt ?? "", /ReefnBid.*Shopify.*local-agent.*SMS/i);
 assert.equal(tuesday.priorities[2].label, "Request inventory check");
-assert.match(tuesday.priorities[2].prompt ?? "", /human inventory reminder.*Shopify/i);
+assert.match(tuesday.priorities[2].prompt ?? "", /human inventory reminder.*physical inspection.*Shopify.*eBay sync.*manual quantity/i);
+
+const tuesdayShipSpec = tuesdayShippingCommand()[0];
+assert.equal(tuesdayShipSpec.kind, "shipment_command_board");
+if (tuesdayShipSpec.kind !== "shipment_command_board") throw new Error("Tuesday shipment board missing");
+assert.equal(tuesdayShipSpec.asOf, "TUE · 08:10 ET");
+assert.equal(tuesdayShipSpec.shipments.length, 5, "Tuesday must show the complete ship-today manifest");
+assert.deepEqual(
+  new Set(tuesdayShipSpec.issues.map((issue) => issue.kind)),
+  new Set(["address_change", "doa", "customer_question", "weather"]),
+  "Tuesday must surface every requested blocker class",
+);
+const addressIssue = tuesdayShipSpec.issues.find((issue) => issue.kind === "address_change");
+assert.ok(addressIssue?.currentValue && addressIssue.recommendation);
+assert.match(addressIssue.whyBlocked, /outdated street address/i);
+assert.equal(addressIssue.actions[0]?.taskId, "update-demo-address");
+for (const shipment of tuesdayShipSpec.shipments) {
+  assert.ok(shipment.orderId && shipment.shipmentId && shipment.tracking && shipment.destination,
+    `Tuesday shipment ${shipment.shipmentId} must preserve joined operational identifiers`);
+}
+const listingSpec = tuesdayListingPlan("listings")[0];
+assert.equal(listingSpec.kind, "staff_agent_board");
+if (listingSpec.kind !== "staff_agent_board") throw new Error("Tuesday listing board missing");
+assert.equal(listingSpec.tasks.length, 2);
+assert.match(listingSpec.tasks[0]?.source ?? "", /07232026.*18 coral/i);
+assert.match(listingSpec.tasks[1]?.source ?? "", /shopify-07232026.*12 coral/i);
+assert.ok(listingSpec.tasks.every((task) => task.action.taskId === "activate-demo-listing-agent"));
+const inventorySpec = tuesdayListingPlan("inventory")[0];
+assert.equal(inventorySpec.kind, "staff_agent_board");
+if (inventorySpec.kind !== "staff_agent_board") throw new Error("Tuesday inventory board missing");
+assert.match(inventorySpec.note, /human task.*eBay mirrors Shopify.*manually verify every quantity/i);
+assert.deepEqual(inventorySpec.tasks[0]?.checklist.length, 4);
 assert.equal(wednesday.priorities[1].label, "Review auction reminder");
 assert.match(wednesday.priorities[1].prompt ?? "", /email.*SMS.*Thursday/i);
 assert.equal(friday.priorities[1].label, "Review last-call ads");
@@ -145,8 +180,10 @@ assert.doesNotMatch(routineProgressSource, /numberRef|<span ref=\{numberRef\}>/,
 const agentSource = readFileSync(new URL("../src/lib/agent-config.ts", import.meta.url), "utf8");
 assert.match(agentSource, /structured_component_required=true[\s\S]*Call the matching live tool/,
   "routine retries must require a fresh structured tool call");
-assert.match(agentSource, /Tuesday listing questions call listingPlan/,
-  "Tuesday listing routines must have a structured review tool");
+assert.match(agentSource, /Tuesday Step 1 calls shippingCommand/,
+  "Tuesday shipment routine must have a dedicated structured command tool");
+assert.match(agentSource, /Tuesday Step 2 calls listingPlan with scope=listings.*Tuesday Step 3 calls listingPlan with scope=inventory/,
+  "Tuesday listing and inventory routines must stay distinct");
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
@@ -163,6 +200,8 @@ assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
   "offline fallback must route exceptions to attention before the generic order rule");
 assert.match(routerSource, /inventory reminder\|inventory check/,
   "offline fallback must route Tuesday inventory work to the listing plan");
+assert.match(routerSource, /ship\[- \]today manifest[\s\S]*return await tuesdayShipCommand/,
+  "offline fallback must route Tuesday's manifest to the shipment command board");
 assert.match(routerSource, /announcement\|last\[ -\]call/,
   "offline fallback must route promotion routines before auction keywords");
 assert.match(routerSource, /add-on orders\? board[\s\S]*return await addOns/,
@@ -187,6 +226,10 @@ assert.match(rendererSource, /case "shipping_blocker_board"/,
   "Monday blockers must render as a dedicated three-lane board");
 assert.match(rendererSource, /case "shipping_document_board"/,
   "Monday documents must render as a printable document and packing board");
+assert.match(rendererSource, /case "shipment_command_board"/,
+  "Tuesday shipments must render a dedicated exception and manifest board");
+assert.match(rendererSource, /case "staff_agent_board"/,
+  "Tuesday listing and inventory work must render a dedicated staff-agent board");
 
 const actionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
 assert.match(actionRouteSource, /send-demo-auction-announcement/,
@@ -213,6 +256,18 @@ assert.match(actionRouteSource, /shipmentTargetDecision/,
   "purchased and held shipments must pass the immutable target guard");
 assert.match(actionRouteSource, /simulated: true[\s\S]*no external messages sent/,
   "the demo send must remain synthetic and state that boundary");
+for (const taskId of [
+  "update-demo-address",
+  "review-demo-doa-shipment",
+  "record-demo-customer-response",
+  "confirm-demo-pack-check",
+  "activate-demo-listing-agent",
+  "request-demo-inventory-check",
+]) {
+  assert.match(actionRouteSource, new RegExp(taskId), `Tuesday action ${taskId} must be wired`);
+}
+assert.match(actionRouteSource, /externalWrite: false/,
+  "Tuesday synthetic actions must explicitly record that no external write occurred");
 
 const toolSource = readFileSync(new URL("../src/lib/tools.ts", import.meta.url), "utf8");
 assert.match(toolSource, /addon\.discount_code = concat\('RC', \$3::int, '-', addon\.customer_id\)/,

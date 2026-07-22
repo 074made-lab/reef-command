@@ -81,6 +81,7 @@ type ShipAlert = {
   shipmentId: string;
   destination: string;
   protectedCostCents: number;
+  receivedAt: string;
   requestSummary: string;
 };
 
@@ -91,6 +92,7 @@ const PENDING_SHIP_ALERT: ShipAlert = {
   shipmentId: "matching prepared shipment",
   destination: "checking destination",
   protectedCostCents: 0,
+  receivedAt: "TUE · 16:00 ET",
   requestSummary: "Delivery-day change received before carrier handoff.",
 };
 
@@ -142,6 +144,7 @@ function ShipDayAlert({ alert, busy, onReview, onDismiss, onRetry }: {
             </span>
             <button type="button" onClick={onDismiss} aria-label="Dismiss ship-day alert" className="-mt-1 text-[18px] leading-none text-mute transition-colors hover:text-ink">×</button>
           </div>
+          <p className="mt-0.5 font-mono text-[10px] tracking-[0.05em] text-mute">TUE · 16:00 ET · 1 HOUR TO CARRIER HANDOFF</p>
           <h2 className="mt-0.5 text-[16px] font-semibold tracking-[-0.01em] text-ink sm:mt-1 sm:text-[17px]">
             {failed ? "Ship-day protection needs review" : done ? "Shipment protected" : "Ship-day change detected"}
           </h2>

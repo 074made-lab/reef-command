@@ -47,11 +47,11 @@ export const DEMO_DAYS: DemoDay[] = [
   },
   {
     id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Listings",
-    goal: "Ship ready boxes, stage Thursday's ReefnBid listings, and prepare new Shopify arrivals.",
+    goal: "Clear every shipment exception, release today's boxes, and stage Thursday's listings without skipping the physical inventory check.",
     priorities: [
-      { label: "Check today's shipments", time: "09:30", detail: "Confirm packing lists, labels, and weather protection before carrier handoff.", cue: "do-now", prompt: "What shipping exceptions need my attention before today's carrier handoff?" },
-      { label: "Stage Thursday listings", time: "13:00", detail: "Prepare ReefnBid lots and new Shopify arrivals for the Thursday publish target.", cue: "do-now", prompt: "Show the Tuesday listing plan for Thursday's ReefnBid lots and new Shopify arrivals." },
-      { label: "Request inventory check", time: "16:00", detail: "Ask human staff to verify stock and update Shopify before anything publishes.", cue: "human-gate", prompt: "Show the Tuesday listing plan and the human inventory reminder for Shopify." },
+      { label: "Clear blockers + check shipments", time: "08:10", detail: "Resolve DOA, customer, address, and pack issues against the complete ship-today manifest.", cue: "do-now", prompt: "Open Tuesday's clear-shipping-blockers board and complete ship-today manifest with every action." },
+      { label: "Stage Thursday listings", time: "13:00", detail: "Prepare ReefnBid lots and new Shopify arrivals for the Thursday publish target.", cue: "do-now", prompt: "Show Tuesday's ReefnBid and Shopify local-agent checklist, newest folders, and SMS activation controls." },
+      { label: "Request inventory check", time: "16:00", detail: "Ask human staff to inspect stock, update Shopify, verify eBay sync, and compare every quantity.", cue: "human-gate", prompt: "Open Tuesday's human inventory reminder for physical inspection, Shopify update, eBay sync, and manual quantity verification." },
     ],
     reminder: "Human staff update inventory in Shopify; eBay mirrors the Shopify catalog in this demo.",
   },

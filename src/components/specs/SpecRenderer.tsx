@@ -20,6 +20,8 @@ import { ReportCard } from "./ReportCard";
 import { RequestCard } from "./RequestCard";
 import { ShippingBlockerBoard } from "./ShippingBlockerBoard";
 import { ShippingDocumentBoard } from "./ShippingDocumentBoard";
+import { ShipmentCommandBoard } from "./ShipmentCommandBoard";
+import { StaffAgentBoard } from "./StaffAgentBoard";
 import { Timeseries } from "./Timeseries";
 import { VerdictCard } from "./VerdictCard";
 import { WeatherStrip } from "./WeatherStrip";
@@ -64,6 +66,10 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <LabelManifest spec={spec} />;
     case "shipping_document_board":
       return <ShippingDocumentBoard spec={spec} />;
+    case "shipment_command_board":
+      return <ShipmentCommandBoard spec={spec} />;
+    case "staff_agent_board":
+      return <StaffAgentBoard spec={spec} />;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

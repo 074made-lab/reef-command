@@ -18,6 +18,7 @@ import {
   mergeScan,
   promotionPlan,
   revenuePulse,
+  shippingCommand,
   shippingBlockerBoard,
   winnerNextSteps,
   weeklyReport,
@@ -72,6 +73,17 @@ async function documents(): Promise<ChatResponse> {
   };
 }
 
+async function tuesdayShipCommand(): Promise<ChatResponse> {
+  const components = shippingCommand();
+  const board = firstOf(components, "shipment_command_board");
+  return {
+    verdict: board
+      ? `${plural(board.shipments.length, "shipment")} are on today's manifest; clear the linked exceptions before handoff.`
+      : "Tuesday's ship-day command board is ready.",
+    components,
+  };
+}
+
 async function revenue(): Promise<ChatResponse> {
   const specs = await revenuePulse(ch);
   const m = firstOf(specs, "metric_row")?.metrics ?? [];
@@ -113,10 +125,13 @@ async function winnerHandoff(): Promise<ChatResponse> {
   };
 }
 
-async function listings(): Promise<ChatResponse> {
+async function listings(message: string): Promise<ChatResponse> {
+  const inventory = /inventory reminder|inventory check|physical inventory|update shopify/i.test(message);
   return {
-    verdict: "The Thursday listing target and Shopify inventory handoff are staged. Nothing is published.",
-    components: listingPlan(),
+    verdict: inventory
+      ? "The physical inventory handoff is ready. No Shopify or eBay quantity was changed."
+      : "The ReefnBid and Shopify local-agent tasks are staged. Nothing is published.",
+    components: listingPlan(inventory ? "inventory" : "listings"),
   };
 }
 
@@ -215,6 +230,8 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await blockers();
     if (/shipping document board|print-ready shipping|packing slips?.*fedex|product label.*coral bag/.test(q))
       return await documents();
+    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments/.test(q))
+      return await tuesdayShipCommand();
     if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
@@ -224,7 +241,7 @@ export async function routeChat(message: string): Promise<ChatResponse> {
     if (/next-auction announcement|announce next auction|email and sms recipient counts|demo send button/.test(q))
       return await announcement();
     if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
-      return await listings();
+      return await listings(q);
     if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))
       return await promotions(message);
     if (/winner.*next steps|payment.*add-on.*shipping/.test(q))

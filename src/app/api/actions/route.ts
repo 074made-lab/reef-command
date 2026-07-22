@@ -63,6 +63,53 @@ const ch = () => (chSingleton ??= chClient());
 
 type Body = { taskId?: string; payload?: Record<string, unknown> };
 
+const SAFE_DEMO_ACTIONS: Record<string, {
+  risk: "auto" | "gated";
+  payloadKey: "caseId" | "taskId";
+  allowed: string[];
+  note: Record<string, string>;
+}> = {
+  "update-demo-address": {
+    risk: "gated",
+    payloadKey: "caseId",
+    allowed: ["ADDR-TUE-01"],
+    note: { "ADDR-TUE-01": "synthetic address updated; label preview regenerated and blocker cleared" },
+  },
+  "review-demo-doa-shipment": {
+    risk: "gated",
+    payloadKey: "caseId",
+    allowed: ["DOA-TUE-02"],
+    note: { "DOA-TUE-02": "replacement SKU and refreshed packing slip confirmed in the synthetic shipment" },
+  },
+  "record-demo-customer-response": {
+    risk: "gated",
+    payloadKey: "caseId",
+    allowed: ["QUESTION-TUE-03"],
+    note: { "QUESTION-TUE-03": "simulated customer reply recorded; no external message sent" },
+  },
+  "confirm-demo-pack-check": {
+    risk: "auto",
+    payloadKey: "caseId",
+    allowed: ["WEATHER-TUE-04"],
+    note: { "WEATHER-TUE-04": "physical pack check recorded for the synthetic shipment" },
+  },
+  "activate-demo-listing-agent": {
+    risk: "auto",
+    payloadKey: "taskId",
+    allowed: ["reefbid-listings", "shopify-arrivals"],
+    note: {
+      "reefbid-listings": "simulated SMS logged for Sam; ReefnBid listing agent activated",
+      "shopify-arrivals": "simulated SMS logged for Maya; Shopify catalog agent activated",
+    },
+  },
+  "request-demo-inventory-check": {
+    risk: "auto",
+    payloadKey: "taskId",
+    allowed: ["inventory-check"],
+    note: { "inventory-check": "simulated inventory SMS logged for Morgan; physical verification remains human-owned" },
+  },
+};
+
 /** Best-effort audit of a gated approval — records the verified operator. The
  *  money action already committed via the waitpoint, so a log failure must not
  *  fail the response; it is surfaced to the server console instead. */
@@ -570,6 +617,49 @@ export async function POST(req: Request) {
       ok: true,
       note: `${alreadySent ? "already recorded" : "simulated send recorded"}: ${emailCount} email + ${smsCount} SMS · no external messages sent`,
     });
+  }
+
+  const safeDemoAction = taskId ? SAFE_DEMO_ACTIONS[taskId] : undefined;
+  if (taskId && safeDemoAction) {
+    const scope = body.payload?.[safeDemoAction.payloadKey];
+    if (typeof scope !== "string" || !safeDemoAction.allowed.includes(scope)) {
+      return NextResponse.json({ ok: false, error: "unknown synthetic action scope" }, { status: 400 });
+    }
+    const payload = {
+      [safeDemoAction.payloadKey]: scope,
+      simulated: true,
+      externalWrite: false,
+    };
+    const audit = await pgPool().query<{ id: string }>(`
+      INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
+      VALUES ($1,$2,$3::jsonb,$4,'pending_event')
+      RETURNING id`, [
+      taskId,
+      safeDemoAction.risk,
+      JSON.stringify(payload),
+      safeDemoAction.risk === "gated" ? "merchant-click" : null,
+    ]);
+    const auditId = audit.rows[0]?.id;
+    try {
+      await insertEvents(ch(), [{
+        ts: new Date().toISOString(),
+        type: "action_executed",
+        platform: "system",
+        orderId: `demo-action:${auditId}`,
+        meta: { taskId, scope, simulated: true, externalWrite: false },
+      }]);
+      await pgPool().query(
+        `UPDATE action_log SET outcome = 'ok' WHERE id = $1 AND outcome = 'pending_event'`,
+        [auditId],
+      );
+    } catch (error) {
+      await pgPool().query(
+        `UPDATE action_log SET outcome = 'error', error = $2 WHERE id = $1`,
+        [auditId, error instanceof Error ? error.message : String(error)],
+      );
+      throw error;
+    }
+    return NextResponse.json({ ok: true, note: safeDemoAction.note[scope] });
   }
 
   // Not yet wired — do not fake a success (Codex m1).
