@@ -73,13 +73,17 @@ async function documents(): Promise<ChatResponse> {
   };
 }
 
-async function tuesdayShipCommand(): Promise<ChatResponse> {
-  const components = shippingCommand();
+async function weekdayShipCommand(message: string): Promise<ChatResponse> {
+  const day = parseDemoDayContext(message) === "wednesday" ? "wednesday" : "tuesday";
+  const scope = /monitor every tuesday shipment|mominito|overnight shipment|fedex.*movement.*delivery/i.test(message)
+    ? "monitor"
+    : "ship";
+  const components = shippingCommand(day, scope);
   const board = firstOf(components, "shipment_command_board");
   return {
     verdict: board
-      ? `${plural(board.shipments.length, "shipment")} are on today's manifest; clear the linked exceptions before handoff.`
-      : "Tuesday's ship-day command board is ready.",
+      ? `${plural(board.shipments.length, "shipment")} are on the ${scope === "monitor" ? "overnight watch" : "ship-day manifest"}; clear the linked exceptions now.`
+      : "The shipment command board is ready.",
     components,
   };
 }
@@ -230,8 +234,8 @@ export async function routeChat(message: string): Promise<ChatResponse> {
       return await blockers();
     if (/shipping document board|print-ready shipping|packing slips?.*fedex|product label.*coral bag/.test(q))
       return await documents();
-    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments/.test(q))
-      return await tuesdayShipCommand();
+    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments|final regular ship[- ]day|monitor every tuesday shipment|mominito.*fedex/.test(q))
+      return await weekdayShipCommand(message);
     if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))

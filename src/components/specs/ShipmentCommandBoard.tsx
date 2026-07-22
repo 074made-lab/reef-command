@@ -15,6 +15,7 @@ const ISSUE_LABEL: Record<ShipmentCommandIssue["kind"], string> = {
   carrier_delay: "DELAY",
   delivery_exception: "EXCEPTION",
   stalled: "NO MOVEMENT",
+  packing_incomplete: "PACKING",
 };
 
 export function ShipmentCommandBoard({ spec }: { spec: ShipmentCommandSpec }) {

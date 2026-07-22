@@ -47,23 +47,23 @@ export const DEMO_DAYS: DemoDay[] = [
   },
   {
     id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Listings",
-    goal: "Clear every shipment exception, release today's boxes, and stage Thursday's listings without skipping the physical inventory check.",
+    goal: "Clear shipment exceptions, release boxes, and stage Thursday listings after inventory is checked.",
     priorities: [
-      { label: "Clear blockers + check shipments", time: "08:10", detail: "Resolve DOA, customer, address, and pack issues against the complete ship-today manifest.", cue: "do-now", prompt: "Open Tuesday's clear-shipping-blockers board and complete ship-today manifest with every action." },
+      { label: "Clear + check shipments", time: "08:10", detail: "Resolve DOA, customer, address, and pack issues against the complete ship-today manifest.", cue: "do-now", prompt: "Open Tuesday's clear-shipping-blockers board and complete ship-today manifest with every action." },
       { label: "Stage Thursday listings", time: "13:00", detail: "Prepare ReefnBid lots and new Shopify arrivals for the Thursday publish target.", cue: "do-now", prompt: "Show Tuesday's ReefnBid and Shopify local-agent checklist, newest folders, and SMS activation controls." },
       { label: "Request inventory check", time: "16:00", detail: "Ask human staff to inspect stock, update Shopify, verify eBay sync, and compare every quantity.", cue: "human-gate", prompt: "Open Tuesday's human inventory reminder for physical inspection, Shopify update, eBay sync, and manual quantity verification." },
     ],
     reminder: "Human staff update inventory in Shopify; eBay mirrors the Shopify catalog in this demo.",
   },
   {
-    id: "wednesday", phase: "announce", short: "WED", weekday: "Wednesday", time: "18:15", label: "Ship + Promotion",
-    goal: "Finish ready shipments and review Thursday auction and new-arrival reminders before approval.",
+    id: "wednesday", phase: "report", short: "WED", weekday: "Wednesday", time: "17:30", label: "Ship + Weekly Report",
+    goal: "Finish the final ship day, protect Tuesday arrivals, and review the weekly operating report.",
     priorities: [
-      { label: "Finish ready shipments", time: "09:30", detail: "Ship the remaining ready boxes and hold anything that cannot leave safely.", cue: "do-now", prompt: "What shipping exceptions need my attention before today's carrier handoff?" },
-      { label: "Review auction reminder", time: "15:00", detail: "Review the email and SMS drafts announcing Thursday's ReefnBid opening.", cue: "human-gate", prompt: "Review Wednesday's email and SMS auction reminder drafts for Thursday." },
-      { label: "Review arrivals promo", time: "18:15", detail: "Review the Shopify new-coral-arrivals promotion alongside the auction reminder.", cue: "human-gate", prompt: "Review Wednesday's Shopify new-arrivals promotion draft." },
+      { label: "Finish today's shipments", time: "09:30", detail: "Clear every blocker and complete the final regular ship-day manifest.", cue: "do-now", prompt: "Open Wednesday's final regular ship-day board with blockers, address issues, questions, DOA concerns, and unfinished orders." },
+      { label: "Monitor Tuesday shipments", time: "10:05", detail: "Escalate overnight delays, delivery exceptions, coral-health reports, and care questions.", cue: "do-now", prompt: "Monitor every Tuesday shipment, including Mominito, and show FedEx, address, movement, delivery, care, and DOA actions." },
+      { label: "Weekly reports", time: "17:30", detail: "Open the existing general weekly operational report for the completed cycle.", cue: "watch", prompt: "Open Wednesday's existing general weekly operational report; keep it distinct from Saturday auction settlement." },
     ],
-    reminder: "Email and SMS remain drafts until approval; Thursday is the ReefnBid publish target.",
+    reminder: "Overnight shipment and coral-health issues require immediate staff response.",
   },
   {
     id: "thursday", phase: "auction_live", short: "THU", weekday: "Thursday", time: "20:45", label: "Auction Opens",

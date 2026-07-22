@@ -17,7 +17,12 @@ import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
 import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
-import { tuesdayListingPlan, tuesdayShippingCommand } from "./week-workflows";
+import {
+  tuesdayListingPlan,
+  tuesdayShippingCommand,
+  wednesdayShippingCommand,
+  wednesdayTuesdayShipmentWatch,
+} from "./week-workflows";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const DAY_MS = 24 * 3600_000;
@@ -588,8 +593,14 @@ export async function auctionAnnouncement(pg: Pool): Promise<ComponentSpec[]> {
   }];
 }
 
-/** Tuesday's detailed shipping command board, including the complete manifest. */
-export function shippingCommand(): ComponentSpec[] {
+/** Detailed weekday shipping command or prior-day overnight watch. */
+export function shippingCommand(
+  day: "tuesday" | "wednesday" = "tuesday",
+  scope: "ship" | "monitor" = "ship",
+): ComponentSpec[] {
+  if (day === "wednesday") {
+    return scope === "monitor" ? wednesdayTuesdayShipmentWatch() : wednesdayShippingCommand();
+  }
   return tuesdayShippingCommand();
 }
 

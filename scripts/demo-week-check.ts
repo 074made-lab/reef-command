@@ -17,7 +17,7 @@ const expected = [
   ["sunday", "Add-ons + Announcement"],
   ["monday", "Shipping Documents"],
   ["tuesday", "Ship + Listings"],
-  ["wednesday", "Ship + Promotion"],
+  ["wednesday", "Ship + Weekly Report"],
   ["thursday", "Auction Opens"],
   ["friday", "Auction Momentum"],
   ["saturday", "Closing Night + Winners"],
@@ -44,7 +44,7 @@ for (const day of DEMO_DAYS) {
   assert.ok(day.priorities.every((priority) => priority.prompt), `${day.weekday} focus cards must all start a supported routine`);
   assert.ok(day.priorities.every((priority) => /^\d{2}:\d{2}$/.test(priority.time)), `${day.weekday} command tabs must carry stable HH:mm timestamps`);
   assert.ok(
-    day.priorities.every((priority) => /attention|exception|shipping|blocker|combine|merge|label|business|auction|report|listing|inventory|promotion|advertis|email|sms|announcement/i.test(priority.prompt ?? "")),
+    day.priorities.every((priority) => /attention|exception|shipment|shipping|blocker|combine|merge|label|business|auction|report|listing|inventory|promotion|advertis|email|sms|announcement/i.test(priority.prompt ?? "")),
     `${day.weekday} focus cards must map to a supported agent tool`,
   );
   assert.ok(day.goal.length > 40, `${day.weekday} needs a meaningful goal`);

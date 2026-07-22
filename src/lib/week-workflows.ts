@@ -241,3 +241,150 @@ export function tuesdayListingPlan(scope: "listings" | "inventory"): ComponentSp
     ],
   }];
 }
+
+const wednesdayShipments = [
+  {
+    shipmentId: "SHP-WED-201", orderId: "RNB-2902", customer: "kelp_arcade",
+    tracking: "7814 0936 3104", destination: "Richmond, VA", coralUnits: 3,
+    pack: "ice" as const, handoffAt: "WED · 16:30 ET", status: "blocked" as const,
+    blockerIds: ["ADDR-WED-01"],
+  },
+  {
+    shipmentId: "SHP-WED-207", orderId: "WEB-7416", customer: "torchkeeper",
+    tracking: "7814 0936 3278", destination: "Pittsburgh, PA", coralUnits: 2,
+    pack: "none" as const, handoffAt: "WED · 16:30 ET", status: "held" as const,
+    blockerIds: ["DOA-WED-02"],
+  },
+  {
+    shipmentId: "SHP-WED-214", orderId: "EBY-4488", customer: "currentgarden",
+    tracking: "7814 0936 3351", destination: "Boston, MA", coralUnits: 4,
+    pack: "none" as const, handoffAt: "WED · 16:30 ET", status: "blocked" as const,
+    blockerIds: ["QUESTION-WED-03"],
+  },
+  {
+    shipmentId: "SHP-WED-219", orderId: "RNB-2918", customer: "blue_tide88",
+    tracking: "7814 0936 3487", destination: "Baltimore, MD", coralUnits: 5,
+    pack: "ice" as const, handoffAt: "WED · 16:30 ET", status: "blocked" as const,
+    blockerIds: ["PACK-WED-04"],
+  },
+] satisfies Extract<ComponentSpec, { kind: "shipment_command_board" }>['shipments'];
+
+/** Wednesday's final regular ship day: every unfinished box stays visible. */
+export function wednesdayShippingCommand(): ComponentSpec[] {
+  return [{
+    kind: "shipment_command_board",
+    day: "wednesday",
+    title: "Finish today's final regular shipments",
+    asOf: "WED · 09:30 ET",
+    mode: "ship",
+    shipDate: "Wednesday · Jul 29, 2026",
+    carrierCutoff: "Final regular FedEx handoff · 16:30 ET",
+    shipments: wednesdayShipments,
+    issues: [
+      {
+        id: "ADDR-WED-01", kind: "address_change", severity: "urgent",
+        customer: "kelp_arcade", orderId: "RNB-2902", shipmentId: "SHP-WED-201",
+        tracking: "7814 0936 3104", detectedAt: "WED · 08:42 ET",
+        headline: "Apartment number is missing from the final-day label",
+        whyBlocked: "The destination is incomplete and cannot be released on the last regular ship day.",
+        currentValue: "401 River St, Richmond, VA 23219",
+        recommendation: "Confirm Apt 6C, refresh the label preview, and return the box to the handoff queue.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Confirm address + refresh", payload: { issueId: "ADDR-WED-01" }, risk: "gated" }],
+      },
+      {
+        id: "DOA-WED-02", kind: "doa", severity: "urgent",
+        customer: "torchkeeper", orderId: "WEB-7416", shipmentId: "SHP-WED-207",
+        tracking: "7814 0936 3278", detectedAt: "WED · 08:51 ET",
+        headline: "Replacement coral must be confirmed before the final handoff",
+        whyBlocked: "The approved replacement is on the order, but the bag label is not yet checked against the packing slip.",
+        recommendation: "Confirm the replacement bag and packing-slip line, then release the shipment.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Confirm replacement pack", payload: { issueId: "DOA-WED-02" }, risk: "gated" }],
+      },
+      {
+        id: "QUESTION-WED-03", kind: "customer_question", severity: "urgent",
+        customer: "currentgarden", orderId: "EBY-4488", shipmentId: "SHP-WED-214",
+        tracking: "7814 0936 3351", detectedAt: "WED · 09:04 ET",
+        headline: "Customer needs the verified Thursday delivery window",
+        whyBlocked: "The customer asked for confirmation before release and the response has not been recorded.",
+        recommendation: "Review the overnight delivery facts and record the simulated response before handoff.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Record delivery answer", payload: { issueId: "QUESTION-WED-03" }, risk: "gated" }],
+      },
+      {
+        id: "PACK-WED-04", kind: "packing_incomplete", severity: "urgent",
+        customer: "blue_tide88", orderId: "RNB-2918", shipmentId: "SHP-WED-219",
+        tracking: "7814 0936 3487", detectedAt: "WED · 09:12 ET",
+        headline: "One final-day box still needs its coral count completed",
+        whyBlocked: "Five coral bags are expected, but only four are checked on the final packing pass.",
+        recommendation: "Complete the fifth bag check and verify the ice pack before carrier release.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Complete final pack", payload: { issueId: "PACK-WED-04" }, risk: "gated" }],
+      },
+    ],
+  }];
+}
+
+/** Wednesday watches every Tuesday box and escalates overnight risk immediately. */
+export function wednesdayTuesdayShipmentWatch(): ComponentSpec[] {
+  return [{
+    kind: "shipment_command_board",
+    day: "wednesday",
+    title: "Monitor Tuesday's overnight shipments",
+    asOf: "WED · 10:05 ET",
+    mode: "monitor",
+    shipDate: "Shipped Tuesday · Jul 28, 2026",
+    carrierCutoff: "Overnight health response · immediate",
+    shipments: [
+      { ...tuesdayShipments[0], status: "exception", blockerIds: ["EXC-WED-11"] },
+      { ...tuesdayShipments[1], status: "delayed", blockerIds: ["DELAY-WED-12"] },
+      { ...tuesdayShipments[2], status: "delivered", blockerIds: ["CARE-WED-13"] },
+      { ...tuesdayShipments[3], status: "delayed", blockerIds: ["STALL-WED-14"] },
+      { ...tuesdayShipments[4], status: "delivered", blockerIds: ["DOA-WED-15"] },
+    ],
+    issues: [
+      {
+        id: "EXC-WED-11", kind: "delivery_exception", severity: "urgent",
+        customer: "lagoon_riley", orderId: "RNB-2841", shipmentId: "SHP-TUE-104",
+        tracking: "7814 0936 2251", detectedAt: "WED · 09:18 ET",
+        headline: "Carrier needs the corrected apartment address confirmed",
+        whyBlocked: "The package is at the destination station but the corrected unit must be reconfirmed before delivery.",
+        recommendation: "Confirm the corrected address with the carrier and record the delivery-exception follow-up.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Confirm carrier correction", payload: { issueId: "EXC-WED-11" }, risk: "gated" }],
+      },
+      {
+        id: "DELAY-WED-12", kind: "carrier_delay", severity: "urgent",
+        customer: "mominito", orderId: "WEB-7318", shipmentId: "SHP-TUE-109",
+        tracking: "7814 0936 2384", detectedAt: "WED · 09:26 ET",
+        headline: "Mominito's overnight box missed the destination sort",
+        whyBlocked: "FedEx now shows a delay beyond the planned Wednesday delivery window for a live-coral shipment.",
+        recommendation: "Remind the owner to contact FedEx now, then record the escalation for this exact tracking number.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Remind owner · contact FedEx", payload: { issueId: "DELAY-WED-12" }, risk: "gated" }],
+      },
+      {
+        id: "CARE-WED-13", kind: "customer_question", severity: "urgent",
+        customer: "reef_roamer", orderId: "RNB-2857", shipmentId: "SHP-TUE-112",
+        tracking: "7814 0936 2417", detectedAt: "WED · 09:41 ET",
+        headline: "Delivered coral looks stressed; customer asks what to do now",
+        whyBlocked: "A post-delivery health question needs an immediate, traceable response while the coral is still acclimating.",
+        recommendation: "Send the prepared gentle-flow, stable-temperature recovery guidance and ask the customer to keep monitoring.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Send recovery guidance", payload: { issueId: "CARE-WED-13" }, risk: "gated" }],
+      },
+      {
+        id: "STALL-WED-14", kind: "stalled", severity: "urgent",
+        customer: "bluepolyp", orderId: "EBY-4412", shipmentId: "SHP-TUE-118",
+        tracking: "7814 0936 2599", detectedAt: "WED · 09:49 ET",
+        headline: "Package has not moved since the Tuesday origin scan",
+        whyBlocked: "No new carrier event has appeared during the overnight window, so delivery risk is increasing.",
+        recommendation: "Remind the owner to contact FedEx and record a no-movement escalation immediately.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Escalate no movement", payload: { issueId: "STALL-WED-14" }, risk: "gated" }],
+      },
+      {
+        id: "DOA-WED-15", kind: "doa", severity: "urgent",
+        customer: "tideglass", orderId: "WEB-7340", shipmentId: "SHP-TUE-121",
+        tracking: "7814 0936 2632", detectedAt: "WED · 09:57 ET",
+        headline: "Customer reports one delivered coral is not doing well",
+        whyBlocked: "The live-animal health report arrived minutes after delivery and needs immediate care and claim guidance.",
+        recommendation: "Respond now with stabilization guidance, preserve the order and delivery evidence, and direct the customer to /shop/doa-claim.",
+        actions: [{ taskId: "resolve-demo-weekday-shipping", label: "Send care + DOA path", payload: { issueId: "DOA-WED-15" }, risk: "gated" }],
+      },
+    ],
+  }];
+}

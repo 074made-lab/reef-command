@@ -5,7 +5,12 @@ import { DEMO_DAYS } from "../src/lib/demo-clock";
 import { DEMO_DOA_REVIEW } from "../src/lib/doa-demo";
 import { routeShopQuestion, SHOP_COMBINE_ANSWER } from "../src/lib/shop-authority";
 import { nextAuctionAnnouncementMeta } from "../src/lib/tools";
-import { tuesdayListingPlan, tuesdayShippingCommand } from "../src/lib/week-workflows";
+import {
+  tuesdayListingPlan,
+  tuesdayShippingCommand,
+  wednesdayShippingCommand,
+  wednesdayTuesdayShipmentWatch,
+} from "../src/lib/week-workflows";
 
 const monday = DEMO_DAYS.find((day) => day.id === "monday");
 const tuesday = DEMO_DAYS.find((day) => day.id === "tuesday");
@@ -28,7 +33,7 @@ assert.match(monday.priorities[2].prompt ?? "", /packing slips.*FedEx label prev
 assert.match(monday.priorities[2].prompt ?? "", /weather pack checks.*box sizes.*miniature examples/i);
 assert.deepEqual(monday.priorities.map((priority) => priority.time), ["08:30", "11:00", "16:30"]);
 assert.deepEqual(tuesday.priorities.map((priority) => priority.time), ["08:10", "13:00", "16:00"]);
-assert.equal(tuesday.priorities[0].label, "Clear blockers + check shipments");
+assert.equal(tuesday.priorities[0].label, "Clear + check shipments");
 assert.match(tuesday.priorities[0].prompt ?? "", /clear-shipping-blockers.*ship-today manifest/i);
 assert.equal(tuesday.priorities[1].label, "Stage Thursday listings");
 assert.match(tuesday.priorities[1].prompt ?? "", /ReefnBid.*Shopify.*local-agent.*SMS/i);
@@ -65,8 +70,43 @@ assert.equal(inventorySpec.kind, "staff_agent_board");
 if (inventorySpec.kind !== "staff_agent_board") throw new Error("Tuesday inventory board missing");
 assert.match(inventorySpec.note, /human task.*eBay mirrors Shopify.*manually verify every quantity/i);
 assert.deepEqual(inventorySpec.tasks[0]?.checklist.length, 4);
-assert.equal(wednesday.priorities[1].label, "Review auction reminder");
-assert.match(wednesday.priorities[1].prompt ?? "", /email.*SMS.*Thursday/i);
+assert.deepEqual(
+  wednesday.priorities.map((priority) => priority.label),
+  ["Finish today's shipments", "Monitor Tuesday shipments", "Weekly reports"],
+);
+assert.deepEqual(wednesday.priorities.map((priority) => priority.time), ["09:30", "10:05", "17:30"]);
+const wednesdayShipSpec = wednesdayShippingCommand()[0];
+assert.equal(wednesdayShipSpec.kind, "shipment_command_board");
+if (wednesdayShipSpec.kind !== "shipment_command_board") throw new Error("Wednesday ship board missing");
+assert.equal(wednesdayShipSpec.shipments.length, 4);
+assert.equal(wednesdayShipSpec.issues.length, 4);
+assert.ok(wednesdayShipSpec.issues.some((issue) => issue.kind === "packing_incomplete"));
+assert.ok(wednesdayShipSpec.shipments.every((shipment) => shipment.handoffAt === "WED · 16:30 ET"));
+const tuesdayWatchSpec = wednesdayTuesdayShipmentWatch()[0];
+assert.equal(tuesdayWatchSpec.kind, "shipment_command_board");
+if (tuesdayWatchSpec.kind !== "shipment_command_board") throw new Error("Tuesday overnight watch missing");
+assert.equal(tuesdayWatchSpec.asOf, "WED · 10:05 ET");
+assert.equal(tuesdayWatchSpec.shipments.length, 5, "Wednesday must monitor every Tuesday shipment");
+assert.ok(tuesdayWatchSpec.shipments.some((shipment) => shipment.customer === "mominito"));
+assert.deepEqual(
+  new Set(tuesdayWatchSpec.issues.map((issue) => issue.kind)),
+  new Set(["delivery_exception", "carrier_delay", "customer_question", "stalled", "doa"]),
+);
+const mominitoDelay = tuesdayWatchSpec.issues.find((issue) => issue.customer === "mominito");
+assert.match(mominitoDelay?.recommendation ?? "", /owner.*contact FedEx/i);
+const coralHealth = tuesdayWatchSpec.issues.find((issue) => issue.kind === "doa");
+assert.match(coralHealth?.recommendation ?? "", /stabilization guidance.*\/shop\/doa-claim/i);
+for (const issue of tuesdayWatchSpec.issues) {
+  const joinedShipment: (typeof tuesdayWatchSpec.shipments)[number] | undefined =
+    tuesdayWatchSpec.shipments.find((row) => row.shipmentId === issue.shipmentId);
+  assert.ok(joinedShipment, `Wednesday watch issue ${issue.id} must join to a shipment`);
+  assert.equal(joinedShipment.orderId, issue.orderId);
+  assert.equal(joinedShipment.customer, issue.customer);
+  assert.equal(joinedShipment.tracking, issue.tracking);
+}
+assert.match(wednesday.priorities[2].prompt ?? "", /existing general weekly operational report.*distinct.*Saturday auction settlement/i);
+const readmeSource = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+assert.match(readmeSource, /Because live corals are shipped overnight, shipment delays and post-delivery\s+problems are highly time-sensitive\. The system must identify and escalate these\s+issues quickly so staff can respond before coral health deteriorates further\./);
 assert.equal(friday.priorities[1].label, "Review last-call ads");
 assert.match(friday.priorities[1].prompt ?? "", /last-call advertisement/i);
 assert.equal(sunday.priorities[0].label, "Watch add-on orders");
@@ -184,6 +224,8 @@ assert.match(agentSource, /Tuesday Step 1 calls shippingCommand/,
   "Tuesday shipment routine must have a dedicated structured command tool");
 assert.match(agentSource, /Tuesday Step 2 calls listingPlan with scope=listings.*Tuesday Step 3 calls listingPlan with scope=inventory/,
   "Tuesday listing and inventory routines must stay distinct");
+assert.match(agentSource, /Wednesday Step 1 calls shippingCommand with day=wednesday and scope=ship.*Wednesday Step 2 calls shippingCommand with day=wednesday and scope=monitor.*Wednesday Step 3 calls the existing weeklyReport tool/,
+  "Wednesday's ship, overnight watch, and report routines must stay distinct");
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
@@ -200,8 +242,8 @@ assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
   "offline fallback must route exceptions to attention before the generic order rule");
 assert.match(routerSource, /inventory reminder\|inventory check/,
   "offline fallback must route Tuesday inventory work to the listing plan");
-assert.match(routerSource, /ship\[- \]today manifest[\s\S]*return await tuesdayShipCommand/,
-  "offline fallback must route Tuesday's manifest to the shipment command board");
+assert.match(routerSource, /ship\[- \]today manifest[\s\S]*monitor every tuesday shipment[\s\S]*return await weekdayShipCommand/,
+  "offline fallback must route Tuesday and Wednesday shipping routines to the shipment command board");
 assert.match(routerSource, /announcement\|last\[ -\]call/,
   "offline fallback must route promotion routines before auction keywords");
 assert.match(routerSource, /add-on orders\? board[\s\S]*return await addOns/,
@@ -338,7 +380,7 @@ assert.doesNotMatch(generatorSource, /addon \? 2 : 0/,
 console.log("✓ Monday prepares shipping documents; exception routing opens attention, not a manifest");
 console.log("✓ Tuesday ships, stages listings, and requests the human Shopify inventory check");
 console.log("✓ Sunday reconciles ReefnBid anchors, add-on totals, Merge all, and the announcement package");
-console.log("✓ Wednesday and Friday promotion work stays review-only");
+console.log("✓ Wednesday closes final-day shipments, watches overnight health risk, and reuses the operational report");
 console.log("✓ DOA approval closes 3 replacements into tomorrow's updated shipment");
 console.log("✓ Customer reply remains a draft and is never auto-sent");
 console.log("✓ Concierge answers the supported combine FAQ; DOA and human handoff stay explicit");

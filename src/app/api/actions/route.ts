@@ -65,7 +65,7 @@ type Body = { taskId?: string; payload?: Record<string, unknown> };
 
 const SAFE_DEMO_ACTIONS: Record<string, {
   risk: "auto" | "gated";
-  payloadKey: "caseId" | "taskId";
+  payloadKey: "caseId" | "taskId" | "issueId";
   allowed: string[];
   note: Record<string, string>;
 }> = {
@@ -92,6 +92,25 @@ const SAFE_DEMO_ACTIONS: Record<string, {
     payloadKey: "caseId",
     allowed: ["WEATHER-TUE-04"],
     note: { "WEATHER-TUE-04": "physical pack check recorded for the synthetic shipment" },
+  },
+  "resolve-demo-weekday-shipping": {
+    risk: "gated",
+    payloadKey: "issueId",
+    allowed: [
+      "ADDR-WED-01", "DOA-WED-02", "QUESTION-WED-03", "PACK-WED-04",
+      "EXC-WED-11", "DELAY-WED-12", "CARE-WED-13", "STALL-WED-14", "DOA-WED-15",
+    ],
+    note: {
+      "ADDR-WED-01": "synthetic Wednesday address confirmed and label preview refreshed",
+      "DOA-WED-02": "replacement bag and packing slip confirmed for the final ship-day box",
+      "QUESTION-WED-03": "simulated delivery-window response recorded; no external message sent",
+      "PACK-WED-04": "fifth coral bag and ice-pack check recorded",
+      "EXC-WED-11": "carrier address correction and delivery-exception follow-up recorded",
+      "DELAY-WED-12": "owner reminder to contact FedEx recorded for Mominito's delayed overnight box",
+      "CARE-WED-13": "simulated coral recovery guidance recorded; no external message sent",
+      "STALL-WED-14": "owner reminder and no-movement carrier escalation recorded",
+      "DOA-WED-15": "immediate care guidance and DOA claim path recorded; no external message sent",
+    },
   },
   "activate-demo-listing-agent": {
     risk: "auto",

@@ -55,7 +55,7 @@ timing, thresholds, and decision rules are invented fixtures.
 | Sunday | Add-ons + Announcement | Open the add-on order board, combine eligible orders, review and approve the next-auction email/SMS package |
 | Monday | Shipping Documents | Clear shipping blockers, combine eligible orders, prepare shipping docs |
 | Tuesday | Ship + Listings | Check today's shipments, stage Thursday listings, request the human Shopify inventory check |
-| Wednesday | Ship + Promotion | Finish ready shipments, review the auction reminder, review the new-arrivals promotion |
+| Wednesday | Ship + Weekly Report | Finish today's shipments, monitor Tuesday's overnight shipments, open the weekly operational report |
 | Thursday | Auction Opens | Check the live auction, verify the opening status, answer buyer questions |
 | Friday | Auction Momentum | Check bid movement, review last-call ads, clear buyer questions |
 | Saturday | Closing Night + Winners | Confirm final results, review winner next steps, watch add-on orders |
@@ -67,8 +67,11 @@ Wednesday, Friday, and Sunday campaign work remains a reviewable draft until a
 human approves it; the public demo never claims an external listing or message
 was actually published or sent.
 
-Live-animal fulfillment is time-sensitive: a missed customer change can become
-wasted packing work, an avoidable carrier charge, or an incorrect shipment.
+Because live corals are shipped overnight, shipment delays and post-delivery
+problems are highly time-sensitive. The system must identify and escalate these
+issues quickly so staff can respond before coral health deteriorates further.
+A missed customer change can also become wasted packing work, an avoidable
+carrier charge, or an incorrect shipment.
 Reef Command demonstrates how a multi-channel merchant can automate, visualize,
 audit, and **gate** that coordination without publishing TIA Coral's methods.
 

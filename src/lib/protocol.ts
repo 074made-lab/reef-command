@@ -284,7 +284,7 @@ export type ShipmentCommandRow = {
 
 export type ShipmentCommandIssue = {
   id: string;
-  kind: "doa" | "customer_question" | "address_change" | "weather" | "carrier_delay" | "delivery_exception" | "stalled";
+  kind: "doa" | "customer_question" | "address_change" | "weather" | "carrier_delay" | "delivery_exception" | "stalled" | "packing_incomplete";
   severity: "urgent" | "watch";
   customer: string;
   orderId: string;
