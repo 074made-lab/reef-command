@@ -1,7 +1,7 @@
 /**
  * The agent brain, portable and orchestration-agnostic.
  *
- * Model id, system prompt, and the typed tool set — the five live-store reads
+ * Model id, system prompt, and the typed tool set — the 19 live-store reads
  * from `lib/tools.ts` wrapped as AI-SDK tools returning ComponentSpec[]. The
  * Trigger.dev `chat.agent()` (`trigger/reef-chat.ts`) imports these; so does
  * the headless `scripts/agent-check.ts` harness. Nothing here depends on

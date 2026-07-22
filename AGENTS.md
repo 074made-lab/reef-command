@@ -32,7 +32,7 @@ thresholds, and decision rules are invented fixtures.
 ## The two required tools, mapped to code
 
 **ClickHouse — the primary database (OLAP).** ~1.9M synthetic events; analytics
-behind every component.
+behind the live components (a few weekday boards are static synthetic fixtures).
 - Client + insert/query: `src/lib/store/clickhouse.ts`
 - Schema: `db/clickhouse/0001_events.sql` (events table + **2 materialized views**)
 - `windowFunnel` (auction→code→add-on conversion in one query) and the WoW/MoM
@@ -63,7 +63,7 @@ These make **zero external calls** (safe in a network-sandboxed environment):
 npm install
 npx tsc --noEmit                              # whole repo typechecks
 npm run build                                 # production build (pages don't hit a store at build)
-npx tsx scripts/labelday-recovery-check.ts    # 4/4 — fault-injected recovery/idempotency of the label write loop
+npx tsx scripts/labelday-recovery-check.ts    # 5/5 — fault-injected recovery/idempotency of the label write loop
 npx tsx scripts/owner-auth-check.ts           # 12/12 — gated-action auth crypto (sign/verify/tamper/expiry/fail-closed)
 npx tsx scripts/routine-progress-check.ts     # task progress math + safe refresh recovery
 npx tsx scripts/workflow-contract-check.ts    # synthetic MON/TUE + DOA contracts
@@ -75,7 +75,7 @@ them, read the assertions in each file to confirm the logic:
 ```bash
 npx tsx scripts/agent-check.ts     # 10 asserting probes: LLM → correct tool → LIVE data + the money/fabrication refusals
 npx tsx scripts/doa-resolution-check.ts # rollback-safe DOA integration; Postgres only, no CH writes
-npx tsx scripts/ship-day-exception-check.ts # rollback-safe stale-selection + replay integration
+npx tsx scripts/ship-day-exception-check.ts # rollback-safe fixture-staging + replay integration
 npx tsx scripts/ch-verify.ts       # the ClickHouse demo queries (revenue, auction top-N, windowFunnel)
 npx tsx scripts/report-check.ts    # weekly report: platform mix, WoW/MoM, sparklines
 npx tsx scripts/tools-check.ts     # the read tools vs both live stores
@@ -119,7 +119,7 @@ words ratio is a tested behavior, not a design note.
 **Technical Implementation (20% — would this work in production?).** The
 money-moving loop is recoverable-idempotent with an ordered state machine and a
 fault-injection gate (`src/lib/label-day.ts` + `scripts/labelday-recovery-check.ts`,
-4/4 offline). The gated action sits behind fail-closed HMAC owner auth
+5/5 offline). The gated action sits behind fail-closed HMAC owner auth
 (`src/lib/owner-auth.ts` + `scripts/owner-auth-check.ts`, 12/12 offline). The
 DOA state machine is verified under rollback (`scripts/doa-resolution-check.ts`).
 The LLM layer has an asserting behavior gate — wrong tool, fabricated figure,
@@ -163,7 +163,7 @@ requests from Postgres).
 
 | To understand… | Read |
 |---|---|
-| The agent brain (model, system prompt, the 5 tools) — orchestration-agnostic | `src/lib/agent-config.ts` |
+| The agent brain (model, system prompt, the 19 read tools) — orchestration-agnostic | `src/lib/agent-config.ts` |
 | The read tools that return components (incl. the day-aware auction board) | `src/lib/tools.ts` |
 | The "answers are components" protocol + renderers | `src/lib/protocol.ts`, `src/components/specs/` |
 | The OLTP+OLAP write loop (the bonus category) | `src/lib/label-day.ts` (logic) + `src/trigger/label-day.ts` (durable task) |
@@ -196,6 +196,13 @@ We would rather tell you than have you "catch" us:
 - **`REEF_OWNER_TOKEN`** is a local passphrase the operator chooses — **not an
   API key, not tied to TIA, never shipped in this repo.** It gates only the
   synthetic Approve action; the read-only cockpit needs none of it.
+- The `POST /api/demo/ship-day-exception` route is deliberately
+  unauthenticated: it plays the *inbound customer event* that starts the
+  autonomous task. It can only stage the isolated synthetic Tuesday fixture —
+  never money, never a live shipment.
+- `/api/chat` is a deterministic keyword-router **fallback** kept from before
+  the LLM wiring landed. The `/merchant` cockpit never uses it — every real
+  chat turn runs through the Trigger.dev `chat.agent()` worker.
 
 ## Integrity / provenance
 

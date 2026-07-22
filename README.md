@@ -260,18 +260,19 @@ Run `npx tsx scripts/warmup.ts` once before evaluation to warm the queries.
 
 ### See it work without a browser (fastest verification)
 
-Every check runs against the **live** stores and prints real output:
+Most checks run against the **live** stores (four are offline-hermetic) and
+print real output:
 
 ```bash
 npx tsx scripts/agent-check.ts            # LLM → correct tool → live data + refusal guardrails
 npx tsx scripts/report-check.ts           # weekly report: platform mix, WoW/MoM, sparklines
-npx tsx scripts/labelday-check.ts         # the MON label manifest (read-only; no purchase)
+npx tsx scripts/labelday-check.ts         # ASSERTING chronology gate on the MON manifest (no purchase)
 npx tsx scripts/labelday-recovery-check.ts # fault-injected label recovery/idempotency (no network)
 npx tsx scripts/owner-auth-check.ts       # owner-session sign/verify/expiry (no network)
 npx tsx scripts/workflow-contract-check.ts # synthetic workflow contracts (no network)
 npx tsx scripts/doa-resolution-check.ts   # rollback-safe DOA writes; needs Postgres only
-npx tsx scripts/ship-day-exception-check.ts # rollback-safe stale-selection + replay gate
-npx tsx scripts/tools-check.ts            # all five tools vs both stores
+npx tsx scripts/ship-day-exception-check.ts # rollback-safe fixture-staging + replay gate
+npx tsx scripts/tools-check.ts            # 5 core tools vs both live stores
 npx tsx scripts/ch-verify.ts              # the ClickHouse demo queries
 npx tsc --noEmit && npm run build         # types + production build
 ```
@@ -286,7 +287,7 @@ data and does not write.
 ```
 Next.js chat UI (/merchant, /shop)
    │  ComponentSpec JSON  ·  run-metadata polling
-Trigger.dev  chat.agent()  ──tools──►  five live-store reads → components
+Trigger.dev  chat.agent()  ──tools──►  19 typed store reads → components
              label-day task (waitpoint → approve → buy)
              scheduled live tick
         ┌───────────────────────────────────────────────┐
