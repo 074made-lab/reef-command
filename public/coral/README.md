@@ -1,9 +1,9 @@
 # Public coral imagery
 
 These images are public TIA Collection Corals product and homepage assets used
-with owner authorization for the Reef Command hackathon demo. They provide
+with owner authorization for the CoralSeller hackathon demo. They provide
 visual context only. Every price, ranking, bid, customer, and operational claim
-inside Reef Command remains synthetic.
+inside CoralSeller remains synthetic.
 
 Sources retrieved 2026-07-21:
 

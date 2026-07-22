@@ -47,7 +47,7 @@ async function batchInsert(
 }
 
 /**
- * Restore the complete synthetic operational world used by Reef Command.
+ * Restore the complete synthetic operational world used by CoralSeller.
  * The reset is transactional and serialised so a failed or double-clicked reset
  * can never leave the demo half seeded.
  */

@@ -1,4 +1,4 @@
--- Reef Command — OLAP side (ClickHouse Cloud).
+-- CoralSeller — OLAP side (ClickHouse Cloud).
 -- One append-only event stream powers every visual. Postgres holds truth;
 -- every consequential write there emits an event here. Full history is
 -- retained (columnar compression makes it cheap), so any past week's report

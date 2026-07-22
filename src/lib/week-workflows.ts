@@ -1,5 +1,5 @@
 /**
- * Public-safe weekday fixtures for Reef Command's compressed demo week.
+ * Public-safe weekday fixtures for CoralSeller's compressed demo week.
  *
  * Every identity, order, tracking number, amount, folder, timestamp, and
  * decision rule here is synthetic. These fixtures prove the component and

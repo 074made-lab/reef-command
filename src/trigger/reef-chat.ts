@@ -1,5 +1,5 @@
 /**
- * Reef Command chat agent — the LLM brain as a durable Trigger.dev task.
+ * CoralSeller chat agent — the LLM brain as a durable Trigger.dev task.
  *
  * A `chat.agent()` running Claude (Sonnet) via the Vercel AI SDK, driven from
  * the frontend by `useTriggerChatTransport`. The read/review tools + model +

@@ -1,4 +1,4 @@
-# Reef Command — Design (v3)
+# CoralSeller — Design (v3)
 
 > **Status:** Public-safe implementation guide, updated 2026-07-21. It records
 > only behavior shipped in the public synthetic build. Production TIA Coral identity,
@@ -11,7 +11,7 @@
 
 ## 0. What this is
 
-**One week of a live-coral e-commerce business, run from one chat window.**
+**Daily AI Assistant for Multi-Channel Coral Businesses**
 
 The domain is inspired by
 **[TIA Coral, a Long Island live coral store](https://www.tiacoral.com/)**.
@@ -46,7 +46,7 @@ an interactive component in the conversation; every consequential action is a
 chip on a card. Chat is the frame, components are the answers — the hackathon
 theme, applied to a real operating rhythm.
 
-The product goal is larger than the public build. Reef Command is intended to
+The product goal is larger than the public build. CoralSeller is intended to
 become a mobile-first, role-protected operating surface shared by store owners,
 managers, packing staff, and customer-support staff. ClickHouse supplies the
 shared operational picture; Trigger.dev supplies durable coordination and

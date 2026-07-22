@@ -1,4 +1,4 @@
--- Reef Command — OLTP truth (ClickHouse-managed Postgres).
+-- CoralSeller — OLTP truth (ClickHouse-managed Postgres).
 -- Transactional state lives here; every consequential write also emits an
 -- event to ClickHouse (db/clickhouse/0001_events.sql) so analytics stays live.
 -- Naming mirrors the owner's home CRM schema so migration is a seam swap.

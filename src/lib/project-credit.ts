@@ -1,5 +1,5 @@
 /**
- * Reef Command was authored by Xin Lin.
+ * CoralSeller was authored by Xin Lin.
  * GitHub: https://github.com/074made-lab
  */
 export const PROJECT_AUTHOR = "Xin Lin";

@@ -55,7 +55,7 @@ export default function Home() {
         />
         <Wordmark size="lg" />
         <p className="mt-5 max-w-xl text-[17px] font-medium leading-relaxed tracking-[-0.01em] text-ink drop-shadow-[0_2px_12px_rgba(2,10,14,.95)] sm:text-[19px]">
-          One week of a coral business, run from one chat window.
+          Daily AI Assistant for Multi-Channel Coral Businesses
         </p>
         <p className="mt-2 font-mono text-[12px] tracking-[0.24em] text-coral uppercase">
           watched over by teddy · happy reefing
