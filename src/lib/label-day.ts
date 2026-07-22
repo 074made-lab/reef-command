@@ -162,7 +162,10 @@ function compileManifest(rows: Row[], wi: number, weekLabel: string): Manifest {
 }
 
 /** Read-only document view: reuse active current-week shipments, then fold
- * remaining unlinked orders into the customer's mutable planned shipment. */
+ * remaining unlinked orders into the customer's mutable planned shipment.
+ * Shipment-linked groups (the Sunday-merged combined boxes) lead the bounded
+ * board — newest singles fill the rest — so the merge story visibly reaches
+ * Monday instead of being displaced by later organic orders. */
 export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest> {
   const wi = DEMO_AUCTION_WEEK_INDEX;
   const weekLabel = `W${wi}`;
@@ -210,7 +213,7 @@ export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest>
     LEFT JOIN order_items oi ON oi.order_id = document_orders.id
     LEFT JOIN shipments ON shipments.id = document_orders.document_shipment_id
     GROUP BY c.id, document_orders.document_group_key
-    ORDER BY max(document_orders.ordered_at) DESC
+    ORDER BY (max(shipments.shipment_code) IS NULL), max(document_orders.ordered_at) DESC
     LIMIT 12`, [weekLabel, DEMO_CYCLE_END_ISO]);
 
   return compileManifest(res.rows, wi, weekLabel);
