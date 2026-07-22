@@ -198,7 +198,7 @@ export const reefTools = {
   }),
   shippingDocuments: tool({
     description:
-      "Call this only for Monday Step 3, 'Prepare shipping docs'. It renders print-ready packing slips, synthetic FedEx label previews, one product label per coral bag, weather ice/heat-pack checks, box sizes and weights, with miniature examples. It never purchases a carrier label.",
+      "Call this only for Monday Step 3, 'Prepare shipping docs'. It renders print-ready packing slips, synthetic FedEx label previews, one product label per coral bag, weather ice/heat-pack checks, box sizes and weights, with miniature examples. The board includes a separate owner-gated purchase button; rendering the board alone never purchases a label.",
     inputSchema: z.object({}),
     execute: async () => buildShippingDocumentBoard(pg()),
     toModelOutput: (output) => asText(summarize(output)),

@@ -3,8 +3,10 @@
  * 501 (a judge's click demonstrates the honest boundary, not a fake success —
  * Codex m1). The store never executes anything money-moving here.
  *
- * approve-label-batch → completes the paused label-day run's waitpoint, which
- * resumes the durable task and purchases the labels (Postgres + ClickHouse). The
+ * approve-label-batch → completes an already-paused label-day run's waitpoint.
+ * purchase-shipping-labels → validates the exact Monday document snapshot,
+ * starts the durable label-day task, and uses the owner's click to complete its
+ * waitpoint. Both resume the same Postgres + ClickHouse purchase workflow. The
  * approval is validated (R2-M4): the run must be a label-day run that is actually
  * awaiting approval, and the token completion must succeed. It is also owner-only
  * and fail-closed (R3-P1): requireOwner() rejects any caller without a valid
@@ -28,6 +30,11 @@ import type { PoolClient } from "pg";
 import { wait, runs } from "@trigger.dev/sdk";
 import { requireOwner, OwnerAuthError } from "@/lib/owner-auth";
 import {
+  buildShippingDocumentManifest,
+  selectShippingLabelPurchase,
+  type ShippingLabelPurchaseSnapshot,
+} from "@/lib/label-day";
+import {
   anchorShipmentCode,
   mergeCode,
   mergeCodeForOrders,
@@ -47,6 +54,7 @@ import {
   currentWeekIndex,
   nextAuctionAnnouncementMeta,
 } from "@/lib/tools";
+import { labelDay } from "@/trigger/label-day";
 
 let chSingleton: ClickHouseClient | undefined;
 const ch = () => (chSingleton ??= chClient());
@@ -56,15 +64,41 @@ type Body = { taskId?: string; payload?: Record<string, unknown> };
 /** Best-effort audit of a gated approval — records the verified operator. The
  *  money action already committed via the waitpoint, so a log failure must not
  *  fail the response; it is surfaced to the server console instead. */
-async function auditApproval(operator: string, runId: string) {
+async function auditApproval(operator: string, runId: string, taskId = "approve-label-batch") {
   try {
     await pgPool().query(
       `INSERT INTO action_log (task_id, risk, payload, approved_by, outcome)
-       VALUES ('approve-label-batch','gated',$1,$2,'ok')`,
-      [JSON.stringify({ runId }), operator],
+       VALUES ($1,'gated',$2,$3,'ok')`,
+      [taskId, JSON.stringify({ runId }), operator],
     );
   } catch (e) {
-    console.error("action_log audit insert failed for approve-label-batch:", e);
+    console.error(`action_log audit insert failed for ${taskId}:`, e);
+  }
+}
+
+async function completeLabelRunApproval(runId: string, operator: string) {
+  let tokenId: string | undefined;
+  let status: string | undefined;
+  let taskIdentifier: string | undefined;
+  for (let i = 0; i < 20 && !tokenId; i++) {
+    const run = await runs.retrieve(runId);
+    taskIdentifier = run.taskIdentifier;
+    status = run.metadata?.status as string | undefined;
+    tokenId = (run.metadata?.approvalTokenId as string | undefined) ?? undefined;
+    if (!tokenId) await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  if (taskIdentifier !== "label-day") throw new Error("not a label-day run");
+  if (!tokenId) throw new Error("approval token not ready — run has not reached the waitpoint");
+  if (status !== "awaiting-approval") {
+    throw new Error(`run is '${status ?? "unknown"}', not awaiting approval`);
+  }
+  const result = await wait.completeToken(tokenId, {
+    status: "approved",
+    approvedBy: operator,
+    approvedAt: new Date().toISOString(),
+  });
+  if (!result?.success) {
+    throw new Error("approval token could not be completed (already decided or expired)");
   }
 }
 
@@ -292,7 +326,7 @@ export async function POST(req: Request) {
   }
   const taskId = typeof body.taskId === "string" ? body.taskId : null;
 
-  if (taskId === "approve-label-batch") {
+  if (taskId === "approve-label-batch" || taskId === "purchase-shipping-labels") {
     // Owner-only, fail-closed: no valid owner session (or no owner token
     // configured at all) → reject. The verified operator is used below.
     let operator: string;
@@ -306,53 +340,48 @@ export async function POST(req: Request) {
       throw e;
     }
 
-    const runId = typeof body.payload?.runId === "string" ? body.payload.runId : null;
-    if (!runId) {
-      return NextResponse.json({ ok: false, error: "runId required" }, { status: 400 });
+    let runId = typeof body.payload?.runId === "string" ? body.payload.runId : null;
+    if (taskId === "purchase-shipping-labels") {
+      const requestedWeek = typeof body.payload?.weekLabel === "string" ? body.payload.weekLabel : null;
+      const rawShipments = Array.isArray(body.payload?.shipments) ? body.payload.shipments : [];
+      const snapshots: ShippingLabelPurchaseSnapshot[] = rawShipments.flatMap((value) => {
+        if (!value || typeof value !== "object") return [];
+        const row = value as Record<string, unknown>;
+        const shipmentId = typeof row.shipmentId === "string" ? row.shipmentId : "";
+        const orderIds = Array.isArray(row.orderIds)
+          ? row.orderIds.filter((item): item is string => typeof item === "string" && item.length > 0)
+          : [];
+        return shipmentId && orderIds.length ? [{ shipmentId, orderIds }] : [];
+      });
+      if (!requestedWeek || snapshots.length !== rawShipments.length || !snapshots.length) {
+        return NextResponse.json({ ok: false, error: "invalid shipping-label snapshot" }, { status: 400 });
+      }
+      try {
+        const current = await buildShippingDocumentManifest(pgPool());
+        if (current.weekLabel !== requestedWeek) {
+          return NextResponse.json({ ok: false, error: "document set is stale; reopen Monday shipping documents" }, { status: 409 });
+        }
+        const purchaseManifest = selectShippingLabelPurchase(current, snapshots);
+        const handle = await labelDay.trigger({ manifest: purchaseManifest });
+        runId = handle.id;
+      } catch (error) {
+        return NextResponse.json({
+          ok: false,
+          error: error instanceof Error ? error.message : "shipping-label batch is no longer eligible",
+        }, { status: 409 });
+      }
     }
+    if (!runId) return NextResponse.json({ ok: false, error: "runId required" }, { status: 400 });
 
-    // Resolve the run and its published approval token; poll briefly in case it
-    // hasn't reached the waitpoint yet.
-    let tokenId: string | undefined;
-    let status: string | undefined;
-    let taskIdentifier: string | undefined;
-    for (let i = 0; i < 10 && !tokenId; i++) {
-      const run = await runs.retrieve(runId);
-      taskIdentifier = run.taskIdentifier;
-      status = run.metadata?.status as string | undefined;
-      tokenId = (run.metadata?.approvalTokenId as string | undefined) ?? undefined;
-      if (!tokenId) await new Promise((r) => setTimeout(r, 300));
+    try {
+      await completeLabelRunApproval(runId, operator);
+    } catch (error) {
+      return NextResponse.json({
+        ok: false,
+        error: error instanceof Error ? error.message : "label approval failed",
+      }, { status: 409 });
     }
-
-    // Bind the approval to a genuine, still-pending label-day run.
-    if (taskIdentifier !== "label-day") {
-      return NextResponse.json({ ok: false, error: "not a label-day run" }, { status: 400 });
-    }
-    if (!tokenId) {
-      return NextResponse.json(
-        { ok: false, error: "approval token not ready — run has not reached the waitpoint" },
-        { status: 409 },
-      );
-    }
-    if (status !== "awaiting-approval") {
-      return NextResponse.json(
-        { ok: false, error: `run is '${status ?? "unknown"}', not awaiting approval` },
-        { status: 409 },
-      );
-    }
-
-    const result = await wait.completeToken(tokenId, {
-      status: "approved",
-      approvedBy: operator,
-      approvedAt: new Date().toISOString(),
-    });
-    if (!result?.success) {
-      return NextResponse.json(
-        { ok: false, error: "approval token could not be completed (already decided or expired)" },
-        { status: 409 },
-      );
-    }
-    await auditApproval(operator, runId);
+    await auditApproval(operator, runId, taskId);
     return NextResponse.json({ ok: true, status: "approved", runId, approvedBy: operator });
   }
 

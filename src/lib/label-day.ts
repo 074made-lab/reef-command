@@ -66,6 +66,11 @@ export type Manifest = {
   orderIdsByShipment: Record<string, string[]>;
 };
 
+export type ShippingLabelPurchaseSnapshot = {
+  shipmentId: string;
+  orderIds: string[];
+};
+
 type Row = {
   id: string; primary_name: string; tier: number; items: string;
   destination: string; platforms: string[]; order_ids: string[];
@@ -201,6 +206,53 @@ export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest>
   return compileManifest(res.rows, wi, weekLabel);
 }
 
+/** Select the exact carrier previews the owner saw on the document board.
+ * The action route rebuilds current truth and calls this again on click, so a
+ * held order, changed order set, or already-purchased label fails closed rather
+ * than silently changing the approved batch. */
+export function selectShippingLabelPurchase(
+  manifest: Manifest,
+  requested: ShippingLabelPurchaseSnapshot[],
+): Manifest {
+  if (!requested.length) throw new Error("no carrier previews selected");
+  if (new Set(requested.map((item) => item.shipmentId)).size !== requested.length) {
+    throw new Error("duplicate shipment in carrier-label approval");
+  }
+
+  const documents = new Map(manifest.documentShipments.map((shipment) => [shipment.shipmentId, shipment]));
+  const lines = new Map(manifest.shipments.map((shipment) => [shipment.shipmentId, shipment]));
+  const selectedIds = new Set<string>();
+  for (const snapshot of requested) {
+    const document = documents.get(snapshot.shipmentId);
+    const line = lines.get(snapshot.shipmentId);
+    if (!document || !line || document.carrierLabel !== "preview") {
+      throw new Error(`shipment ${snapshot.shipmentId} is no longer purchase-ready`);
+    }
+    const approvedOrders = [...snapshot.orderIds].sort().join("|");
+    const currentOrders = [...document.orderIds].sort().join("|");
+    if (!approvedOrders || approvedOrders !== currentOrders) {
+      throw new Error(`shipment ${snapshot.shipmentId} changed after document review`);
+    }
+    selectedIds.add(snapshot.shipmentId);
+  }
+
+  const shipments = manifest.shipments.filter((shipment) => selectedIds.has(shipment.shipmentId));
+  const documentShipments = manifest.documentShipments.filter((shipment) => selectedIds.has(shipment.shipmentId));
+  const orderIdsByShipment = Object.fromEntries(shipments.map((shipment) => [
+    shipment.shipmentId,
+    [...(manifest.orderIdsByShipment[shipment.shipmentId] ?? [])],
+  ]));
+  return {
+    weekLabel: manifest.weekLabel,
+    shipments,
+    documentShipments,
+    orderIdsByShipment,
+    weatherFlags: manifest.weatherFlags.filter((flag) => selectedIds.has(flag.shipmentId)),
+    productLabels: documentShipments.reduce((sum, shipment) => sum + shipment.productLabels.length, 0),
+    totalCostCents: shipments.reduce((sum, shipment) => sum + shipment.costCents, 0),
+  };
+}
+
 /** Money-gated label batch: only unlinked, unheld pending/paid orders may enter
  * the purchase workflow. Document review intentionally uses the broader read
  * model above, never this purchase payload. */
@@ -236,6 +288,11 @@ export async function buildManifest(pg: Pool): Promise<Manifest> {
  * carrier previews without starting the money-moving label purchase run. */
 export async function buildShippingDocumentBoard(pg: Pool): Promise<ComponentSpec[]> {
   const manifest = await buildShippingDocumentManifest(pg);
+  const purchaseReady = manifest.documentShipments.filter((shipment) => shipment.carrierLabel === "preview");
+  const purchaseIds = new Set(purchaseReady.map((shipment) => shipment.shipmentId));
+  const purchaseCostCents = manifest.shipments
+    .filter((shipment) => purchaseIds.has(shipment.shipmentId))
+    .reduce((sum, shipment) => sum + shipment.costCents, 0);
   return [{
     kind: "shipping_document_board",
     weekLabel: manifest.weekLabel,
@@ -244,7 +301,20 @@ export async function buildShippingDocumentBoard(pg: Pool): Promise<ComponentSpe
     packingSlips: manifest.shipments.length,
     fedexLabels: manifest.documentShipments.filter((shipment) => shipment.carrierLabel !== "withheld").length,
     productLabels: manifest.productLabels,
+    purchaseCostCents,
     printNote: "Packing slips contain no prices. Product labels print one per physical coral bag, including held orders. FedEx previews stay gated and are withheld for holds.",
+    actions: purchaseReady.length ? [{
+      taskId: "purchase-shipping-labels",
+      label: `APPROVE + PURCHASE ${purchaseReady.length} FEDEX LABELS`,
+      payload: {
+        weekLabel: manifest.weekLabel,
+        shipments: purchaseReady.map((shipment) => ({
+          shipmentId: shipment.shipmentId,
+          orderIds: shipment.orderIds,
+        })),
+      },
+      risk: "gated",
+    }] : [],
   }];
 }
 
@@ -317,6 +387,7 @@ export async function purchaseLabels(
   let purchased = 0, spend = 0;
 
   for (const s of m.shipments) {
+    const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
     // 1. Claim the shipment row (idempotent). status='planned' means "not yet
     //    fully committed"; a prior partial attempt leaves it here to resume.
     await pg.query(`
@@ -333,8 +404,34 @@ export async function purchaseLabels(
     if (row.status === "purchased") { purchased++; spend += s.costCents; continue; }
     const shipmentPk = row.id;
 
+    // Revalidate the approved sources immediately before any purchase-side
+    // write. A newly held/cancelled order or a different linked shipment stops
+    // the batch before ClickHouse receives a purchase event. A fully purchased
+    // shipment short-circuits above so later shipping lifecycle changes do not
+    // break idempotent replay.
+    const sources = await pg.query<{
+      external_id: string;
+      status: string;
+      shipment_code: string | null;
+      shipment_status: string | null;
+    }>(`
+      SELECT o.external_id, o.status, linked.shipment_code, linked.status AS shipment_status
+      FROM orders o
+      LEFT JOIN shipments linked ON linked.id = o.shipment_id
+      WHERE o.customer_id = $1 AND o.external_id = ANY($2::text[])
+      ORDER BY o.external_id`, [s.customer.customerId, orderIds]);
+    const sourceIds = sources.rows.map((source) => source.external_id).sort().join("|");
+    const approvedIds = [...orderIds].sort().join("|");
+    const invalidSource = sources.rows.some((source) =>
+      !["pending", "paid", "labeled"].includes(source.status)
+      || (source.shipment_code !== null && source.shipment_code !== s.shipmentId)
+      || source.shipment_status === "held"
+      || source.shipment_status === "voided");
+    if (!approvedIds || sourceIds !== approvedIds || invalidSource) {
+      throw new Error(`shipment ${s.shipmentId} changed or is held — label purchase stopped`);
+    }
+
     // 2. Link the orders. Repeating this is a no-op once linked (IS NULL guard).
-    const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
     if (orderIds.length) {
       await pg.query(
         `UPDATE orders SET shipment_id = $1, status = 'labeled'

@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Pool } from "pg";
 import { ShippingDocumentBoard } from "../src/components/specs/ShippingDocumentBoard";
-import { buildShippingDocumentBoard, buildShippingDocumentManifest, buildManifest } from "../src/lib/label-day";
+import {
+  buildShippingDocumentBoard,
+  buildShippingDocumentManifest,
+  buildManifest,
+  selectShippingLabelPurchase,
+} from "../src/lib/label-day";
 
 const rows = [
   {
@@ -101,6 +106,25 @@ if (!spec || spec.kind !== "shipping_document_board") throw new Error("wrong doc
 assert.equal(spec.packingSlips, 4);
 assert.equal(spec.fedexLabels, 1, "held shipment must not claim a FedEx document");
 assert.equal(spec.productLabels, 7);
+assert.equal(spec.actions?.length, 1, "a ready carrier preview must expose one owner-gated purchase action");
+assert.equal(spec.actions?.[0]?.taskId, "purchase-shipping-labels");
+assert.match(spec.actions?.[0]?.label ?? "", /PURCHASE 1 FEDEX LABEL/);
+assert.equal(spec.purchaseCostCents, manifest.shipments[0]?.costCents);
+
+const approved = selectShippingLabelPurchase(manifest, [{
+  shipmentId: "SHP-MERGED-W28",
+  orderIds: ["AUC-701", "WEB-701"],
+}]);
+assert.equal(approved.shipments.length, 1);
+assert.equal(approved.documentShipments[0]?.carrierLabel, "preview");
+assert.throws(() => selectShippingLabelPurchase(manifest, [{
+  shipmentId: "SHP-HOLD-W28",
+  orderIds: ["AUC-702"],
+}]), /no longer purchase-ready/, "held or voided documents must never enter purchase");
+assert.throws(() => selectShippingLabelPurchase(manifest, [{
+  shipmentId: "SHP-MERGED-W28",
+  orderIds: ["AUC-701"],
+}]), /changed after document review/, "a changed order set must invalidate approval");
 
 const html = renderToStaticMarkup(<ShippingDocumentBoard spec={spec} />);
 const count = (needle: string) => html.split(needle).length - 1;
@@ -115,6 +139,7 @@ console.log("✓ merged planned shipments remain in Monday documents");
 console.log("✓ voided and held shipments print coral labels and fail closed on FedEx");
 console.log("✓ separate holds for one customer keep unique document identifiers");
 console.log("✓ printed slip, FedEx, and bag-label nodes conserve displayed counts");
+console.log("✓ the owner-gated purchase action binds the exact reviewed preview set");
 console.log("\nALL PASS — Monday shipping-document conservation");
 }
 

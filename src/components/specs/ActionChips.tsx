@@ -16,18 +16,22 @@ import { getLabelRunProgress, getOwnerAuthState } from "@/app/actions";
 
 type Progress = { status: string; failed: boolean; purchased: number; shipments: number; totalCostCents: number };
 type Auth = { configured: boolean; authenticated: boolean };
+export type ActionCompletion = { taskId: string; progress?: Progress; note: string };
 
 function usd(cents: number) {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
-function ChipButton({ chip }: { chip: ActionChip }) {
+function ChipButton({ chip, onComplete }: {
+  chip: ActionChip;
+  onComplete?: (completion: ActionCompletion) => void;
+}) {
   const [state, setState] = useState<"idle" | "busy" | "running" | "done" | "error" | "stalled">("idle");
   const [note, setNote] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
 
-  const isApproval = chip.taskId === "approve-label-batch";
-  const runId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
+  const isApproval = chip.taskId === "approve-label-batch" || chip.taskId === "purchase-shipping-labels";
+  const payloadRunId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
 
   // Owner-auth state (approval chip only): drives disabled/unlock/go.
   const [auth, setAuth] = useState<Auth | null>(null);
@@ -55,8 +59,10 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       }
       setProg(p);
       if (p.status === "purchased") {
+        const doneNote = `purchased ${p.purchased}/${p.shipments} labels · ${usd(p.totalCostCents)} — Postgres rows + ClickHouse events written`;
         setState("done");
-        setNote(`purchased ${p.purchased}/${p.shipments} labels · ${usd(p.totalCostCents)} — Postgres rows + ClickHouse events written`);
+        setNote(doneNote);
+        onComplete?.({ taskId: chip.taskId, progress: p, note: doneNote });
         return;
       }
       if (p.failed) {
@@ -94,14 +100,14 @@ function ChipButton({ chip }: { chip: ActionChip }) {
           body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
         });
       let res = await request();
-      let data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
+      let data = (await res.json().catch(() => ({}))) as { error?: string; note?: string; runId?: string };
       if (res.status === 202 && chip.taskId.startsWith("merge-")) {
         setState("running");
         setNote(data.note ?? "merge staged — finalizing audit event…");
         for (let attempt = 0; attempt < 30 && res.status === 202; attempt++) {
           await new Promise((resolve) => setTimeout(resolve, 500));
           res = await request();
-          data = (await res.json().catch(() => ({}))) as { error?: string; note?: string };
+          data = (await res.json().catch(() => ({}))) as { error?: string; note?: string; runId?: string };
         }
         if (res.status === 202) {
           setState("stalled");
@@ -125,13 +131,16 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         setNote(data.error ?? `action failed (${res.status})`);
         return;
       }
-      if (isApproval && runId) {
+      const activeRunId = data.runId ?? payloadRunId;
+      if (isApproval && activeRunId) {
         setState("running");
         setNote("approved — buying labels…");
-        void pollRun(runId);
+        void pollRun(activeRunId);
       } else {
+        const doneNote = data.note ?? "done";
         setState("done");
-        setNote(data.note ?? "done");
+        setNote(doneNote);
+        onComplete?.({ taskId: chip.taskId, note: doneNote });
       }
     } catch {
       setState("error");
@@ -244,12 +253,15 @@ function ChipButton({ chip }: { chip: ActionChip }) {
   );
 }
 
-export function ActionRow({ actions }: { actions?: ActionChip[] }) {
+export function ActionRow({ actions, onComplete }: {
+  actions?: ActionChip[];
+  onComplete?: (completion: ActionCompletion) => void;
+}) {
   if (!actions?.length) return null;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/60 pt-2.5">
       {actions.map((a) => (
-        <ChipButton key={a.taskId + a.label} chip={a} />
+        <ChipButton key={a.taskId + a.label} chip={a} onComplete={onComplete} />
       ))}
     </div>
   );

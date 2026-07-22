@@ -259,6 +259,14 @@ assert.match(shippingDocumentSource, /data-print-fedex-label/,
   "the print package must render every eligible carrier document");
 assert.match(shippingDocumentSource, /data-print-product-label/,
   "the print package must render one physical label node per coral bag");
+assert.match(shippingDocumentSource, /purchase-shipping-labels/,
+  "Monday documents must expose the owner-gated carrier purchase action");
+assert.match(shippingDocumentSource, /TRIGGER\.DEV WAITPOINT[\s\S]*POSTGRES SHIPMENTS[\s\S]*CLICKHOUSE EVENTS/,
+  "the board must show judges the durable backend execution path");
+
+const labelActionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
+assert.match(labelActionRouteSource, /purchase-shipping-labels[\s\S]*buildShippingDocumentManifest[\s\S]*selectShippingLabelPurchase[\s\S]*labelDay\.trigger/,
+  "the purchase click must revalidate current truth before starting Trigger.dev");
 
 const mergeMigrationSource = readFileSync(new URL("../db/postgres/0002_merge_runs.sql", import.meta.url), "utf8");
 assert.match(mergeMigrationSource, /merge_code\s+TEXT PRIMARY KEY/,

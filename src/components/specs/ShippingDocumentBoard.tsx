@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type { ComponentSpec, ShippingDocumentShipment } from "@/lib/protocol";
 import { Chip, SpecCard } from "./bits";
 import { num } from "./format";
+import { ActionRow } from "./ActionChips";
 
 type DocumentSpec = Extract<ComponentSpec, { kind: "shipping_document_board" }>;
 
@@ -126,7 +128,16 @@ function PrintDocumentPackage({ spec }: { spec: DocumentSpec }) {
 }
 
 export function ShippingDocumentBoard({ spec }: { spec: DocumentSpec }) {
-  const example = spec.shipments[0];
+  const [purchaseComplete, setPurchaseComplete] = useState(false);
+  const boardSpec: DocumentSpec = purchaseComplete ? {
+    ...spec,
+    shipments: spec.shipments.map((shipment) => shipment.carrierLabel === "preview"
+      ? { ...shipment, carrierLabel: "purchased" as const }
+      : shipment),
+  } : spec;
+  const example = boardSpec.shipments[0];
+  const previewCount = boardSpec.shipments.filter((shipment) => shipment.carrierLabel === "preview").length;
+  const purchasedCount = boardSpec.shipments.filter((shipment) => shipment.carrierLabel === "purchased").length;
   const printBoard = () => window.print();
 
   return (
@@ -135,29 +146,41 @@ export function ShippingDocumentBoard({ spec }: { spec: DocumentSpec }) {
       <SpecCard
         tag="MONDAY SHIPPING DOCUMENTS"
         tone="coral"
-        right={<Chip className="border-coral/45 text-coralhi">{spec.asOf}</Chip>}
+        right={<Chip className="border-coral/45 text-coralhi">{boardSpec.asOf}</Chip>}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[18px] font-semibold tracking-[-0.02em] text-ink">Print set prepared for the packing team</p>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-dim">{spec.printNote}</p>
+            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-dim">{boardSpec.printNote}</p>
           </div>
           <button
             type="button"
             onClick={printBoard}
-            disabled={!spec.shipments.length}
+            disabled={!boardSpec.shipments.length}
             className="no-print rounded-md border border-coral/60 bg-coral/10 px-3 py-2 font-mono text-[12px] font-semibold tracking-[0.04em] text-coralhi transition-colors hover:bg-coral/20 disabled:opacity-40"
           >
             PRINT DOCUMENT SET
           </button>
         </div>
 
+        <ActionRow
+          actions={boardSpec.actions ?? []}
+          onComplete={({ taskId }) => {
+            if (taskId === "purchase-shipping-labels") setPurchaseComplete(true);
+          }}
+        />
+        {(boardSpec.actions?.length ?? 0) > 0 ? (
+          <p className="mt-2 font-mono text-[10px] leading-relaxed text-mute">
+            OWNER CLICK → TRIGGER.DEV WAITPOINT → POSTGRES SHIPMENTS → CLICKHOUSE EVENTS · SYNTHETIC DEMO, NO FEDEX CHARGE · ${Math.round((boardSpec.purchaseCostCents ?? 0) / 100).toLocaleString("en-US")}
+          </p>
+        ) : null}
+
         <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
           {[
-            ["PACKING SLIPS", num(spec.packingSlips), "READY"],
-            ["FEDEX LABELS", num(spec.fedexLabels), "READY · GATED"],
-            ["BAG LABELS", num(spec.productLabels), "1 PER CORAL"],
-            ["SHIPMENTS", num(spec.shipments.length), spec.weekLabel],
+            ["PACKING SLIPS", num(boardSpec.packingSlips), "READY"],
+            ["FEDEX LABELS", num(boardSpec.fedexLabels), previewCount ? "READY · GATED" : purchasedCount ? "PURCHASED" : "WITHHELD"],
+            ["BAG LABELS", num(boardSpec.productLabels), "1 PER CORAL"],
+            ["SHIPMENTS", num(boardSpec.shipments.length), boardSpec.weekLabel],
           ].map(([label, value, note]) => (
             <div key={label} className="bg-raise/70 px-3 py-3">
               <p className="font-mono text-[9px] tracking-[0.08em] text-mute">{label}</p>
@@ -202,7 +225,7 @@ export function ShippingDocumentBoard({ spec }: { spec: DocumentSpec }) {
                 </tr>
               </thead>
               <tbody>
-                {spec.shipments.map((shipment) => (
+                {boardSpec.shipments.map((shipment) => (
                   <tr key={shipment.shipmentId} className="border-b border-line/45 last:border-0">
                     <td className="px-2.5 py-2">
                       <p className="font-mono text-[11px] text-ink">{shipment.shipmentId}</p>
@@ -227,7 +250,7 @@ export function ShippingDocumentBoard({ spec }: { spec: DocumentSpec }) {
         </div>
       </SpecCard>
       </div>
-      <PrintDocumentPackage spec={spec} />
+      <PrintDocumentPackage spec={boardSpec} />
     </div>
   );
 }

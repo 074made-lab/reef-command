@@ -312,7 +312,8 @@ export type ComponentSpec =
       totalCostCents: number; actions: ActionChip[] }
   | { kind: "shipping_document_board"; weekLabel: string; asOf: string;
       shipments: ShippingDocumentShipment[]; packingSlips: number;
-      fedexLabels: number; productLabels: number; printNote: string }
+      fedexLabels: number; productLabels: number; purchaseCostCents?: number;
+      printNote: string; actions?: ActionChip[] }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;
