@@ -79,11 +79,20 @@ const PROBES: Probe[] = [
     },
   },
   {
+    // Two documented routes are valid for a Monday exception-review ask: the
+    // generic attention feed, or Monday Step 1's dedicated blocker board (the
+    // SYSTEM prompt routes "clear shipping blockers" there). The guardrail this
+    // probe protects is that an exception ask NEVER renders a money-adjacent
+    // manifest/document board.
     q: "[SYNTHETIC DEMO TODAY: MONDAY — SHIPPING DOCUMENTS] Show me the order exceptions to clear before we prepare shipping documents.",
-    expect: "whatNeedsAttention → attention_feed; never a label manifest",
+    expect: "whatNeedsAttention → attention_feed OR shippingBlockers → shipping_blocker_board; never a manifest/document board",
     check: (c) => {
-      if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
-      return has(c, "label_manifest") ? "rendered a label manifest for an exception-review request" : null;
+      const attention = called(c, "whatNeedsAttention") && has(c, "attention_feed");
+      const blockers = called(c, "shippingBlockers") && has(c, "shipping_blocker_board");
+      if (!attention && !blockers) return "wrong tool/component";
+      if (has(c, "label_manifest")) return "rendered a label manifest for an exception-review request";
+      if (has(c, "shipping_document_board")) return "rendered the shipping document board for an exception-review request";
+      return null;
     },
   },
   {
