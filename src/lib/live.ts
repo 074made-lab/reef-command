@@ -10,14 +10,30 @@ import type { Pool } from "pg";
 import { insertEvents } from "./store/clickhouse";
 import { generateTick } from "./synth/generator";
 import { CATALOG } from "./synth/catalog";
+import { SEEDED_AUCTION_TYPES } from "./synth/ensure-auction-week";
+import { DEMO_AUCTION_WEEK_INDEX } from "./demo-clock";
 import type { ReefEvent } from "./datastore";
 
 const bySku = new Map(CATALOG.map((c) => [c.sku, c]));
 
+const ANCHOR = Date.UTC(2026, 0, 1);
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+const FIXTURE_WEEK = DEMO_AUCTION_WEEK_INDEX + 1;
+
+/** The W29 Thursday–Saturday auction events are pre-materialized as a canonical
+ * ClickHouse fixture (ensure-auction-week) so every selectable demo day works
+ * before those instants pass in reality. When the wall clock catches up, the
+ * tick's deterministic script would emit the SAME events again — skip them, or
+ * the demo auction double-counts live during evaluation. */
+const isPrematerializedAuctionEvent = (e: ReefEvent) =>
+  e.platform === "auction"
+  && SEEDED_AUCTION_TYPES.has(e.type)
+  && Math.floor((Date.parse(e.ts) - ANCHOR) / WEEK_MS) === FIXTURE_WEEK;
+
 export async function runTick(ch: ClickHouseClient, pg: Pool, nowIso: string, seed = 1): Promise<{
   events: number; orders: number; messages: number; chOk: boolean;
 }> {
-  const events = generateTick(nowIso, seed);
+  const events = generateTick(nowIso, seed).filter((e) => !isPrematerializedAuctionEvent(e));
 
   let orders = 0, messages = 0;
   for (const e of events as ReefEvent[]) {

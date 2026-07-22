@@ -1,21 +1,26 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { insertEvents, queryRows } from "../store/clickhouse";
 import { generateBackfill } from "./generator";
-import { AUCTION_CLOSE_OFFSET_MS } from "./schedule";
 
 const ANCHOR = Date.UTC(2026, 0, 1);
 const WEEK_MS = 7 * 24 * 60 * 60_000;
-const SEEDED_TYPES = new Set([
+export const SEEDED_AUCTION_TYPES = new Set([
   "auction_opened",
   "bid_placed",
   "auction_closed",
   "auction_won",
 ]);
+const FIXTURE_REVISION = "auction-close-2000-v3";
 
 /**
- * Ensures the chronological Thursday-Saturday demo auction exists even when
- * judges select a future synthetic day. The operation is idempotent under the
- * reset lock: an existing auction_opened event owns the complete fixture.
+ * Ensures the chronological Thursday–Saturday demo auction exists — complete
+ * and exactly once — even when judges select a future synthetic day or ran a
+ * partial mid-cycle backfill. The stored window is converged to the
+ * deterministic generator output (seed 1): if any of the four auction event
+ * types has a count mismatch (missing close/winners after a partial backfill,
+ * post-close bids, duplicates from a replay), the whole windowed fixture is
+ * deleted and the canonical set reinserted. Idempotent under the reset lock;
+ * a matching store is a no-op.
  */
 export async function ensureSyntheticAuctionWeek(
   client: ClickHouseClient,
@@ -25,35 +30,30 @@ export async function ensureSyntheticAuctionWeek(
   const endMs = startMs + 3 * 24 * 60 * 60_000;
   const startIso = new Date(startMs).toISOString();
   const endIso = new Date(endMs).toISOString();
-  const close = new Date(startMs + AUCTION_CLOSE_OFFSET_MS).toISOString().slice(0, 19).replace("T", " ");
   const start = startIso.slice(0, 19).replace("T", " ");
   const end = endIso.slice(0, 19).replace("T", " ");
-  const chunks = [...generateBackfill(startIso, endIso, 1)];
-  const expectedBidCount = chunks.reduce(
-    (total, chunk) => total + chunk.filter((event) => event.type === "bid_placed").length,
-    0,
-  );
-  const existing = await queryRows<{ n: string }>(client, `
-    SELECT count() AS n FROM events
-    WHERE type = 'auction_opened' AND ts >= {start:DateTime} AND ts < {end:DateTime}`,
-  { start, end });
-  const hasAuction = Number(existing[0]?.n ?? 0) > 0;
-  const invalid = hasAuction ? await queryRows<{ n: string }>(client, `
-    SELECT count() AS n FROM events
-    WHERE type = 'bid_placed' AND ts >= {close:DateTime} AND ts < {end:DateTime}`,
-  { close, end }) : [];
-  const storedBids = hasAuction ? await queryRows<{ n: string }>(client, `
-    SELECT count() AS n FROM events
-    WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}`,
-  { start, end }) : [];
-  const mustRepairBids = Number(invalid[0]?.n ?? 0) > 0
-    || (hasAuction && Number(storedBids[0]?.n ?? 0) !== expectedBidCount);
-  if (hasAuction && !mustRepairBids) return 0;
 
-  if (mustRepairBids) {
+  const canonical = [...generateBackfill(startIso, endIso, 1)].flatMap((chunk) =>
+    chunk.filter((event) => event.platform === "auction" && SEEDED_AUCTION_TYPES.has(event.type)));
+  const expected = new Map<string, number>();
+  for (const event of canonical) expected.set(event.type, (expected.get(event.type) ?? 0) + 1);
+
+  const storedRows = await queryRows<{ type: string; n: string }>(client, `
+    SELECT type, count() AS n FROM events
+    WHERE platform = 'auction'
+      AND type IN ('auction_opened','bid_placed','auction_closed','auction_won')
+      AND ts >= {start:DateTime} AND ts < {end:DateTime}
+    GROUP BY type`, { start, end });
+  const stored = new Map(storedRows.map((row) => [row.type, Number(row.n)]));
+  const types = [...SEEDED_AUCTION_TYPES];
+  if (types.every((type) => (stored.get(type) ?? 0) === (expected.get(type) ?? 0))) return 0;
+
+  if (types.some((type) => (stored.get(type) ?? 0) > 0)) {
     await client.command({
       query: `ALTER TABLE events DELETE
-        WHERE type = 'bid_placed' AND ts >= {start:DateTime} AND ts < {end:DateTime}`,
+        WHERE platform = 'auction'
+          AND type IN ('auction_opened','bid_placed','auction_closed','auction_won')
+          AND ts >= {start:DateTime} AND ts < {end:DateTime}`,
       query_params: { start, end },
       clickhouse_settings: { mutations_sync: "2" },
     });
@@ -62,22 +62,18 @@ export async function ensureSyntheticAuctionWeek(
         SELECT count() AS n FROM system.mutations
         WHERE database = currentDatabase() AND table = 'events' AND is_done = 0`);
       if (Number(pending[0]?.n ?? 0) === 0) break;
-      if (attempt === 59) throw new Error("synthetic auction bid repair did not finish before reseed");
+      if (attempt === 59) throw new Error("synthetic auction fixture repair did not finish before reseed");
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
 
-  let inserted = 0;
-  for (const chunk of chunks) {
-    const fixture = chunk
-      .filter((event) =>
-        event.platform === "auction"
-        && (mustRepairBids ? event.type === "bid_placed" : SEEDED_TYPES.has(event.type)))
-      .map((event) => mustRepairBids
-        ? { ...event, meta: { ...event.meta, fixtureRevision: "auction-close-2000-v2" } }
-        : event);
-    await insertEvents(client, fixture, { deduplicate: false });
-    inserted += fixture.length;
+  const fixture = canonical.map((event) => ({
+    ...event,
+    meta: { ...event.meta, fixtureRevision: FIXTURE_REVISION },
+  }));
+  const batch = 5000;
+  for (let i = 0; i < fixture.length; i += batch) {
+    await insertEvents(client, fixture.slice(i, i + batch), { deduplicate: false });
   }
-  return inserted;
+  return fixture.length;
 }
