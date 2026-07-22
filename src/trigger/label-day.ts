@@ -15,6 +15,7 @@
 import { task, wait, metadata } from "@trigger.dev/sdk";
 import { chClient } from "../lib/store/clickhouse";
 import { pgPool } from "../lib/store/postgres";
+import { tryDemoOperation, type DemoOperationLease } from "../lib/demo-operation-lock";
 import { purchaseLabels, type Manifest } from "../lib/label-day";
 
 type Approval = { status: "approved" | "declined" };
@@ -29,6 +30,7 @@ export const labelDay = task({
 
     const ch = chClient();
     const pg = pgPool();
+    let operation: DemoOperationLease | null = null;
     try {
       // Publish token + progress (small fields only, not the full manifest — the
       // card already rendered it), then pause on the waitpoint.
@@ -46,6 +48,8 @@ export const labelDay = task({
       }
 
       // Approved — buy one by one so the UI sees labels land in real time.
+      operation = await tryDemoOperation(pg);
+      if (!operation) throw new Error("demo reset in progress");
       metadata.set("status", "purchasing");
       let purchased = 0, spend = 0;
       const nowIso = new Date().toISOString();
@@ -66,6 +70,7 @@ export const labelDay = task({
       metadata.set("error", err instanceof Error ? err.message : "label-day run failed");
       throw err;
     } finally {
+      await operation?.release();
       await ch.close().catch(() => {});
     }
   },

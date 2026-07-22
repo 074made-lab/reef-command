@@ -56,6 +56,7 @@ import {
   nextAuctionAnnouncementMeta,
 } from "@/lib/tools";
 import { labelDay } from "@/trigger/label-day";
+import { resetInProgressResponse, tryDemoOperation } from "@/lib/demo-operation-lock";
 
 let chSingleton: ClickHouseClient | undefined;
 const ch = () => (chSingleton ??= chClient());
@@ -319,6 +320,9 @@ async function flushMergeEvent(code: string): Promise<"completed" | "in-progress
 }
 
 export async function POST(req: Request) {
+  const operation = await tryDemoOperation(pgPool());
+  if (!operation) return resetInProgressResponse();
+  try {
   let body: Body = {};
   try {
     body = (await req.json()) as Body;
@@ -573,4 +577,7 @@ export async function POST(req: Request) {
     { ok: false, error: `action '${taskId ?? "unknown"}' is not implemented` },
     { status: 501 },
   );
+  } finally {
+    await operation.release();
+  }
 }

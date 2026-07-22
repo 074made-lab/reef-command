@@ -6,8 +6,11 @@ import {
   stageDemoShipDayRequest,
 } from "@/lib/ship-day-exception";
 import { shipDayException } from "@/trigger/ship-day-exception";
+import { resetInProgressResponse, tryDemoOperation } from "@/lib/demo-operation-lock";
 
 export async function POST() {
+  const operation = await tryDemoOperation(pgPool());
+  if (!operation) return resetInProgressResponse();
   try {
     // Intentionally unauthenticated: this route only replays a deterministic,
     // synthetic, non-money event. Fresh completed incidents are read back
@@ -28,6 +31,8 @@ export async function POST() {
       ok: false,
       error: error instanceof Error ? error.message : "could not stage ship-day exception",
     }, { status: 500 });
+  } finally {
+    await operation.release();
   }
 }
 

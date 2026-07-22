@@ -17,6 +17,7 @@ import {
 } from "../lib/doa-demo";
 import { chClient } from "../lib/store/clickhouse";
 import { pgPool } from "../lib/store/postgres";
+import { tryDemoOperation } from "../lib/demo-operation-lock";
 
 export type DoaResolutionPayload = {
   approvalId: string;
@@ -30,6 +31,8 @@ export const doaResolution = task({
   retry: { maxAttempts: 3 },
   run: async (payload: DoaResolutionPayload) => {
     const pg = pgPool();
+    const operation = await tryDemoOperation(pg);
+    if (!operation) throw new Error("demo reset in progress");
     const ch = chClient();
     try {
       metadata.set("status", "approval-recorded");
@@ -72,6 +75,7 @@ export const doaResolution = task({
       metadata.set("error", error instanceof Error ? error.message : "DOA resolution failed");
       throw error;
     } finally {
+      await operation.release();
       await ch.close().catch(() => {});
     }
   },

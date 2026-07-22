@@ -17,17 +17,25 @@ import { MODEL, SYSTEM, reefTools } from "../lib/agent-config";
 import { pgPool } from "../lib/store/postgres";
 import { buildManifest, manifestSpec } from "../lib/label-day";
 import { labelDay } from "./label-day";
+import { tryDemoOperation } from "../lib/demo-operation-lock";
 
 const prepareLabelDay = tool({
   description:
     "Call this only when the owner explicitly asks to START THE CARRIER-LABEL PURCHASE APPROVAL RUN. Do not call it for Monday's normal blocker, combine, or printable shipping-document commands. This starts a durable money-gated run and pauses for owner approval before any synthetic label purchase.",
   inputSchema: z.object({}),
   execute: async () => {
+    const pg = pgPool();
+    const operation = await tryDemoOperation(pg);
+    if (!operation) throw new Error("demo reset in progress");
     // Build ONCE, then hand the exact manifest to the run — the card the owner
     // approves is the payload the task buys (no build-twice race; R2-M1).
-    const manifest = await buildManifest(pgPool());
-    const handle = await labelDay.trigger({ manifest });
-    return [manifestSpec(manifest, handle.id)];
+    try {
+      const manifest = await buildManifest(pg);
+      const handle = await labelDay.trigger({ manifest });
+      return [manifestSpec(manifest, handle.id)];
+    } finally {
+      await operation.release();
+    }
   },
   toModelOutput: () => ({
     type: "text" as const,

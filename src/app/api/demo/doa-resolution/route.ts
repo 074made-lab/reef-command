@@ -4,6 +4,7 @@ import { OwnerAuthError, requireOwner } from "@/lib/owner-auth";
 import { stageDemoDoaReview } from "@/lib/doa-demo";
 import { pgPool } from "@/lib/store/postgres";
 import { doaResolution } from "@/trigger/doa-resolution";
+import { resetInProgressResponse, tryDemoOperation } from "@/lib/demo-operation-lock";
 
 const TERMINAL_FAILURE = new Set([
   "FAILED", "CRASHED", "CANCELED", "SYSTEM_FAILURE", "TIMED_OUT",
@@ -19,6 +20,8 @@ function authError(error: unknown): Response | null {
 }
 
 export async function POST() {
+  const operation = await tryDemoOperation(pgPool());
+  if (!operation) return resetInProgressResponse();
   try {
     const { operator } = await requireOwner();
     const approvedAt = new Date().toISOString();
@@ -33,6 +36,8 @@ export async function POST() {
       ok: false,
       error: error instanceof Error ? error.message : "could not start DOA resolution",
     }, { status: 500 });
+  } finally {
+    await operation.release();
   }
 }
 

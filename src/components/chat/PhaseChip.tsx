@@ -13,6 +13,7 @@ import {
   demoDay,
   isDemoDayId,
 } from "@/lib/demo-clock";
+import { DemoResetControl } from "./DemoResetControl";
 
 export function PhaseChip() {
   const [dayId, setDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
@@ -41,11 +42,14 @@ export function PhaseChip() {
           <span className="text-[12px] font-medium tracking-[0.08em] text-mute uppercase">
             Demo week
           </span>
-          <span className="min-w-0 text-right text-[13px] leading-snug text-dim">
-            <span className="font-semibold text-coral">{today.weekday}</span>
-            <span className="text-ink"> / {today.label}</span>
-            <span className="text-mute"> / {today.time}</span>
-          </span>
+          <div className="flex min-w-0 items-center justify-end gap-2.5">
+            <DemoResetControl />
+            <span className="hidden min-w-0 text-right text-[13px] leading-snug text-dim sm:inline">
+              <span className="font-semibold text-coral">{today.weekday}</span>
+              <span className="text-ink"> / {today.label}</span>
+              <span className="text-mute"> / {today.time}</span>
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto pb-0.5">

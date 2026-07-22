@@ -8,6 +8,7 @@
 import { metadata, task, wait } from "@trigger.dev/sdk";
 import { chClient } from "../lib/store/clickhouse";
 import { pgPool } from "../lib/store/postgres";
+import { tryDemoOperation } from "../lib/demo-operation-lock";
 import {
   notifyPackingTeam,
   recordShipDayDetection,
@@ -22,6 +23,8 @@ export const shipDayException = task({
   retry: { maxAttempts: 3 },
   run: async (payload: { incidentId: string; incident?: ShipDayIncident }) => {
     const pg = pgPool();
+    const operation = await tryDemoOperation(pg);
+    if (!operation) throw new Error("demo reset in progress");
     const ch = chClient();
     try {
       // The route stages the incident once and passes it in, so a mid-run
@@ -52,6 +55,7 @@ export const shipDayException = task({
       metadata.set("error", error instanceof Error ? error.message : "ship-day exception failed");
       throw error;
     } finally {
+      await operation.release();
       await ch.close().catch(() => {});
     }
   },
