@@ -4,14 +4,16 @@
  * the speed IS part of the demo.
  */
 import { chClient, queryRows } from "../src/lib/store/clickhouse";
+import { DEMO_AUCTION_WEEK_INDEX } from "../src/lib/demo-clock";
 
 process.loadEnvFile(".env.local");
 
-/** Last COMPLETE cycle week (THU 00:00 → THU 00:00), UTC. */
-function lastCompleteWeek(now = new Date()): { start: string; end: string } {
+/** The last cycle completed BEFORE the demo week (W27) — pinned to the demo
+ * clock so the verified reference numbers reproduce on any run date. */
+function lastCompleteWeek(): { start: string; end: string } {
   const ANCHOR = Date.UTC(2026, 0, 1);                       // a Thursday
   const WEEK = 7 * 24 * 3600_000;
-  const idx = Math.floor((now.getTime() - ANCHOR) / WEEK);
+  const idx = DEMO_AUCTION_WEEK_INDEX;
   const start = new Date(ANCHOR + (idx - 1) * WEEK);
   const end = new Date(ANCHOR + idx * WEEK);
   const f = (d: Date) => d.toISOString().slice(0, 19).replace("T", " ");

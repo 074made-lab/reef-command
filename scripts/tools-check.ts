@@ -12,8 +12,10 @@ async function main() {
   for (const [name, fn] of [
     ["revenuePulse", () => revenuePulse(ch)],
     ["attentionFeed", () => attentionFeed(ch, pg)],
-    ["auctionBoard", () => auctionBoard(ch)],
-    ["mergeScan", () => mergeScan(pg)],
+    // Pin the demo days explicitly — the wall-clock default drifts off the
+    // synthetic story once the real date passes the demo week.
+    ["auctionBoard", () => auctionBoard(ch, "thursday")],
+    ["mergeScan", () => mergeScan(pg, "sunday")],
     ["weeklyReport", () => weeklyReport(ch, pg)],
   ] as const) {
     const t0 = Date.now();

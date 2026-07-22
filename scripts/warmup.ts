@@ -17,8 +17,9 @@ async function main() {
   const steps: [string, () => Promise<unknown>][] = [
     ["revenuePulse", () => revenuePulse(ch)],
     ["attentionFeed", () => attentionFeed(ch, pg)],
-    ["auctionBoard", () => auctionBoard(ch)],
-    ["mergeScan", () => mergeScan(pg)],
+    // Pinned demo days: warm the exact queries the cockpit story runs.
+    ["auctionBoard", () => auctionBoard(ch, "thursday")],
+    ["mergeScan", () => mergeScan(pg, "sunday")],
     ["weeklyReport", () => weeklyReport(ch, pg)],
     ["labelManifest", () => buildManifest(pg)],
   ];
