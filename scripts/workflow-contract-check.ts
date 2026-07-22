@@ -222,10 +222,12 @@ assert.match(shipLogicSource, /incident\.incidentId}:\$\{incident\.shipmentId}:r
   "ship-day event ids must be shipment-scoped");
 assert.match(shipLogicSource, /r\.request_code = \$1[\s\S]*r\.status = 'auto_handled'[\s\S]*s\.status = 'voided'[\s\S]*o\.status = 'held'/,
   "only the fixed completed demo incident may re-arm its own held shipment");
-assert.ok((shipLogicSource.match(/ship_week <> 'DEMO-TOMORROW'/g) ?? []).length >= 4,
+assert.ok((shipLogicSource.match(/ship_week <> 'DEMO-TOMORROW'/g) ?? []).length >= 3,
   "every Tuesday selection path must exclude the DOA demo fixture (ship_week DEMO-TOMORROW)");
+assert.ok(!/ORDER BY s\.purchased_at DESC/.test(shipLogicSource),
+  "staging must never select an arbitrary live purchased shipment (it could void a just-approved Monday label)");
 assert.match(shipLogicSource, /stageSelfContainedShipDayFixture/,
-  "an empty pool must self-stage an isolated deterministic Tuesday fixture, never throw");
+  "staging must create or repair the isolated deterministic Tuesday fixture, never throw");
 assert.match(shipSource, /payload\.incident \?\?/,
   "task retries must reuse the staged incident, never re-select a shipment mid-incident");
 

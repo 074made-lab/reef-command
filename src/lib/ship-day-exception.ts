@@ -225,31 +225,16 @@ export async function stageDemoShipDayRequest(pg: Pool, nowIso = new Date().toIS
     return { ...prior, receivedAt: nowIso };
   }
 
-  const candidate = await pg.query<IncidentRow>(`
-    SELECT s.customer_id, c.primary_name, s.shipment_code,
-           s.destination_city, s.label_cost_cents, $1::timestamptz AS received_at
-    FROM shipments s
-    JOIN customers c ON c.id = s.customer_id
-    WHERE s.status = 'purchased'
-      -- the DOA demo's fixture rows live in ship_week 'DEMO-TOMORROW'; the two
-      -- public stories must never share (or void) the same shipment
-      AND s.ship_week <> 'DEMO-TOMORROW'
-      AND EXISTS (
-        SELECT 1 FROM orders o
-        WHERE o.shipment_id = s.id
-          AND o.status IN ('pending','paid','labeled')
-      )
-    ORDER BY s.purchased_at DESC NULLS LAST,
-             s.ship_week DESC,
-             s.label_cost_cents DESC NULLS LAST,
-             s.shipment_code
-    LIMIT 1`, [nowIso]);
-  let row = candidate.rows[0];
-  if (!row) {
-    const replay = await rearmHandledDemoShipDayIncident(pg, nowIso);
-    if (replay) return replay;
-    row = await stageSelfContainedShipDayFixture(pg, nowIso);
-  }
+  // Deterministic fixture only — never an arbitrary live shipment. Seeded
+  // shipments carry no linked orders, so the old "newest purchased shipment
+  // with live orders" candidate query could only ever match labels the owner
+  // had just purchased in the Monday demo — selecting Tuesday then voided a
+  // just-approved Monday label instead of the documented tide_runner_88 /
+  // SHP-DEMO-TUE-001 / $32.60 story. Re-arm the completed incident if it
+  // exists; otherwise create (or repair) the isolated fixture.
+  const replay = await rearmHandledDemoShipDayIncident(pg, nowIso);
+  if (replay) return replay;
+  const row = await stageSelfContainedShipDayFixture(pg, nowIso);
 
   await pg.query(
     `INSERT INTO requests

@@ -1,10 +1,12 @@
 /**
  * Rollback-safe integration gate for the Tuesday autonomous exception.
  *
- * It proves a stale/voided shipment is ignored, the newest purchased shipment
- * with a holdable order is selected, every dedup key is shipment-scoped, and a
- * sequential replay produces one SMS, one action per step, and one CH event per
- * event type. ClickHouse is captured in memory; all Postgres writes roll back.
+ * It proves staging is deterministic (always the isolated SHP-DEMO-TUE-001
+ * fixture — NEVER an arbitrary live purchased shipment, so a just-approved
+ * Monday label can't be voided by selecting Tuesday), every dedup key is
+ * shipment-scoped, and a sequential replay produces one SMS, one action per
+ * step, and one CH event per event type. ClickHouse is captured in memory;
+ * all Postgres writes roll back.
  */
 import assert from "node:assert/strict";
 import type { ClickHouseClient } from "@clickhouse/client";
@@ -152,8 +154,15 @@ async function main() {
       "an hour-old handled incident must not suppress a new Tuesday event");
 
     const incident = await stageDemoShipDayRequest(scopedPg, new Date().toISOString());
-    assert.equal(incident.shipmentId, HOLDABLE_SHIPMENT,
-      "must ignore the stale shipment AND the newer DOA-fixture decoy, choosing the latest holdable shipment");
+    assert.equal(incident.shipmentId, DEMO_SHIP_SHIPMENT_CODE,
+      "staging must use the isolated deterministic fixture, never a live shipment");
+    const landmine = await db.query<{ shipment_status: string; order_status: string }>(`
+      SELECT
+        (SELECT status FROM shipments WHERE shipment_code = $1) AS shipment_status,
+        (SELECT status FROM orders WHERE platform = 'web' AND external_id = $2) AS order_status`,
+      [HOLDABLE_SHIPMENT, HOLDABLE_ORDER]);
+    assert.deepEqual(landmine.rows[0], { shipment_status: "purchased", order_status: "labeled" },
+      "a live purchased shipment (e.g. a just-approved Monday label) must never be selected, held, or voided");
 
     await recordShipDayDetection(fakeCh, incident);
     await notifyPackingTeam(scopedPg, fakeCh, incident);
@@ -183,22 +192,22 @@ async function main() {
           WHERE task_id = 'notify-packing-team' AND payload->>'shipmentId' = $1) AS notify_logs,
         (SELECT count(*)::text FROM action_log
           WHERE task_id = 'void-shipping-label' AND payload->>'shipmentId' = $1) AS void_logs`,
-      [HOLDABLE_SHIPMENT, HOLDABLE_ORDER, DEMO_SHIP_EXCEPTION_ID],
+      [DEMO_SHIP_SHIPMENT_CODE, DEMO_SHIP_ORDER_ID, DEMO_SHIP_EXCEPTION_ID],
     );
     const row = state.rows[0];
     assert.equal(row.shipment_status, "voided");
-    assert.equal(row.order_status, "held", "the linked holdable order must actually be held");
+    assert.equal(row.order_status, "held", "the linked fixture order must actually be held");
     assert.equal(row.request_status, "auto_handled");
-    assert.equal(row.shipment_action, `shipment:${HOLDABLE_SHIPMENT}`,
-      "the deterministic request must be rebound to the selected shipment");
+    assert.equal(row.shipment_action, `shipment:${DEMO_SHIP_SHIPMENT_CODE}`,
+      "the deterministic request must be bound to the fixture shipment");
     assert.equal(Number(row.sms_count), 1);
     assert.equal(Number(row.notify_logs), 1);
     assert.equal(Number(row.void_logs), 1);
     assert.equal(inserted.length, 3, "sequential replay must not duplicate CH events");
-    assert.ok(inserted.every((event) => event.order_id.includes(HOLDABLE_SHIPMENT)),
-      "every event id must be scoped to the selected shipment");
+    assert.ok(inserted.every((event) => event.order_id.includes(DEMO_SHIP_SHIPMENT_CODE)),
+      "every event id must be scoped to the fixture shipment");
     const fresh = await freshHandledDemoShipDayIncident(scopedPg);
-    assert.equal(fresh?.shipmentId, HOLDABLE_SHIPMENT,
+    assert.equal(fresh?.shipmentId, DEMO_SHIP_SHIPMENT_CODE,
       "a fresh completed incident should be reusable without another run");
 
     await db.query(
@@ -207,14 +216,14 @@ async function main() {
       [DEMO_SHIP_EXCEPTION_ID],
     );
     const replay = await stageDemoShipDayRequest(scopedPg, new Date().toISOString());
-    assert.equal(replay.shipmentId, HOLDABLE_SHIPMENT,
+    assert.equal(replay.shipmentId, DEMO_SHIP_SHIPMENT_CODE,
       "an aged-out deterministic incident should re-arm its own held shipment");
     const replayState = await db.query<{ shipment_status: string; order_status: string; request_status: string }>(`
       SELECT
         (SELECT status FROM shipments WHERE shipment_code = $1) AS shipment_status,
         (SELECT status FROM orders WHERE platform = 'web' AND external_id = $2) AS order_status,
         (SELECT status FROM requests WHERE request_code = $3) AS request_status`,
-      [HOLDABLE_SHIPMENT, HOLDABLE_ORDER, DEMO_SHIP_EXCEPTION_ID],
+      [DEMO_SHIP_SHIPMENT_CODE, DEMO_SHIP_ORDER_ID, DEMO_SHIP_EXCEPTION_ID],
     );
     assert.deepEqual(replayState.rows[0], {
       shipment_status: "purchased",
@@ -222,13 +231,13 @@ async function main() {
       request_status: "open",
     }, "re-arming must restore only the deterministic demo starting state");
 
-    // Fresh-clone simulation: no eligible shipment anywhere (seeded shipments
-    // carry no linked orders) and no prior incident to re-arm. Staging must
-    // create the isolated deterministic fixture instead of failing.
+    // Fresh-clone / damaged-fixture simulation: no prior incident to re-arm
+    // and the fixture shipment left in a non-purchasable state. Staging must
+    // repair the isolated fixture instead of failing or touching live rows.
     await db.query(
       `UPDATE shipments SET status = 'shipped'
-       WHERE shipment_code IN ($1, $2)`,
-      [HOLDABLE_SHIPMENT, DOA_DECOY_SHIPMENT],
+       WHERE shipment_code = $1`,
+      [DEMO_SHIP_SHIPMENT_CODE],
     );
     await db.query(
       `DELETE FROM requests WHERE request_code = $1`,
@@ -236,7 +245,7 @@ async function main() {
     );
     const selfStaged = await stageDemoShipDayRequest(scopedPg, new Date().toISOString());
     assert.equal(selfStaged.shipmentId, DEMO_SHIP_SHIPMENT_CODE,
-      "an empty pool must self-stage the isolated deterministic Tuesday fixture");
+      "staging must create or repair the isolated deterministic Tuesday fixture");
     const fixtureState = await db.query<{ shipment_status: string; order_status: string; request_shipment: string }>(`
       SELECT
         (SELECT status FROM shipments WHERE shipment_code = $1) AS shipment_status,
@@ -251,13 +260,14 @@ async function main() {
       request_shipment: `shipment:${DEMO_SHIP_SHIPMENT_CODE}`,
     }, "the self-staged fixture must be purchased, holdable, and bound to the request");
 
-    console.log("✓ stale shipment rejected; latest purchased + holdable shipment selected");
-    console.log("✓ DOA-fixture decoy (ship_week DEMO-TOMORROW) never selected, even when newest");
-    console.log("✓ request rebound; linked order actually held; label voided");
+    console.log("✓ staging always selects the isolated deterministic fixture (SHP-DEMO-TUE-001)");
+    console.log("✓ live purchased shipments (Monday labels) are never selected, held, or voided");
+    console.log("✓ DOA-fixture decoy (ship_week DEMO-TOMORROW) never touched");
+    console.log("✓ request bound; fixture order actually held; fixture label voided");
     console.log("✓ sequential replay: 1 SMS, 1 notify log, 1 void log, 3 CH events");
     console.log("✓ event ids are shipment-scoped; fresh completion is reusable");
     console.log("✓ aged-out demo incident safely re-arms its own held shipment");
-    console.log("✓ empty pool self-stages the isolated deterministic fixture (fresh-clone path)");
+    console.log("✓ damaged/absent fixture is recreated (fresh-clone path)");
     console.log("\nALL PASS — ship-day exception integration (rolled back)");
   } finally {
     await db.query("ROLLBACK").catch(() => {});
