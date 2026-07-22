@@ -3,6 +3,7 @@ import type { ReefEvent } from "../datastore";
 import { CATALOG } from "./catalog";
 import { CUSTOMERS } from "./customers";
 import { generateBackfill } from "./generator";
+import { demoAuctionMoment } from "../demo-clock";
 
 const WEEK_MS = 7 * 24 * 3600_000;
 const ANCHOR = Date.UTC(2026, 0, 1);
@@ -52,7 +53,11 @@ async function batchInsert(
  */
 export async function resetSyntheticPostgres(
   db: PoolClient,
-  { weeks = 10, now = new Date() }: { weeks?: number; now?: Date } = {},
+  // Default horizon = two minutes past the demo Saturday close — NOT the wall
+  // clock — so pg-seed builds the identical world on any run date (a wall-clock
+  // horizon gave judges a different, sometimes settlement-empty world).
+  { weeks = 10, now = new Date(demoAuctionMoment("saturday") + 2 * 60_000) }:
+    { weeks?: number; now?: Date } = {},
 ): Promise<DemoSeedSummary> {
   await db.query("BEGIN");
   try {
@@ -226,7 +231,13 @@ export async function resetSyntheticPostgres(
       JOIN campaigns ON campaigns.campaign_code = sends.campaign_code
       JOIN customers ON customers.id = sends.customer_id`);
 
-    await db.query("UPDATE orders SET status='shipped' WHERE ordered_at < now() - interval '7 days'");
+    // Age history relative to the SYNTHETIC horizon, never the wall clock:
+    // everything before the horizon's previous cycle is settled history, while
+    // the demo cycle's orders stay actionable. (The old `now() - 7 days` rule
+    // silently marked the W28 merge anchors shipped for anyone reseeding after
+    // Jul 25, emptying the flagship merge demo.)
+    const historyCutoff = new Date(ANCHOR + (nowWeek - 1) * WEEK_MS);
+    await db.query("UPDATE orders SET status='shipped' WHERE ordered_at < $1::timestamptz", [historyCutoff]);
     await db.query(`UPDATE customers SET
         total_orders = aggregate.order_count,
         total_spent_cents = aggregate.spent_cents,
