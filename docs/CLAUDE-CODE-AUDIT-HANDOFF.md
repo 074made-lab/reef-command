@@ -1,49 +1,51 @@
 # Claude Code Submission Audit Handoff
 
-Prepared on 2026-07-22 for the final pre-submission audit. This document covers
-the hackathon project in this repository only. Do not copy, merge, deploy, or
-write any of this work into TIA Coral.
+Refreshed on 2026-07-22 after the Anthropic quota was restored. This document
+covers the hackathon project in this repository only. Do not copy, merge,
+deploy, or write any of this work into TIA Coral.
 
-## Read this first: submission-critical blocker
+## Read this first: quota fixed, two audit failures remain
 
-The product build, deterministic workflow checks, live ClickHouse checks, and
-non-LLM Trigger.dev tasks pass. However, the configured Anthropic workspace hit
-its API usage limit during the final live browser rehearsal:
+The restored Anthropic credential is working. A live browser request reached
+Trigger.dev `chat.agent()`, called the merge tool, and rendered the complete
+five-shipment merge board. Selecting Tuesday also returned its AI day brief,
+and the autonomous Trigger.dev shipment-protection task completed in 3.1 seconds.
 
-> You have reached your specified workspace API usage limits. You will regain
-> access on 2026-08-01 at 00:00 UTC.
+Do not treat the project as submission-ready yet. The refreshed audit found two
+repeatable issues:
 
-No credential or organization identifier is recorded here. Until the key is
-replaced, its quota is raised, or the provider configuration is changed, the
-required Trigger.dev `chat.agent()` path cannot return an answer. This is a
-hard submission blocker, not a cosmetic issue.
+1. `npx tsx scripts/agent-check.ts` fails 1 of 10 probes on two consecutive
+   runs. The unmarked prompt `Any orders I can merge into one box?` asks the
+   model to call `scanMerges`, but the tool requires a Sunday/Monday `day` and
+   the prompt supplies no synthetic-day marker. The model correctly asks which
+   day instead. The real UI adds the marker and passed in-browser, so this is a
+   regression-contract mismatch rather than a broken production chat path.
+   Claude Code should align the probe with the actual transport contract or
+   define an explicit safe default, then require 10/10 on repeated runs.
+2. After a clean reset, `npx tsx scripts/labelday-check.ts` reports a `W28`
+   Monday manifest containing future `AUC-29-*` winner orders. Reset seeds
+   Postgres through Saturday's W29 close, while `buildManifest()` selects every
+   unlinked pending/paid order without a selected-day/order-time boundary. This
+   is a real chronology defect in the money-gated Monday workflow. Do not record
+   or approve the label-day flow until its cycle boundary is fixed and tested.
 
-Immediate recovery sequence:
-
-1. Replace or re-fund the Anthropic credential used by the local Trigger.dev
-   worker. Keep secrets out of Git.
-2. Start `npx trigger.dev@4.5.4 dev` and wait for `Local worker ready` before
-   starting Next.js.
-3. Run `npx tsx scripts/agent-check.ts` and confirm all agent probes pass.
-4. Reset once at `/merchant/reset`, then rehearse the exact two video workflows
-   below from a clean state.
-5. Inspect the Trigger.dev run dashboard/logs and ClickHouse rows while the
-   flows execute. Do not record until both are clean.
-
-The prior implementation cycle had a passing agent check. The failure observed
-on 2026-07-22 is current external quota state, not a TypeScript/build failure,
-but it still makes the live demo fail.
+No credential or organization identifier is recorded here. Anthropic remains a
+single provider dependency, but quota is no longer the active blocker.
 
 ## Current repository status
 
-- Completed feature integration: merge commit `77f8b4c` on `main`.
+- Current audited baseline: merge commit `16358a6` on `main`.
+- Completed feature integration: merge commit `77f8b4c`.
+- Prior handoff document: commit `7de00c0`.
 - Feature branch tip: `01ea321` (`fix: reconcile demo week and auction truth`).
 - The full implementation range is visible with
   `git log --oneline ab5e592..main`.
 - This handoff is intentionally a documentation-only follow-up.
 - The product has not been renamed. The requested CoralSeller rename is left to
   the final Claude Code pass.
-- No TIA Coral files, services, themes, or workflows are part of this project.
+- No TIA Coral repository file, service, theme, or workflow was touched. Existing
+  Reef Command copy and provenance notes still name TIA Coral; review and remove
+  those references during the owner-requested rename/separation pass.
 
 ## What changed
 
@@ -205,12 +207,21 @@ Representative verified data:
 `src/lib/synth/ensure-auction-week.ts` repairs W29 with fixture revision
 `auction-close-2000-v2`. It issues bounded `ALTER TABLE ... DELETE` mutations,
 waits for their completion, and inserts a non-deduplicated canonical fixture.
-Reset took approximately 13 seconds in the final rehearsal. Do not reset during
-the recorded demo.
+The refreshed reset took 15.6 seconds and returned the browser to Sunday `0/3`.
+Do not reset during the recorded demo.
+
+Important defect: the reset intentionally seeds operational data through
+Saturday 2026-07-25 so every selectable day works, but Monday label preparation
+uses the real wall-clock W28 and does not filter orders to the Monday demo
+horizon. The resulting W28 manifest contains W29 auction orders. Inspect
+`src/app/api/demo/reset/route.ts`, `src/lib/synth/reset-postgres.ts`, and
+`src/lib/label-day.ts:buildManifest` together.
 
 ## Validation completed on the merged feature tree
 
-The following passed on 2026-07-22:
+The following commands were rerun on 2026-07-22. Everything in this block exited
+zero, but `labelday-check.ts` is currently a false green because it prints the
+cycle mismatch without asserting it; see the findings immediately below.
 
 ```text
 npx tsc --noEmit
@@ -224,6 +235,7 @@ npx tsx scripts/demo-reset-check.ts
 npx tsx scripts/addon-merge-behavior-check.ts
 npx tsx scripts/shipping-documents-check.tsx
 npx tsx scripts/shipping-blockers-check.ts
+npx tsx scripts/labelday-check.ts
 npx tsx scripts/ship-day-exception-check.ts
 npx tsx scripts/doa-resolution-check.ts
 npx tsx scripts/ch-verify.ts
@@ -239,15 +251,20 @@ boundary. Label-day recovery covered five cases: replay, Postgres failure,
 ClickHouse failure, lost acknowledgment, and hold-after-review. The shipment and
 DOA integration checks ran with rollback-safe fixtures.
 
-Live ClickHouse verification passed. Representative query times were about 220 ms
-for materialized-view weekly revenue, 47 ms for auction top ten, and 46 ms for
+Live ClickHouse verification passed. Representative refreshed query times were
+254 ms for materialized-view weekly revenue, 54 ms for auction top ten, and 53 ms for
 `windowFunnel`. The last complete historical verification cycle was
 2026-07-09 through 2026-07-16.
 
-Not currently passable:
+Checks with findings:
 
-- `npx tsx scripts/agent-check.ts`, because the live Anthropic credential is over
-  quota. Re-run this after credential recovery; do not waive it.
+- `npx tsx scripts/agent-check.ts`: the credential works, but both refreshed
+  runs scored 9/10 because the generic merge probe omits the day required by
+  `scanMerges`. All other routing, component, count-integrity, auction-phase,
+  no-fabrication, and human-only money probes passed.
+- `npx tsx scripts/labelday-check.ts`: the query completed, but the W28 manifest
+  contained W29 auction orders after reset. Treat this as a failed business
+  invariant, even though the script currently only prints data and exits zero.
 
 Local `tsx` scripts initially received an `EPERM` error when their IPC socket was
 run inside a restricted sandbox. They passed when executed normally. That was a
@@ -257,14 +274,20 @@ test-harness restriction, not an application failure.
 
 - The merchant cockpit is visually strong and clearly communicates a seven-day
   command center.
-- Self-service reset returned the demo to Sunday `0/3` successfully.
-- The non-LLM Tuesday Trigger.dev task completed in roughly 3.1 seconds when the
-  worker was ready.
+- The restored provider successfully answered through Trigger.dev
+  `chat.agent()`. The Sunday UI prompt `Any orders to merge?` rendered five
+  candidates, 10 source orders, 13 coral units, and $1,473.65.
+- Selecting Tuesday returned its AI-generated day brief through the same live
+  agent path.
+- The Tuesday Trigger.dev task completed in 3.1 seconds and visibly transitioned
+  from request detected to packing notified, label voided, and `$32.60`
+  protected.
+- Self-service reset completed in 15.6 seconds and returned to Sunday `0/3`.
 - Starting Next.js before the Trigger.dev worker caused the UI to poll a run that
   finished only after the client had timed out. The user saw a safe “workflow
   connection unavailable” result even though the late task eventually succeeded.
-- Once the worker was ready, a chat request reached Trigger.dev but failed at the
-  Anthropic provider because of quota.
+- Reset cancels the still-open durable chat session after its streamed response;
+  this is expected cleanup, but it means reset must never run during recording.
 
 Recording rule: start the Trigger.dev worker first, verify it is ready, then start
 Next.js, warm both databases, reset once, and rehearse without restarting either
@@ -272,28 +295,35 @@ process.
 
 ## High-risk logic for Claude Code to audit
 
-1. `src/trigger/reef-chat.ts` and `src/lib/agent-config.ts`: required
+1. `scripts/agent-check.ts`, `src/trigger/reef-chat.ts`, and
+   `src/lib/agent-config.ts`: reconcile the generic merge probe with the
+   synthetic-day marker that `MerchantChat` adds. Require repeated 10/10 results,
+   not one lucky run.
+2. `src/app/api/demo/reset/route.ts`, `src/lib/synth/reset-postgres.ts`, and
+   `src/lib/label-day.ts`: prevent Monday W28 label approval from including
+   future W29 auction orders while preserving the selectable Saturday demo.
+3. `src/trigger/reef-chat.ts` and `src/lib/agent-config.ts`: required
    `chat.agent()` use, tool routing, provider recovery, step limit, component-only
    answer contract, and secret handling.
-2. `src/lib/synth/ensure-auction-week.ts`, `src/lib/synth/generator.ts`, and
+4. `src/lib/synth/ensure-auction-week.ts`, `src/lib/synth/generator.ts`, and
    `src/lib/synth/schedule.ts`: destructive fixture repair scope, mutation wait,
    close-time consistency, and no post-close bids.
-3. `src/trigger/label-day.ts`, `src/lib/label-day.ts`, and action routes:
+5. `src/trigger/label-day.ts`, `src/lib/label-day.ts`, and action routes:
    waitpoint replay, owner authorization, Postgres-first mutation, retry behavior,
    and hold-after-review handling.
-4. `src/trigger/ship-day-exception.ts` and
+6. `src/trigger/ship-day-exception.ts` and
    `src/lib/ship-day-exception.ts`: autonomous authorization boundary, idempotent
    label void/order hold, and partial-failure recovery.
-5. `src/trigger/doa-resolution.ts` and `src/lib/doa-demo.ts`: replacement
+7. `src/trigger/doa-resolution.ts` and `src/lib/doa-demo.ts`: replacement
    shipment invariants, retry behavior, customer-message simulation, and duplicate
    events.
-6. `src/lib/merge-actions.ts` and `src/app/api/actions/route.ts`: advisory lock
+8. `src/lib/merge-actions.ts` and `src/app/api/actions/route.ts`: advisory lock
    scope, merge totals, rollback boundaries, owner session validation, and
    duplicate requests.
-7. `src/lib/store/clickhouse.ts` and `src/lib/tools.ts`: query parameterization,
+9. `src/lib/store/clickhouse.ts` and `src/lib/tools.ts`: query parameterization,
    bounded retry, winner selection with `argMax`, date boundaries, and event
    deduplication.
-8. `src/components/chat/MerchantChat.tsx`: stale run polling, the 30-second timeout,
+10. `src/components/chat/MerchantChat.tsx`: stale run polling, the 30-second timeout,
    refresh behavior, and late-completing Trigger runs.
 
 Important concurrency limitation: several specialized workflows use a
@@ -309,7 +339,11 @@ Postgres advisory-lock protection.
 - Synthetic/staged data drives the deterministic demo.
 - Browser state is session-scoped; full chat/run rehydration is absent.
 - Run progress uses polling rather than Trigger.dev Realtime.
-- Anthropic is the only configured agent provider and is currently quota-blocked.
+- Anthropic is the only configured agent provider; it is healthy in the refreshed
+  audit but has no fallback.
+- The advertised agent regression gate currently scores 9/10 because its generic
+  merge probe omits required UI day context.
+- Monday's label manifest can include future-cycle auction orders after reset.
 - Reset requires ClickHouse mutation permission and is too slow for an on-camera
   recovery.
 - A small set of unsupported actions intentionally returns `501`.
@@ -317,27 +351,31 @@ Postgres advisory-lock protection.
   latency despite bounded read retries.
 - Naming is inconsistent by design for now; the owner requested that Claude Code
   perform the later rename.
-- README/AGENTS claims such as “five live-store reads” and historical agent-check
-  counts should be reconciled with the current, larger tool set and current quota
-  state before submission.
+- README/AGENTS claims such as “five live-store reads,” “4/4” recovery scenarios,
+  and a passing 10-probe agent gate are stale relative to the current tool set,
+  five recovery scenarios, and refreshed 9/10 result.
 
 ## Recommended final audit order
 
-1. Fix the Anthropic quota and run `scripts/agent-check.ts`.
-2. Read `README.md`, `AGENTS.md`, `src/trigger/reef-chat.ts`, and
+1. Fix the agent-check day-context mismatch and require at least two consecutive
+   10/10 runs.
+2. Fix the W28 label manifest so it cannot contain W29 orders. Add an asserting
+   cycle-boundary check; the current print-only script must fail non-zero on a
+   mismatch.
+3. Read `README.md`, `AGENTS.md`, `src/trigger/reef-chat.ts`, and
    `src/lib/agent-config.ts` to verify requirement claims match code.
-3. Inspect `db/clickhouse/0001_events.sql`, `src/lib/store/clickhouse.ts`, and
+4. Inspect `db/clickhouse/0001_events.sql`, `src/lib/store/clickhouse.ts`, and
    `src/lib/tools.ts` to confirm ClickHouse is central and queries are correct.
-4. Inspect the eight high-risk areas above, especially reset/delete scope and
-   retry/idempotency boundaries.
-5. Run the full validation ledger exactly as listed.
-6. Start Trigger.dev first, then Next.js, perform one reset, and execute both
+5. Inspect the high-risk areas above, especially reset/delete scope, chronology,
+   and retry/idempotency boundaries.
+6. Run the full validation ledger exactly as listed.
+7. Start Trigger.dev first, then Next.js, perform one reset, and execute both
    recommended workflows in a real browser.
-7. Verify the corresponding Trigger.dev runs, Postgres state, and ClickHouse
+8. Verify the corresponding Trigger.dev runs, Postgres state, and ClickHouse
    events—not just the rendered UI.
-8. Check `git status`, the public repository license, secret scanning, deploy
+9. Check `git status`, the public repository license, secret scanning, deploy
    configuration, and the final public GitHub URL.
-9. Perform the requested product rename last, then rerun typecheck, build, agent
+10. Perform the requested product rename last, then rerun typecheck, build, agent
    probes, reset, and both video workflows.
 
 ## Strongest two-workflow demo story
@@ -357,6 +395,11 @@ across platforms becoming five shipments: 10 source orders, 13 coral units, and
 $1,473.65. Continue into Monday's shipping-document and label review, then approve
 the Trigger.dev waitpoint. Show the Postgres shipping mutation and the matching
 ClickHouse `label_purchased` events.
+
+This remains the strongest story only after the W28/W29 label-manifest defect is
+fixed. Until then, stop the video at the read-only shipping documents or choose
+the Wednesday DOA approval as the second executable workflow; never display or
+approve a chronologically impossible carrier manifest.
 
 Together, these workflows tell a better story than using two customer-service
 exceptions. The first proves autonomous urgency; the second proves the core
@@ -389,8 +432,9 @@ Official requirements: <https://triggerdev.clickhouse.com/>
 
 ## Candid prize assessment
 
-This is a credible finalist-quality project after the agent credential is fixed,
-but it is not yet a clear grand-prize favorite.
+The restored agent makes this a credible finalist-quality project again, but the
+failing advertised gate and future-order label manifest mean it is not yet
+submission-ready or a clear grand-prize favorite.
 
 Strengths:
 
@@ -406,8 +450,10 @@ Strengths:
 
 Weaknesses that can cost the prize:
 
-- With the current provider quota, grand-prize chances are effectively zero and
-  the required agent experience cannot be demonstrated.
+- The required `chat.agent()` experience now works, but a judge following
+  `AGENTS.md` will immediately see the 9/10 gate failure.
+- The Monday money-gated demo can expose future W29 orders inside a W28 manifest,
+  undermining the project's strongest integrity claim.
 - The seven-day breadth can look like a scripted dashboard rather than one
   indispensable product. The video needs two decisive workflows, not a feature
   tour.
@@ -424,10 +470,12 @@ Weaknesses that can cost the prize:
 
 Subjective odds, because the field size and judge preferences are unknown:
 
-- Current quota-blocked state: approximately 0% chance of the grand prize.
-- After fixing the agent, rehearsing the exact route, and visibly proving both
-  sponsor technologies: roughly 20–35% grand-prize chance, 35–55% chance of any
-  judged prize, and 45–65% chance of the OLTP + OLAP bonus.
+- Current state with working API but the two unresolved audit failures: roughly
+  5–15% grand-prize chance.
+- After fixing both defects, passing the gate repeatedly, rehearsing the exact
+  route, and visibly proving both sponsor technologies: roughly 20–35%
+  grand-prize chance, 35–55% chance of any judged prize, and 45–65% chance of
+  the OLTP + OLAP bonus.
 
 Those ranges are an informed judgment, not a statistical forecast. The project’s
 largest upside is the combination of an authentic niche operator story and
