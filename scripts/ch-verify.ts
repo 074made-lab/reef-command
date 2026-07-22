@@ -1,7 +1,7 @@
 /**
  * Verify the analytics layer against live ClickHouse: weekly revenue rollup,
- * the auction top-10, the cycle funnel (windowFunnel), and both retention
- * lenses. Prints timings — the speed IS part of the demo.
+ * the auction top-10 and the cycle funnel (windowFunnel). Prints timings —
+ * the speed IS part of the demo.
  */
 import { chClient, queryRows } from "../src/lib/store/clickhouse";
 
@@ -60,22 +60,6 @@ async function main() {
         GROUP BY customer_id
       ) WHERE level > 0 GROUP BY level ORDER BY level`, { start, end }));
   console.table(funnel);
-
-  const retention = await timed("retention — snapshot repeat rate + weekly flow", async () => {
-    const snap = await queryRows<{ paying: string; repeaters: string; repeat_rate: number }>(client, `
-      SELECT count() AS paying, countIf(lifetime_orders >= 2) AS repeaters,
-             round(countIf(lifetime_orders >= 2) / count(), 3) AS repeat_rate
-      FROM (SELECT customer_id, sum(orders) AS lifetime_orders
-            FROM mv_customer_daily GROUP BY customer_id)`);
-    const flow = await queryRows<{ returning_usd: string; new_usd: string }>(client, `
-      WITH firsts AS (SELECT customer_id, min(day) AS first_day FROM mv_customer_daily GROUP BY customer_id)
-      SELECT round(sumIf(d.spend_cents, f.first_day <  toDate({start:DateTime}))/100) AS returning_usd,
-             round(sumIf(d.spend_cents, f.first_day >= toDate({start:DateTime}))/100) AS new_usd
-      FROM mv_customer_daily d JOIN firsts f USING (customer_id)
-      WHERE d.day >= toDate({start:DateTime}) AND d.day < toDate({end:DateTime})`, { start, end });
-    return { snapshot: snap[0], weeklyFlow: flow[0] };
-  });
-  console.log(JSON.stringify(retention, null, 2));
 
   await client.close();
 }

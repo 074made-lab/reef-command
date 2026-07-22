@@ -1,5 +1,5 @@
 /** Apply db/postgres/*.sql to the managed Postgres service. Idempotent. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { Client } from "pg";
 
 process.loadEnvFile(".env.local");
@@ -13,15 +13,21 @@ async function main() {
   const ver = await client.query("SELECT version()");
   console.log("connected:", ver.rows[0].version.split(" on ")[0]);
 
-  const ddl = readFileSync("db/postgres/0001_initial.sql", "utf8");
-  try {
-    await client.query(ddl);
-    console.log("DDL applied");
-  } catch (e: unknown) {
-    const msg = (e as Error).message;
-    // re-runs hit the ALTER TABLE … ADD CONSTRAINT (not IF NOT EXISTS-able) — fine
-    if (msg.includes("already exists")) console.log("DDL already applied:", msg);
-    else throw e;
+  const migrations = readdirSync("db/postgres")
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  for (const file of migrations) {
+    const ddl = readFileSync(`db/postgres/${file}`, "utf8");
+    try {
+      await client.query(ddl);
+      console.log("DDL applied:", file);
+    } catch (e: unknown) {
+      const msg = (e as Error).message;
+      // The original migration predates a migration ledger and contains one
+      // named ALTER constraint. Re-runs may stop there; later files still run.
+      if (msg.includes("already exists")) console.log("DDL already applied:", file, msg);
+      else throw e;
+    }
   }
 
   const tables = await client.query(

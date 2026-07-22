@@ -19,14 +19,27 @@ import type { Pool } from "pg";
 import { chClient } from "./store/clickhouse";
 import { pgPool } from "./store/postgres";
 import {
+  addonOrderBoard,
   attentionFeed,
+  auctionAnnouncement,
   auctionBoard,
+  auctionSettlementReport,
+  fridayPlan,
+  listingPlan,
   mergeScan,
+  promotionPlan,
   revenuePulse,
+  saturdayLastCall,
+  saturdayWinnerEmails,
+  shippingCommand,
+  shippingBlockerBoard,
+  thursdayAnnouncementPlan,
+  winnerNextSteps,
   weeklyReport,
 } from "./tools";
 import type { ComponentSpec } from "./protocol";
 import { dayBriefSpec } from "./demo-clock";
+import { buildShippingDocumentBoard } from "./label-day";
 
 export const MODEL = "claude-sonnet-5";
 
@@ -81,6 +94,9 @@ export function summarize(specs: ComponentSpec[]): string {
         );
         break;
       }
+      case "shipping_blocker_board":
+        parts.push(`Monday blockers at ${s.asOf}: ${s.groups.map((group) => `${group.label} ${group.count} ${group.unit}`).join(", ")}; ${s.openCount} open queue record(s)`);
+        break;
       case "day_brief":
         parts.push(
           `synthetic today is ${s.weekday} — ${s.label}. Goal: ${s.goal}. ` +
@@ -101,9 +117,45 @@ export function summarize(specs: ComponentSpec[]): string {
         );
         break;
       }
+      case "addon_order_board":
+        parts.push(
+          `add-on order board: ${s.totalOrders} order(s), ${s.coralUnits} coral unit(s), ${s.combineReady} combine-ready`,
+        );
+        break;
+      case "merge_batch":
+        parts.push(
+          `merge run: ${s.candidates} ReefnBid-anchored shipment(s), ${s.readyCandidates} still ready, ${s.addonOrders} add-on order(s), ${s.coralUnits} total coral unit(s)${s.readyCandidates ? "; Merge all requires a human click" : "; all reconciled merges remain visible"}`,
+        );
+        break;
+      case "shipping_document_board":
+        parts.push(`Monday shipping documents at ${s.asOf}: ${s.packingSlips} packing slip(s), ${s.fedexLabels} eligible FedEx document(s), ${s.productLabels} one-per-coral bag label(s), ${s.shipments.length} shipment packing-board row(s); previews require approval and holds withhold carrier labels`);
+        break;
+      case "shipment_command_board":
+        parts.push(`${s.day} shipment command at ${s.asOf}: ${s.shipments.length} shipment(s), ${s.issues.length} issue(s), ${s.issues.filter((issue) => issue.severity === "urgent").length} urgent; exact order, shipment, tracking, destination, status, and action details render on screen`);
+        break;
+      case "staff_agent_board":
+        parts.push(`${s.title} at ${s.asOf}: ${s.tasks.length} staff task(s); ${s.tasks.map((task) => `${task.title} → ${task.owner} / ${task.agent}`).join("; ")}; every SMS and agent activation is simulated`);
+        break;
+      case "customer_resolution_board":
+        parts.push(`${s.title} at ${s.asOf}: ${s.items.length} open item(s), covering ${s.items.map((item) => item.kind).join(", ")}; every next action remains explicit and simulated`);
+        break;
+      case "winner_email_board":
+        parts.push(`${s.title} at ${s.asOf}: ${s.winners.length} winner email(s), each with won items, total, payment/shipping deadlines, add-on code, public demo policy path, and a separate simulated-send approval`);
+        break;
+      case "auction_settlement_report":
+        parts.push(`${s.auctionLabel} at ${s.asOf}: $${Math.round(s.totalRevenueCents / 100).toLocaleString("en-US")} auction revenue, ${s.orderCount} order(s), ${s.winnerCount} winner(s), ${s.soldItems} sold item(s), ${s.paidOrders} paid, ${s.unpaidOrders} unpaid, $${Math.round(s.shippingChargesCents / 100).toLocaleString("en-US")} shipping, $${Math.round(s.discountsCreditsCents / 100).toLocaleString("en-US")} discounts/credits, ${s.issues.filter((issue) => issue.status === "open").length} remaining issue(s)`);
+        break;
+      case "auction_announcement":
+        parts.push(
+          `next auction ${s.dateRange}, closes ${s.closeTime}; ${s.emailRecipients} email recipient(s), ${s.smsRecipients} SMS recipient(s); simulated send requires a human click`,
+        );
+        break;
+      case "campaign_card":
+        parts.push(`${s.title}: ${s.preview.channel} draft for ${s.audience.total} synthetic recipient(s), ${s.schedule}; separate human approval required and no external send occurs automatically`);
+        break;
       case "merge_card":
         parts.push(
-          `merge candidate ${s.customer.displayName}: ${s.orders.length} orders on ${s.orders.map((o) => o.platform).join("+")} → one box, one shipping fee`,
+          `merge candidate ${s.customer.displayName}: ReefnBid anchor ${s.anchorOrderId} + ${s.addonOrderCount} add-on order(s) = ${s.totalCoralUnits} coral unit(s) in one combined box`,
         );
         break;
       case "report": {
@@ -140,11 +192,49 @@ export const reefTools = {
     execute: async ({ day }) => dayBriefSpec(day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
+  addonOrderBoard: tool({
+    description:
+      "Call only this tool for Sunday's 'Watch add-on orders' monitor or when the owner asks for the add-on order board, add-on volume, coral units, channels, value, or anchor matches. It returns a read-only live synthetic Postgres board with no merge action; do not also call scanMerges unless the owner starts Step 2.",
+    inputSchema: z.object({}),
+    execute: async () => addonOrderBoard(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  auctionAnnouncement: tool({
+    description:
+      "Call this for Sunday's next-auction announcement. It returns the next Thursday-through-Saturday dates, Saturday 8 PM ET close, email and SMS recipient counts, both drafts, and one human-gated simulated-send button. It never contacts an external recipient.",
+    inputSchema: z.object({}),
+    execute: async () => auctionAnnouncement(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   whatNeedsAttention: tool({
     description:
-      "Call this when the owner asks what needs their attention, what's urgent, their morning triage, or 'anything I should handle'. Returns open cases, customer requests, and unanswered messages as an attention feed.",
+      "Call this when the owner asks what needs attention, what's urgent, their morning triage, customer messages, order exceptions, holds, address changes, or what must be cleared before shipping-label approval. This is the exact tool for 'Show me the order exceptions to clear before we purchase shipping labels.' It returns cases, customer requests, and unanswered messages as an attention feed; it does NOT prepare a label manifest.",
     inputSchema: z.object({}),
     execute: async () => attentionFeed(ch(), pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  shippingBlockers: tool({
+    description:
+      "Call this only for Monday Step 1, 'Clear shipping blockers'. It renders the live three-lane board for hold order requests, replacement coral items, and customer questions, followed by the detailed queue used to resolve them. It does not prepare or purchase labels.",
+    inputSchema: z.object({}),
+    execute: async () => shippingBlockerBoard(ch(), pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  shippingDocuments: tool({
+    description:
+      "Call this only for Monday Step 3, 'Prepare shipping docs'. It renders print-ready packing slips, synthetic FedEx label previews, one product label per coral bag, weather ice/heat-pack checks, box sizes and weights, with miniature examples. The board includes a separate owner-gated purchase button; rendering the board alone never purchases a label.",
+    inputSchema: z.object({}),
+    execute: async () => buildShippingDocumentBoard(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  shippingCommand: tool({
+    description:
+      "Call this for Tuesday Step 1, Wednesday Steps 1–2, or Thursday Step 3. Pass the selected day and scope=ship for today's manifest or scope=monitor for the prior day's overnight watch. It returns exact synthetic order, shipment, tracking, destination, issue, recommendation, and working action data.",
+    inputSchema: z.object({
+      day: z.enum(["tuesday", "wednesday", "thursday"]),
+      scope: z.enum(["ship", "monitor"]),
+    }),
+    execute: async ({ day, scope }) => shippingCommand(day, scope),
     toModelOutput: (output) => asText(summarize(output)),
   }),
   revenuePulse: tool({
@@ -163,16 +253,74 @@ export const reefTools = {
     execute: async ({ day }) => auctionBoard(ch(), day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
+  winnerNextSteps: tool({
+    description:
+      "Call this only when the owner asks to review Saturday winner next steps for payment, add-ons, and shipping. It returns the closed board plus a synthetic review card. It never sends or claims to send a customer message.",
+    inputSchema: z.object({}),
+    execute: async () => winnerNextSteps(ch()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  listingPlan: tool({
+    description:
+      "Call this for Tuesday Step 2 or 3. Use scope=listings for the ReefnBid and Shopify local-agent checklist. Use scope=inventory for the human physical inspection, Shopify update, eBay mirror check, and simulated staff SMS. It never publishes a listing or changes inventory.",
+    inputSchema: z.object({ scope: z.enum(["listings", "inventory"]) }),
+    execute: async ({ scope }) => listingPlan(scope),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  promotionPlan: tool({
+    description:
+      "Call this for Wednesday auction-start and Shopify-arrival reminders or Friday momentum/last-call ads. Sunday's full next-auction package belongs to auctionAnnouncement. This tool returns a synthetic draft review card and never sends email or SMS.",
+    inputSchema: z.object({
+      day: z.enum(["wednesday", "friday"]),
+    }),
+    execute: async ({ day }) => promotionPlan(day),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  thursdayAnnouncements: tool({
+    description:
+      "Call this only for Thursday Step 2. It returns four separate review cards: auction SMS, Shopify arrivals SMS, auction email, and Shopify arrivals email. Every draft says the auction opens at 12:00 PM ET and has its own human-gated simulated-send button.",
+    inputSchema: z.object({}),
+    execute: async () => thursdayAnnouncementPlan(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  fridayOperations: tool({
+    description:
+      "Call this for Friday Step 2 or 3. Use scope=social for the actionable team SMS task to film, prepare, and post on Instagram/TikTok. Use scope=issues for the complete prior-cycle message, shipping, DOA, remedy, address, and order-question resolution board.",
+    inputSchema: z.object({ scope: z.enum(["social", "issues"]) }),
+    execute: async ({ scope }) => fridayPlan(scope),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  saturdayLastCall: tool({
+    description:
+      "Call this only for Saturday Step 1. It reads the live 19:30 auction board and returns one inviting last-call SMS plus one email, both populated with current bid prices and each requiring a separate human-gated simulated-send approval.",
+    inputSchema: z.object({}),
+    execute: async () => saturdayLastCall(ch(), pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  saturdayWinnerEmails: tool({
+    description:
+      "Call this only for Saturday Step 2 after auction close. It groups final lots by winner and renders every winner's won items, total, payment and shipping instructions, public demo policy/DOA path, add-on code, combine guidance, deadlines, and a separate simulated email approval.",
+    inputSchema: z.object({}),
+    execute: async () => saturdayWinnerEmails(ch()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  auctionSettlement: tool({
+    description:
+      "Call this only for Saturday Step 3. It returns the auction-only final settlement: revenue, orders, winners, sold items, paid/unpaid counts, shipping charges, discounts/credits, and remaining checkout or settlement issues. It is intentionally different from Wednesday's weekly operational report.",
+    inputSchema: z.object({}),
+    execute: async () => auctionSettlementReport(ch(), pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   scanMerges: tool({
     description:
-      "Call this to find cross-platform orders that should combine into one shipment — 'any orders to merge', 'combine orders', 'one box'. Returns merge cards where the same customer has unshipped orders on 2+ platforms.",
-    inputSchema: z.object({}),
-    execute: async () => mergeScan(pg()),
+      "Call this for Sunday or Monday Step 2 'Combine eligible orders', 'Merge all', or an explicit request to merge. Do not call it for Sunday's Step 1 add-on monitor. ReefnBid remains the anchor on both days. Pass the weekday from the synthetic marker so the command timestamp is correct.",
+    inputSchema: z.object({ day: z.enum(["sunday", "monday"]) }),
+    execute: async ({ day }) => mergeScan(pg(), day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
   weeklyReport: tool({
     description:
-      "Call this for the full weekly report — 'weekly report', 'how did the week go', 'last week', 'top 10', 'reef health report'. Returns platform & tier mix, retention, six product categories, auction top 10, and the auction→add-on funnel, all against history. Pass weekIndex for a specific past cycle; omit for the last complete cycle.",
+      "Call this for the full weekly report — 'weekly report', 'how did the week go', 'last week', 'top 10', 'reef health report'. Returns public-safe platform totals, category movement, auction top 10, and the auction→add-on funnel, all against synthetic history. Pass weekIndex for a specific past cycle; omit for the last complete cycle.",
     inputSchema: z.object({
       weekIndex: z
         .number()
@@ -185,17 +333,27 @@ export const reefTools = {
   }),
 };
 
-export const SYSTEM = `You are Reef Command, the merchant cockpit for a live-coral store. The business is modeled on the real weekly operations of TIA Coral; all data here is synthetic and simplified. You are a calm, brief co-pilot ("Teddy") — never chatty.
+export const SYSTEM = `You are Reef Command, the merchant cockpit for a synthetic live-coral-store demo inspired by physical-commerce problems. The workflow, customer bands, account links, timing, economics, and rules are invented fixtures and are not TIA Coral's operating playbook. You are a calm, brief co-pilot ("Teddy") — never chatty.
 
-THE WEEK: MON label day → TUE ship + next-auction preview → WED final ship + weekly report → THU ReefnBid opens → FRI auction momentum → SAT close + winners/codes → SUN add-ons + cross-platform merges. Tuesday/Wednesday shipping the previous cycle overlaps with previewing the next auction. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
+THE WEEK: SUN add-ons + next-auction announcement review → MON shipping documents → TUE shipping + ReefnBid/Shopify listing prep → WED shipping + weekly report → THU ReefnBid opens → FRI auction momentum + social staff task + issue closure → SAT last call + winner emails + auction settlement. eBay mirrors Shopify in this synthetic demo, but human staff verify inventory and update Shopify directly. Six coral categories: zoas, euphyllia, goni, mushroom, sps, other.
 
 HOW YOU ANSWER — this is a visual product, not a wall of text:
 - For any question about the business, CALL THE RIGHT TOOL. The tool renders the real answer as interactive components on screen.
 - After the tool, add ONE short sentence (≤140 chars) as your verdict — interpret or point, don't re-list the numbers the components already show.
+- Use plain, commercial language. Do not use em dashes; use a period, colon, or comma instead.
 - Pick the tool by intent (each tool's description says when to use it). You may call more than one if the question genuinely spans them.
-- Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the recording. Never replace it with the real wall-clock weekday.
+- Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
+- When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
+- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday and Monday Step 2 call ONLY scanMerges with the selected day: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday Step 1 calls shippingCommand with day=tuesday and scope=ship. Tuesday Step 2 calls listingPlan with scope=listings. Tuesday Step 3 calls listingPlan with scope=inventory. Wednesday Step 1 calls shippingCommand with day=wednesday and scope=ship. Wednesday Step 2 calls shippingCommand with day=wednesday and scope=monitor. Wednesday Step 3 calls the existing weeklyReport tool. Thursday Step 1 calls auctionBoard with day=thursday. Thursday Step 2 calls thursdayAnnouncements. Thursday Step 3 calls shippingCommand with day=thursday and scope=monitor. Friday Step 1 calls auctionBoard with day=friday. Friday Step 2 calls fridayOperations with scope=social. Friday Step 3 calls fridayOperations with scope=issues. Saturday Step 1 calls saturdayLastCall. Saturday Step 2 calls saturdayWinnerEmails. Saturday Step 3 calls auctionSettlement.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
+- A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
+- A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"
+- If the owner's next message confirms that trace follow-up, call whatNeedsAttention and render the complete attention feed. Do not add revenue or unrelated tools unless asked.
+- Monday Step 1 calls shippingBlockers for the hold-request, replacement-item, and customer-question board. Monday Step 2 calls scanMerges with day=monday. Monday Step 3 calls shippingDocuments for printable packing slips, synthetic FedEx previews, one bag label per coral, weather packs, and box sizes. Do not call prepareLabelDay unless the owner separately and explicitly asks to start the money-gated carrier-label purchase run.
+- Tuesday Step 1 must call shippingCommand, not the generic attention feed. Tuesday's autonomous last-minute hold request remains a separate Trigger.dev alert; never suppress or duplicate it inside the command board.
+- Wednesday is the final regular ship day. Its overnight watch must preserve joined customer, order, shipment, tracking, and delivery facts; delayed boxes require an owner reminder to contact FedEx, and coral-health reports require immediate care guidance plus the DOA claim path.
+- Thursday's live auction board must include all opened lots, including zero-bid lots, and show current leaders, highest values, total activity, low engagement, and recent change signals. Its four launch messages are separate drafts with separate approvals.
 
 HARD RULES (never break):
 - NEVER fabricate a number, price, date, handle, or policy. Every business figure must come from a tool result. If no tool covers the question, say so plainly in one sentence — do not guess or invent.

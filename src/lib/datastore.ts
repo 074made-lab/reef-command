@@ -27,6 +27,7 @@ export type ReefEvent = {
     | "order_delivered"
     // communication
     | "campaign_sent" | "message_out" | "message_in" | "message_answered"
+    | "packing_sms_sent"
     | "request_received" | "case_opened" | "case_decided"
     // ops
     | "weather_checked" | "action_executed";
@@ -58,12 +59,6 @@ export type Customer360 = {
   requests: CustomerRequest[];
 };
 
-export type MatchResult = {
-  customerId: number;
-  confidence: number;                    // 1.0 exact email … lower for name-only
-  matchedOn: "email" | "phone" | "name";
-};
-
 export type CaseRecord = {
   caseId: string;
   kind: "doa_claim" | "refund_request" | "beyond_template" | "other";
@@ -90,13 +85,12 @@ export interface DataStore {
   salesTimeline(fromIso: string, toIso: string, bucket: "minute" | "hour" | "day"): Promise<Series[]>;
   auctionBoard(): Promise<{ lots: LotPrice[]; closesAt: string }>;
   cycleFunnel(weekLabel: string): Promise<FunnelStep[]>;
-  weeklyReport(weekLabel: string): Promise<ReportSection[]>;   // incl. WoW/MoM + retention lenses
+  weeklyReport(weekLabel: string): Promise<ReportSection[]>;   // public-safe aggregate trend sections
   attentionFeed(): Promise<AttentionItem[]>;
 
   // ---------- OLTP (Postgres) ----------
   getCustomer(customerId: number): Promise<Customer360 | null>;
-  matchCustomer(contact: { email?: string; phone?: string; name?: string }): Promise<MatchResult | null>;
-  upsertOrder(order: OrderSummary & { customerContact?: { email?: string; phone?: string; name?: string } }): Promise<{ orderId: string; mergeCandidate?: MatchResult }>;
+  upsertOrder(order: OrderSummary): Promise<{ orderId: string }>;
   mergeOrders(orderIds: string[], customerId: number): Promise<OrderSummary>;   // → combined order
   unshippedShipments(weekLabel: string): Promise<ShipmentLine[]>;
   purchaseLabels(shipmentIds: string[]): Promise<ShipmentLine[]>;              // after waitpoint approval

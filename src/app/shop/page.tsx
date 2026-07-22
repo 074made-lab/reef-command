@@ -9,11 +9,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * The concierge INTAKE is live: a buyer's question writes a `message_in` event
- * to the shared store and surfaces in the merchant cockpit's attention feed —
- * both surfaces provably speak one component protocol. The ANSWER side stays an
- * explicit preview (the documented scope decision — see docs/DESIGN.md): no
- * fake composer pretending to chat back; a human reads and answers.
+ * The concierge directly answers one narrow synthetic FAQ, routes delivery
+ * loss to evidence intake, and writes every unsupported question to the shared
+ * owner-attention stream. It never pretends a real customer was contacted.
  */
 export default function ShopPage() {
   return (
@@ -30,11 +28,11 @@ export default function ShopPage() {
               className="shrink-0 rounded-full ring-1 ring-coral/50"
             />
             <p className="text-[13px] text-ink">
-              <span className="mr-2 font-mono text-[11px] tracking-[0.18em] text-coralhi uppercase">
+              <span className="mr-2 font-mono text-[13px] tracking-[0.16em] text-coralhi uppercase">
                 customer concierge
               </span>
-              Ask the store below — your question lands live in the owner&apos;s
-              cockpit. Component answers here are the next surface.
+              Ask Teddy about combining an add-on with an auction win, or tell
+              him what happened. Delivery loss opens the DOA path immediately.
             </p>
           </div>
 
@@ -44,20 +42,20 @@ export default function ShopPage() {
             spec={{
               kind: "verdict_card",
               verdict:
-                "This is the customer-facing side of the same chat protocol. When it opens, buyers track combined shipments, file DOA claims with photo evidence, and add corals to an open box — all as components, never a wall of text.",
+                "Teddy routes a delivery loss to evidence intake immediately. A person still decides every remedy.",
               confidence: "high",
               evidence: [
                 {
-                  label: "order tracking",
-                  detail: "live timeline of your combined shipment",
+                  label: "try it",
+                  detail: "type “My coral arrived dead”",
                 },
                 {
-                  label: "DOA claims",
-                  detail: "guided evidence intake, human decides",
+                  label: "robot job",
+                  detail: "recognize the issue and collect evidence",
                 },
                 {
-                  label: "add-on window",
-                  detail: "one shipping fee covers everything in the box",
+                  label: "human job",
+                  detail: "approve credit, replacement, or another remedy",
                 },
               ],
             }}
@@ -65,8 +63,8 @@ export default function ShopPage() {
 
           <div className="pt-2 text-center">
             <p className="text-sm text-dim">
-              Today, the live product is the owner&apos;s side — run the whole
-              week from the cockpit.
+              The same boundary appears in the merchant cockpit: Teddy prepares;
+              a person owns the decision.
             </p>
             <Link
               href="/merchant"

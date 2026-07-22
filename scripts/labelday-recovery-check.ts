@@ -21,6 +21,24 @@ class FakePg {
   private seq = 1;
 
   async query(sql: string, params: unknown[] = []): Promise<{ rows: Record<string, unknown>[]; rowCount: number }> {
+    if (sql.includes("SELECT o.external_id, o.status")) {
+      const [cust, ids] = params as [number, string[]];
+      const rows = this.orders
+        .filter((order) => order.customerId === cust && ids.includes(order.externalId))
+        .sort((a, b) => a.externalId.localeCompare(b.externalId))
+        .map((order) => {
+          const linked = order.shipmentId === null
+            ? undefined
+            : [...this.shipments.entries()].find(([, shipment]) => shipment.id === order.shipmentId);
+          return {
+            external_id: order.externalId,
+            status: order.status,
+            shipment_code: linked?.[0] ?? null,
+            shipment_status: linked?.[1].status ?? null,
+          };
+        });
+      return { rows, rowCount: rows.length };
+    }
     if (sql.includes("INSERT INTO shipments")) {
       const code = params[0] as string;
       if (!this.shipments.has(code)) this.shipments.set(code, { id: String(this.seq++), status: "planned", purchasedAt: null });
@@ -77,6 +95,7 @@ function manifest(): Manifest {
       pack: "none", costCents: 2400, status: "planned",
     }],
     weatherFlags: [], productLabels: 3, totalCostCents: 2400,
+    documentShipments: [],
     orderIdsByShipment: { [shipmentId]: ["WEB-1", "AUC-2"] },
   };
 }
@@ -148,6 +167,19 @@ async function main() {
     const ship = pg.shipments.get("SHP-101-30");
     assert("D lost-ack dedup", r.purchased === 1 && ch.events.length === 1 && ship?.status === "purchased",
       `r=${r.purchased} events=${ch.events.length} final=${ship?.status}`);
+  }
+
+  // E — the owner reviewed a preview, then an order moved to HOLD before the
+  //     Trigger write. Fail closed: the recoverable claim remains planned and
+  //     no ClickHouse purchase event or purchased commit lands.
+  {
+    const pg = freshPg(), ch = new FakeCh();
+    pg.orders[0].status = "held";
+    let threw = false;
+    try { await purchaseLabels(P(pg), C(ch), manifest()); } catch { threw = true; }
+    const ship = pg.shipments.get("SHP-101-30");
+    assert("E hold-after-review", threw && ship?.status === "planned" && ch.events.length === 0,
+      `threw=${threw} status=${ship?.status} events=${ch.events.length}`);
   }
 
   let failures = 0;

@@ -26,86 +26,107 @@ export type DemoDay = {
 
 export const DEMO_DAYS: DemoDay[] = [
   {
-    id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Label Day",
-    goal: "Lock the combined shipment plan, then buy the right labels once — with a human checkpoint.",
+    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-ons + Announcement",
+    goal: "Combine eligible add-ons and review the next-auction announcement before Monday's document work.",
     priorities: [
-      { label: "Clear exceptions before spend", detail: "Resolve holds, address changes, late add-ons, and ambiguous customer matches before labels are purchased.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Collapse every eligible order", detail: "Confirm ReefnBid, Shopify, and eBay orders are flowing into one customer box and one shipping fee.", cue: "do-now", prompt: "Any orders to merge?" },
-      { label: "Build and approve the batch", detail: "Calculate weights, weather packs, product labels, and shipping labels; carrier spend waits for the owner click.", cue: "human-gate", prompt: "Run label day" },
+      { label: "Watch add-on orders", time: "14:20", detail: "Match each Shopify or eBay add-on to its ReefnBid auction anchor and show the resulting box count.", cue: "watch", prompt: "Show only the Sunday add-on orders board with each Shopify or eBay add-on matched to its ReefnBid anchor, plus add-on corals, combined box corals, and value. Do not open merge controls yet." },
+      { label: "Combine eligible orders", time: "16:00", detail: "Review every ReefnBid-anchored shipment and merge all eligible add-ons in one click.", cue: "do-now", prompt: "Show every eligible ReefnBid-anchored shipment, reconcile source orders and coral totals, and give me the Merge all control." },
+      { label: "Announce next auction", time: "18:30", detail: "Review Thursday–Saturday dates, email and SMS drafts, counts, and the demo send approval.", cue: "human-gate", prompt: "Build Sunday's next-auction announcement for next Thursday through Saturday, closing Saturday at 8 PM ET. Show email and SMS recipient counts, both drafts, and the human-gated demo send button." },
     ],
-    reminder: "Do not approve the label batch until merge and address exceptions are clear.",
+    reminder: "The announcement remains a draft until approval; Monday starts shipping-document preparation.",
   },
   {
-    id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Preview",
-    goal: "Move the first live-coral boxes safely while opening the next ReefnBid story.",
+    id: "monday", phase: "label_day", short: "MON", weekday: "Monday", time: "18:10", label: "Shipping Documents",
+    goal: "Clear shipment issues, combine eligible orders, and prepare shipping documents for carrier review.",
     priorities: [
-      { label: "Ship the ready combined boxes", detail: "Verify product labels, shipping labels, weather packs, and the Tuesday handoff queue.", cue: "do-now" },
-      { label: "Catch last-minute exceptions", detail: "Handle address, hold, or cancellation requests before a box leaves; replacement label spend remains human-gated.", cue: "watch", prompt: "What needs my attention?" },
-      { label: "Start the next auction preview", detail: "Segment previews by dossier tier, coral preference, and home platform while shipping continues.", cue: "do-now" },
+      { label: "Clear shipping blockers", time: "08:30", detail: "Review hold requests, replacement items, and customer questions before documents are prepared.", cue: "do-now", prompt: "Open Monday's compact shipping blocker board for approval. Keep the issue summary collapsed." },
+      { label: "Combine eligible orders", time: "11:00", detail: "Recheck ReefnBid anchors and combine eligible Shopify or eBay add-ons into one shipment.", cue: "do-now", prompt: "Run Monday's eligible-order check using the same ReefnBid-anchor rule and show the reconciled Merge all board." },
+      { label: "Prepare shipping docs", time: "16:30", detail: "Prepare print-ready packing slips, FedEx previews, coral bag labels, weather packs, and box sizes.", cue: "human-gate", prompt: "Prepare Monday's print-ready shipping document board with packing slips, FedEx label previews, one product label per coral bag, weather pack checks, box sizes, and miniature examples. Do not purchase carrier labels." },
     ],
-    reminder: "Shipping the old cycle and previewing the new auction happen in parallel today.",
+    reminder: "Human staff verify each packed box; the owner approves any shipping-label purchase.",
   },
   {
-    id: "wednesday", phase: "report", short: "WED", weekday: "Wednesday", time: "18:15", label: "Ship + Report",
-    goal: "Close the shipping cycle, learn from it, and turn the evidence into next week's stock plan.",
+    id: "tuesday", phase: "ship_days", short: "TUE", weekday: "Tuesday", time: "09:30", label: "Ship + Listings",
+    goal: "Clear shipment exceptions, release boxes, and stage Thursday listings after inventory is checked.",
     priorities: [
-      { label: "Finish the final ship queue", detail: "Clear the remaining eligible boxes and isolate anything that must hold to next week.", cue: "do-now", prompt: "What needs my attention?" },
-      { label: "Close the reef-health report", detail: "Review platform mix, dossier tiers, product economics, return rate, and the ReefnBid-to-add-on funnel.", cue: "do-now", prompt: "Weekly report" },
-      { label: "Translate insight into buying", detail: "Protect core categories, lean into demand, and buy laggards shallower for the coming cycle.", cue: "watch" },
+      { label: "Clear + check shipments", time: "08:10", detail: "Resolve DOA, customer, address, and pack issues against the complete ship-today manifest.", cue: "do-now", prompt: "Open Tuesday's clear-shipping-blockers board and complete ship-today manifest with every action." },
+      { label: "Stage Thursday listings", time: "13:00", detail: "Prepare ReefnBid lots and new Shopify arrivals for the Thursday publish target.", cue: "do-now", prompt: "Show Tuesday's ReefnBid and Shopify local-agent checklist, newest folders, and SMS activation controls." },
+      { label: "Request inventory check", time: "16:00", detail: "Ask human staff to inspect stock, update Shopify, verify eBay sync, and compare every quantity.", cue: "human-gate", prompt: "Open Tuesday's human inventory reminder for physical inspection, Shopify update, eBay sync, and manual quantity verification." },
     ],
-    reminder: "The report is only useful when its category signals change next week's stock depth.",
+    reminder: "Human staff update inventory in Shopify; eBay mirrors the Shopify catalog in this demo.",
+  },
+  {
+    id: "wednesday", phase: "report", short: "WED", weekday: "Wednesday", time: "17:30", label: "Ship + Weekly Report",
+    goal: "Finish the final ship day, protect Tuesday arrivals, and review the weekly operating report.",
+    priorities: [
+      { label: "Finish today's shipments", time: "09:30", detail: "Clear every blocker and complete the final regular ship-day manifest.", cue: "do-now", prompt: "Open Wednesday's final regular ship-day board with blockers, address issues, questions, DOA concerns, and unfinished orders." },
+      { label: "Monitor Tuesday shipments", time: "10:05", detail: "Escalate overnight delays, delivery exceptions, coral-health reports, and care questions.", cue: "do-now", prompt: "Monitor every Tuesday shipment, including Mominito, and show FedEx, address, movement, delivery, care, and DOA actions." },
+      { label: "Weekly reports", time: "17:30", detail: "Open the existing general weekly operational report for the completed cycle.", cue: "watch", prompt: "Open Wednesday's existing general weekly operational report; keep it distinct from Saturday auction settlement." },
+    ],
+    reminder: "Overnight shipment and coral-health issues require immediate staff response.",
   },
   {
     id: "thursday", phase: "auction_live", short: "THU", weekday: "Thursday", time: "20:45", label: "Auction Opens",
-    goal: "Open ReefnBid with a live view of demand and keep targeted customers engaged.",
+    goal: "Monitor the live auction, approve four launch drafts, and protect Wednesday arrivals.",
     priorities: [
-      { label: "Watch the live board", detail: "Track leaders, bid depth, soft lots, and the true close state without inventing urgency.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Send targeted opening nudges", detail: "Use tier, preference, and platform history instead of one generic blast.", cue: "watch" },
-      { label: "Triage inbound questions", detail: "Keep buyer questions and operational exceptions from aging while bids stream.", cue: "watch", prompt: "What needs my attention?" },
+      { label: "Monitor auction leaderboard", time: "20:45", detail: "See leaders, highest values, activity, low-engagement lots, and recent changes.", cue: "do-now", prompt: "Open Thursday's live auction leaderboard with leaders, highest-value lots, bid activity, low or no activity, and important changes." },
+      { label: "Approve four launch drafts", time: "11:45", detail: "Review auction and Shopify-arrival SMS and email drafts separately.", cue: "human-gate", prompt: "Show Thursday's four separate 12:00 PM launch drafts: auction SMS, arrivals SMS, auction email, and arrivals email, each with approval." },
+      { label: "Monitor Wednesday boxes", time: "09:20", detail: "Escalate delays, exceptions, address issues, coral-health reports, and care questions.", cue: "do-now", prompt: "Monitor every Wednesday shipment and show FedEx, delivery, address, coral-health, care, and DOA actions." },
     ],
-    reminder: "Use live bid evidence for urgency; never describe a closed board as live.",
+    reminder: "Auction opens at 12:00 PM ET; every message and shipment response remains separately reviewable.",
   },
   {
-    id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "18:30", label: "Auction Momentum",
-    goal: "Strengthen the middle of the auction without spamming the whole customer base.",
+    id: "friday", phase: "auction_live", short: "FRI", weekday: "Friday", time: "21:30", label: "Auction Momentum",
+    goal: "Track auction movement, activate the social team, and close every prior-cycle customer issue.",
     priorities: [
-      { label: "Find demand gaps", detail: "Compare leading lots with soft categories and decide which customers should see which coral.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Nudge the right audience", detail: "Target messages by coral preference and dossier tier; keep every simulated send in the event history.", cue: "watch" },
-      { label: "Protect response time", detail: "Answer buyer questions before the Saturday close creates a larger queue.", cue: "watch", prompt: "What needs my attention?" },
+      { label: "Monitor auction leaderboard", time: "21:30", detail: "Track leaders, high-value items, bid changes, low engagement, and overall activity.", cue: "do-now", prompt: "Open Friday's live auction leaderboard with current leaders, high-value items, bid changes, low engagement, and overall activity." },
+      { label: "Send social team reminder", time: "15:30", detail: "Remind staff to film, prepare, and post the week's best corals on Instagram and TikTok.", cue: "do-now", prompt: "Open Friday's actionable staff SMS task for filming the best corals and posting on Instagram and TikTok." },
+      { label: "Resolve customer issues", time: "18:30", detail: "Close messages, shipping, DOA, remedy, address, and order-question follow-ups.", cue: "do-now", prompt: "Open Friday's remaining customer-issue board with unanswered messages, shipping, DOA, remedy, address, and order-question actions." },
     ],
-    reminder: "Friday is for precise nudges, not a louder version of Thursday.",
+    reminder: "Staff own filming and posting; customer remedies remain explicit human decisions.",
   },
   {
-    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "22:47", label: "Close + Winners",
-    goal: "Close ReefnBid truthfully, then turn winners into a clear two-day add-on journey.",
+    id: "saturday", phase: "winners", short: "SAT", weekday: "Saturday", time: "20:02", label: "Closing Night + Winners",
+    goal: "Approve the final call, review every winner email, and close the auction settlement cleanly.",
     priorities: [
-      { label: "Confirm the final board", detail: "Use the closed state and final hammer prices; never call the auction live after the close.", cue: "do-now", prompt: "How's the auction going?" },
-      { label: "Guide every winner", detail: "Send payment instructions, cross-platform discount codes, add-on steps, and the shipping schedule.", cue: "do-now" },
-      { label: "Open the add-on watch", detail: "Prepare identity matching and order monitoring across Shopify and eBay for the Sunday wave.", cue: "watch" },
+      { label: "Approve last-minute call", time: "19:30", detail: "Review an inviting SMS and email with current bids before the auction closes.", cue: "human-gate", prompt: "Open Saturday's last-minute auction SMS and email drafts with current bid prices and separate approval controls." },
+      { label: "Review winner emails", time: "20:10", detail: "Check each winner's items, payment, shipping, policy, add-on code, and deadlines.", cue: "human-gate", prompt: "Open Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines." },
+      { label: "Auction settlement report", time: "20:20", detail: "Review auction-only revenue, orders, winners, sold items, payment, shipping, credits, and issues.", cue: "watch", prompt: "Open Saturday's auction-only settlement report with revenue, orders, winners, sold items, payment, shipping, discounts or credits, and remaining issues." },
     ],
-    reminder: "A winner notification should explain payment, add-ons, and shipping in one calm path.",
-  },
-  {
-    id: "sunday", phase: "addon_window", short: "SUN", weekday: "Sunday", time: "14:20", label: "Add-on Day",
-    goal: "Help winners add higher-margin coral while keeping one customer, one box, and one shipping fee.",
-    priorities: [
-      { label: "Watch every incoming order", detail: "Separate organic Shopify/eBay sales from winner add-ons without losing either stream.", cue: "watch", prompt: "How's business?" },
-      { label: "Merge across platforms", detail: "Match identities carefully and combine only unambiguous ReefnBid, Shopify, and eBay orders.", cue: "do-now", prompt: "Any orders to merge?" },
-      { label: "Protect Monday readiness", detail: "Surface holds, address changes, and late-add-on questions before Label Day locks the batch.", cue: "watch", prompt: "What needs my attention?" },
-    ],
-    reminder: "The customer value is one shipping fee; the business value is a stronger add-on basket.",
+    reminder: "Last-call and winner emails require review; settlement stays separate from Wednesday's report.",
   },
 ];
 
-export const DEFAULT_DEMO_DAY: DemoDayId = "monday";
+export const DEFAULT_DEMO_DAY: DemoDayId = "sunday";
 export const DEMO_DAY_EVENT = "reef:demo-day";
 export const DEMO_CHAT_PROMPT_EVENT = "reef:chat-prompt";
+export const DEMO_DAY_STORAGE_KEY = "reef-command:demo-day";
+
+export type DemoChatPromptDetail = {
+  prompt: string;
+  dayId: DemoDayId;
+  priorityIndex: number;
+};
+
+export function demoPriorityTimestamp(dayId: DemoDayId, priorityIndex: number): string {
+  const day = demoDay(dayId);
+  const time = day.priorities[priorityIndex]?.time ?? day.time;
+  return `${day.short} · ${time} ET`;
+}
+
+export function withRoutineContext(dayId: DemoDayId, priorityIndex: number, message: string): string {
+  return `[SYNTHETIC ROUTINE: priority=${priorityIndex + 1}; command_time=${demoPriorityTimestamp(dayId, priorityIndex)}; structured_component_required=true]\n${message}`;
+}
+
+export function isDemoDayId(value: string | null): value is DemoDayId {
+  return DEMO_DAYS.some((day) => day.id === value);
+}
 
 /**
- * Stable ClickHouse cycle used by the selectable recording week. W28 has the
- * complete deterministic auction arc in the seeded world: THU open through
- * SAT close, followed by SUN-WED operations. Keeping this explicit prevents a
- * judge's wall clock from silently swapping the demo to a different cycle.
+ * Completed auction cycle behind the selected Sunday-Wednesday operations.
+ * The same visible week then advances to W29 for Thursday-Saturday's next
+ * auction. Keeping that handoff explicit makes the Sunday announcement, ship
+ * dates, auction board, winner emails, and settlement one chronological story.
  */
 export const DEMO_AUCTION_WEEK_INDEX = 28;
 
@@ -122,11 +143,17 @@ const CYCLE_DAY: Record<DemoDayId, number> = {
   wednesday: 6,
 };
 
-/** Synthetic timestamp for a selected day inside the stable demo cycle. */
+/** Auction cycle that owns a selected day's data. */
+export function demoAuctionWeekIndex(dayId: DemoDayId): number {
+  return DEMO_AUCTION_WEEK_INDEX +
+    (dayId === "thursday" || dayId === "friday" || dayId === "saturday" ? 1 : 0);
+}
+
+/** Synthetic timestamp for a selected day inside the chronological demo week. */
 export function demoAuctionMoment(dayId: DemoDayId): number {
   const day = demoDay(dayId);
   const [hour, minute] = day.time.split(":").map(Number);
-  return DEMO_WEEK_ANCHOR + DEMO_AUCTION_WEEK_INDEX * WEEK_MS +
+  return DEMO_WEEK_ANCHOR + demoAuctionWeekIndex(dayId) * WEEK_MS +
     CYCLE_DAY[dayId] * DAY_MS + hour * 60 * 60_000 + minute * 60_000;
 }
 
@@ -154,7 +181,10 @@ export function withDemoDayContext(dayId: DemoDayId, message: string): string {
 }
 
 export function stripDemoDayContext(message: string): string {
-  return message.replace(/^\[SYNTHETIC DEMO TODAY:[^\]]+\]\s*/i, "");
+  return message
+    .replace(/^\[SYNTHETIC DEMO TODAY:[^\]]+\]\s*/i, "")
+    .replace(/^\[SYNTHETIC ROUTINE:[^\]]+\]\s*/i, "")
+    .replace(/^\[SYNTHETIC SHIP TRACE:[^\]]+\]\s*/i, "");
 }
 
 export function parseDemoDayContext(message: string): DemoDayId | undefined {

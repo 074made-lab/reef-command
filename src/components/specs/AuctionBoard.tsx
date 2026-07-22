@@ -9,12 +9,26 @@ export function AuctionBoard({
   lots,
   closesAt,
   state = "live",
+  asOf,
 }: {
   lots: LotPrice[];
   closesAt: string;
   state?: "upcoming" | "live" | "closed";
+  asOf?: string;
 }) {
   const top = Math.max(...lots.map((l) => l.currentBidCents), 1);
+  const bids = lots.reduce((sum, lot) => sum + lot.bidCount, 0);
+  const active = lots.filter((lot) => lot.bidCount > 0).length;
+  const positiveBidCounts = lots
+    .map((lot) => lot.bidCount)
+    .filter((count) => count > 0)
+    .sort((a, b) => a - b);
+  const lowBidCeiling = positiveBidCounts.length > 1
+    && positiveBidCounts[0] !== positiveBidCounts.at(-1)
+    ? positiveBidCounts[Math.max(0, Math.ceil(positiveBidCounts.length * 0.25) - 1)]
+    : 0;
+  const low = lots.filter((lot) => lot.bidCount > 0 && lot.bidCount <= lowBidCeiling).length;
+  const noBids = lots.filter((lot) => lot.bidCount === 0).length;
   const badge =
     state === "closed"
       ? { cls: "border-mute/50 text-mute", text: `closed · ${shortTime(closesAt)}` }
@@ -26,6 +40,17 @@ export function AuctionBoard({
       tag="AUCTION BOARD"
       right={<Chip className={badge.cls}>{badge.text}</Chip>}
     >
+      {state === "live" ? (
+        <div className="mb-3 grid grid-cols-4 overflow-hidden rounded-lg bg-abyss/45">
+          {[[bids, "BIDS"], [active, "ACTIVE"], [low, lowBidCeiling ? `LOW ≤${lowBidCeiling}` : "LOW"], [noBids, "NO BIDS"]].map(([value, label], index) => (
+            <div key={String(label)} className={`px-3 py-2.5 ${index ? "border-l border-line/60" : ""}`}>
+              <p className={`font-mono text-[19px] font-semibold tabular-nums ${label === "LOW" || label === "NO BIDS" ? "text-warn" : "text-tealhi"}`}>{value}</p>
+              <p className="font-mono text-[9px] tracking-[0.07em] text-mute">{label}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {asOf ? <p className="mb-2 font-mono text-[10px] tracking-[0.05em] text-mute">{asOf} · HIGHEST VALUE FIRST · 2-HOUR CHANGE SIGNALS</p> : null}
       {lots.length === 0 ? (
         <p className="py-2 text-center font-mono text-xs text-mute">
           no bids on the board this cycle
@@ -41,15 +66,20 @@ export function AuctionBoard({
               />
               <div className="relative flex items-center gap-3 px-1 py-2">
                 <span
-                  className={`w-6 shrink-0 text-right font-mono text-[11px] tabular-nums ${
+                  className={`w-6 shrink-0 text-right font-mono text-[12px] tabular-nums ${
                     i === 0 ? "text-tealhi" : "text-mute"
                   }`}
                 >
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] text-ink">{l.name}</p>
-                  <p className="font-mono text-[10px] text-mute">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-[14px] text-ink">{l.name}</p>
+                    {l.bidCount === 0 ? <Chip className="border-danger/45 text-danger">NO BIDS</Chip> : null}
+                    {l.bidCount > 0 && l.bidCount <= lowBidCeiling ? <Chip className="border-warn/45 text-warn">LOW</Chip> : null}
+                    {(l.recentBidCount ?? 0) >= 1 ? <Chip className="border-teal/45 text-tealhi">↗ {l.recentBidCount} RECENT</Chip> : null}
+                  </div>
+                  <p className="font-mono text-[12px] text-mute">
                     {l.category} · {l.lotId}
                   </p>
                 </div>
@@ -61,8 +91,8 @@ export function AuctionBoard({
                   >
                     {usd(l.currentBidCents)}
                   </p>
-                  <p className="font-mono text-[10px] text-dim">
-                    {l.leader} · {l.bidCount} bid{l.bidCount === 1 ? "" : "s"}
+                  <p className="font-mono text-[12px] text-dim">
+                    {l.bidCount ? `${l.leader} · ` : "waiting · "}{l.bidCount} bid{l.bidCount === 1 ? "" : "s"}
                   </p>
                 </div>
               </div>

@@ -3,7 +3,7 @@
 import type { CustomerRef } from "@/lib/protocol";
 import { PLATFORM_SHORT, PLATFORM_TONE } from "./format";
 
-/** Card frame with a corner kind-tag — the console panel every spec lives in. */
+/** Quiet commercial frame for structured answers. */
 export function SpecCard({
   tag,
   right,
@@ -18,20 +18,18 @@ export function SpecCard({
   const edge =
     tone === "coral" ? "border-coral/35" : "border-line";
   return (
-    <section
-      className={`overflow-hidden rounded-md border ${edge} bg-panel/85 shadow-[0_1px_0_rgba(79,227,207,0.05)_inset]`}
-    >
-      <header className="flex items-center justify-between gap-3 border-b border-line/70 px-3 py-1.5">
+    <section className={`overflow-hidden rounded-xl border ${edge} bg-panel/90 shadow-[inset_0_1px_0_rgba(255,255,255,.025)]`}>
+      <header className="flex items-center justify-between gap-3 border-b border-line/65 px-4 py-2.5">
         <span
-          className={`font-mono text-[12px] font-semibold tracking-[0.18em] ${
+          className={`text-[12px] font-semibold tracking-[0.08em] uppercase ${
             tone === "coral" ? "text-coralhi" : "text-teal"
           }`}
         >
-          ◤ {tag}
+          {tag}
         </span>
         {right ? <span className="flex items-center gap-2">{right}</span> : null}
       </header>
-      <div className="p-3">{children}</div>
+      <div className="p-4">{children}</div>
     </section>
   );
 }
@@ -45,7 +43,7 @@ export function Chip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-px font-mono text-[12px] tracking-wider ${className}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[12px] tracking-wide ${className}`}
     >
       {children}
     </span>
@@ -60,12 +58,11 @@ export function PlatformChip({ p }: { p: string }) {
   );
 }
 
-/** Tier 1–3 = dossier depth; tier 4 = first-time customer. */
+/** Arbitrary synthetic band. It is not a customer-value or first-time score. */
 export function TierBadge({ tier }: { tier: CustomerRef["tier"] }) {
-  if (tier === 4) return <Chip className="text-warn border-warn/40">NEW</Chip>;
   const tone =
     tier === 1 ? "text-tealhi border-tealhi/50" : tier === 2 ? "text-teal border-teal/50" : "text-dim border-line";
-  return <Chip className={tone}>TIER {tier}</Chip>;
+  return <Chip className={tone}>BAND {tier}</Chip>;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -94,7 +91,7 @@ export function Delta({ v, label }: { v?: number; label: string }) {
   const tone = v > 0 ? "text-ok" : v < 0 ? "text-danger" : "text-mute";
   const mark = v > 0 ? "▲" : v < 0 ? "▼" : "▬";
   return (
-    <span className={`font-mono text-[11px] tabular-nums ${tone}`}>
+    <span className={`font-mono text-[12px] tabular-nums ${tone}`}>
       {mark} {Math.abs(v)}% <span className="text-mute">{label}</span>
     </span>
   );
@@ -145,7 +142,7 @@ export function ConfidenceMeter({
   const tone =
     level === "high" ? "text-ok" : level === "medium" ? "text-warn" : "text-danger";
   return (
-    <span className={`font-mono text-[10px] tracking-widest ${tone}`}>
+    <span className={`font-mono text-[12px] tracking-wider ${tone}`}>
       {"●".repeat(filled)}
       <span className="opacity-30">{"●".repeat(3 - filled)}</span>{" "}
       {level.toUpperCase()}

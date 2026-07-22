@@ -88,7 +88,7 @@ export function Timeseries({
           <span className="flex items-center gap-3">
             {drawn.map((s, i) => (
               <span
-                key={s.name}
+                key={`${s.name}-${i}`}
                 className="flex items-center gap-1.5 font-mono text-[10px] text-dim"
               >
                 <span
@@ -175,7 +175,7 @@ export function Timeseries({
           {drawn.map((s, i) => {
             const pts = s.points.map((p) => `${x(parseT(p.t))},${y(p.v)}`);
             return (
-              <g key={s.name}>
+              <g key={`${s.name}-${i}`}>
                 {i === 0 && s.points.length > 1 ? (
                   <polygon
                     points={`${PAD.l},${y(0)} ${pts.join(" ")} ${x(

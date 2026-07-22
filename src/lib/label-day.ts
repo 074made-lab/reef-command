@@ -19,10 +19,12 @@ import { currentWeekIndex } from "./tools";
 import type { ReefEvent } from "./datastore";
 import type {
   ComponentSpec, ShipmentLine, WeatherFlag, CustomerRef, Platform,
+  ShippingDocumentShipment,
 } from "./protocol";
+import { demoPriorityTimestamp } from "./demo-clock";
 
 // weight (lb) and cost (cents) — generic, deterministic
-const CORAL_LB = 0.6, TARE_LB = 1.0, PACK_LB = 0.8, FLOOR_LB = 2.0;
+const CORAL_LB = 0.6, TARE_LB = 1.0, PACK_LB = 0.8, FLOOR_LB = 4.0;
 const BASE_CENTS = 1200, PER_LB_CENTS = 350, PACK_CENTS = 600;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -44,53 +46,75 @@ function packReason(w: { lowF: number; highF: number }, pack: "heat" | "cold"): 
     : `arrival window hits ${w.highF}°F — cold pack`;
 }
 
+function boxFor(coralUnits: number): Pick<ShippingDocumentShipment, "boxSize" | "boxDimensions"> {
+  if (coralUnits <= 4) return { boxSize: "S", boxDimensions: "9.5 × 9 × 8 in" };
+  if (coralUnits <= 8) return { boxSize: "M", boxDimensions: "11 × 9 × 10 in" };
+  if (coralUnits <= 16) return { boxSize: "L", boxDimensions: "12 × 12 × 9.5 in" };
+  if (coralUnits <= 24) return { boxSize: "XL", boxDimensions: "14 × 12 × 13 in" };
+  if (coralUnits <= 30) return { boxSize: "XXL", boxDimensions: "15.5 × 13.5 × 12.5 in" };
+  return { boxSize: "MANUAL", boxDimensions: "manual oversize review" };
+}
+
 export type Manifest = {
   weekLabel: string;
   shipments: ShipmentLine[];
   weatherFlags: WeatherFlag[];
   productLabels: number;
   totalCostCents: number;
+  documentShipments: ShippingDocumentShipment[];
   /** external order ids per shipment, for linking on purchase. */
   orderIdsByShipment: Record<string, string[]>;
+};
+
+export type ShippingLabelPurchaseSnapshot = {
+  shipmentId: string;
+  orderIds: string[];
 };
 
 type Row = {
   id: string; primary_name: string; tier: number; items: string;
   destination: string; platforms: string[]; order_ids: string[];
+  products: { sku: string; name: string; qty: number }[];
+  shipment_code: string | null;
+  shipment_status: "planned" | "purchased" | "held" | "voided" | null;
+  has_held_order: boolean;
+  document_key: string;
 };
 
-/** Read-only: build the MON label batch from unshipped Postgres orders. */
-export async function buildManifest(pg: Pool): Promise<Manifest> {
-  const wi = currentWeekIndex();
-  const weekLabel = `W${wi}`;
-  const res = await pg.query<Row>(`
-    SELECT c.id, c.primary_name, c.tier,
-           coalesce(sum(oi.qty), count(o.id))::text AS items,
-           max(o.destination_city) AS destination,
-           array_agg(DISTINCT o.platform) AS platforms,
-           array_agg(DISTINCT o.external_id) AS order_ids
-    FROM orders o
-    JOIN customers c ON c.id = o.customer_id
-    LEFT JOIN order_items oi ON oi.order_id = o.id
-    WHERE o.status IN ('pending','paid') AND o.shipment_id IS NULL
-    GROUP BY c.id
-    ORDER BY max(o.ordered_at) DESC
-    LIMIT 12`);
+export function expandProductLabels(
+  products: Row["products"],
+  coralUnits: number,
+): ShippingDocumentShipment["productLabels"] {
+  const expanded = products.flatMap((product) =>
+    Array.from({ length: Math.max(0, Number(product.qty)) }, () => ({
+      sku: product.sku,
+      name: product.name,
+      bag: "",
+    })),
+  );
+  return expanded.slice(0, coralUnits).map((product, index) => ({
+    ...product,
+    bag: `${index + 1} OF ${coralUnits}`,
+  }));
+}
 
+function compileManifest(rows: Row[], wi: number, weekLabel: string): Manifest {
   const shipments: ShipmentLine[] = [];
   const weatherFlags: WeatherFlag[] = [];
+  const documentShipments: ShippingDocumentShipment[] = [];
   const orderIdsByShipment: Record<string, string[]> = {};
   let productLabels = 0;
   let totalCostCents = 0;
 
-  for (const r of res.rows) {
+  for (const r of rows) {
     const items = Math.max(1, Number(r.items));
     const destination = r.destination ?? "";
     const w = destWeather(destination);
     const pack = packFor(w);
     const weightLb = Math.max(FLOOR_LB, round2(items * CORAL_LB + TARE_LB + (pack !== "none" ? PACK_LB : 0)));
     const costCents = BASE_CENTS + Math.round(weightLb * PER_LB_CENTS) + (pack !== "none" ? PACK_CENTS : 0);
-    const shipmentId = `SHP-${r.id}-${wi}`;
+    const documentToken = r.document_key.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toUpperCase();
+    const shipmentId = r.shipment_code ?? `SHP-${r.id}-${wi}-${documentToken}`;
     const customer: CustomerRef = {
       customerId: Number(r.id), displayName: r.primary_name,
       tier: (r.tier as 1 | 2 | 3 | 4) ?? 4,
@@ -100,6 +124,23 @@ export async function buildManifest(pg: Pool): Promise<Manifest> {
       shipmentId, customer, orderIds: r.order_ids, items, weightLb,
       destination, pack, costCents, status: "planned",
     });
+    const expandedLabels = expandProductLabels(r.products ?? [], items);
+    documentShipments.push({
+      shipmentId,
+      customer,
+      orderIds: r.order_ids,
+      coralUnits: items,
+      destination,
+      ...boxFor(items),
+      weightLb,
+      lowF: w.lowF,
+      highF: w.highF,
+      pack: pack === "cold" ? "ice" : pack,
+      carrierLabel: r.has_held_order || r.shipment_status === "held" || r.shipment_status === "voided"
+        ? "withheld"
+        : r.shipment_status === "purchased" ? "purchased" : "preview",
+      productLabels: expandedLabels,
+    });
     orderIdsByShipment[shipmentId] = r.order_ids;
     if (pack !== "none") {
       weatherFlags.push({ shipmentId, destination, lowF: w.lowF, highF: w.highF, pack, reason: packReason(w, pack) });
@@ -108,7 +149,173 @@ export async function buildManifest(pg: Pool): Promise<Manifest> {
     totalCostCents += costCents;
   }
 
-  return { weekLabel, shipments, weatherFlags, productLabels, totalCostCents, orderIdsByShipment };
+  return { weekLabel, shipments, weatherFlags, productLabels, totalCostCents, documentShipments, orderIdsByShipment };
+}
+
+/** Read-only document view: reuse active current-week shipments, then fold
+ * remaining unlinked orders into the customer's mutable planned shipment. */
+export async function buildShippingDocumentManifest(pg: Pool): Promise<Manifest> {
+  const wi = currentWeekIndex();
+  const weekLabel = `W${wi}`;
+  const res = await pg.query<Row>(`
+    WITH planned_target AS (
+      SELECT DISTINCT ON (customer_id) id, customer_id
+      FROM shipments
+      WHERE status = 'planned' AND ship_week = $1
+      ORDER BY customer_id, id DESC
+    ), document_orders AS (
+      SELECT o.*,
+             CASE WHEN o.status = 'held' AND o.shipment_id IS NULL
+               THEN NULL ELSE coalesce(o.shipment_id, planned_target.id) END AS document_shipment_id,
+             CASE
+               WHEN o.status = 'held' AND o.shipment_id IS NULL THEN 'held-order:' || o.id::text
+               WHEN coalesce(o.shipment_id, planned_target.id) IS NOT NULL
+                 THEN 'shipment:' || coalesce(o.shipment_id, planned_target.id)::text
+               ELSE 'customer:' || o.customer_id::text
+             END AS document_group_key
+      FROM orders o
+      LEFT JOIN planned_target ON planned_target.customer_id = o.customer_id
+      LEFT JOIN shipments active_shipment ON active_shipment.id = o.shipment_id
+        AND active_shipment.ship_week = $1
+        AND active_shipment.status IN ('planned','purchased','held','voided')
+      WHERE o.status IN ('pending','paid','labeled','held')
+        AND (o.shipment_id IS NULL OR active_shipment.id IS NOT NULL)
+    )
+    SELECT c.id, c.primary_name, c.tier,
+           sum(CASE WHEN oi.id IS NULL THEN 1 ELSE oi.qty END)::text AS items,
+           max(document_orders.destination_city) AS destination,
+           array_agg(DISTINCT document_orders.platform) AS platforms,
+           array_agg(DISTINCT document_orders.external_id) AS order_ids,
+           coalesce(jsonb_agg(jsonb_build_object(
+             'sku', coalesce(oi.sku, document_orders.external_id),
+             'name', coalesce(oi.name, 'Coral item'),
+             'qty', coalesce(oi.qty, 1)
+           ) ORDER BY document_orders.ordered_at, oi.id), '[]'::jsonb) AS products,
+           max(shipments.shipment_code) AS shipment_code,
+           max(shipments.status) AS shipment_status,
+           bool_or(document_orders.status = 'held') AS has_held_order,
+           document_orders.document_group_key AS document_key
+    FROM document_orders
+    JOIN customers c ON c.id = document_orders.customer_id
+    LEFT JOIN order_items oi ON oi.order_id = document_orders.id
+    LEFT JOIN shipments ON shipments.id = document_orders.document_shipment_id
+    GROUP BY c.id, document_orders.document_group_key
+    ORDER BY max(document_orders.ordered_at) DESC
+    LIMIT 12`, [weekLabel]);
+
+  return compileManifest(res.rows, wi, weekLabel);
+}
+
+/** Select the exact carrier previews the owner saw on the document board.
+ * The action route rebuilds current truth and calls this again on click, so a
+ * held order, changed order set, or already-purchased label fails closed rather
+ * than silently changing the approved batch. */
+export function selectShippingLabelPurchase(
+  manifest: Manifest,
+  requested: ShippingLabelPurchaseSnapshot[],
+): Manifest {
+  if (!requested.length) throw new Error("no carrier previews selected");
+  if (new Set(requested.map((item) => item.shipmentId)).size !== requested.length) {
+    throw new Error("duplicate shipment in carrier-label approval");
+  }
+
+  const documents = new Map(manifest.documentShipments.map((shipment) => [shipment.shipmentId, shipment]));
+  const lines = new Map(manifest.shipments.map((shipment) => [shipment.shipmentId, shipment]));
+  const selectedIds = new Set<string>();
+  for (const snapshot of requested) {
+    const document = documents.get(snapshot.shipmentId);
+    const line = lines.get(snapshot.shipmentId);
+    if (!document || !line || document.carrierLabel !== "preview") {
+      throw new Error(`shipment ${snapshot.shipmentId} is no longer purchase-ready`);
+    }
+    const approvedOrders = [...snapshot.orderIds].sort().join("|");
+    const currentOrders = [...document.orderIds].sort().join("|");
+    if (!approvedOrders || approvedOrders !== currentOrders) {
+      throw new Error(`shipment ${snapshot.shipmentId} changed after document review`);
+    }
+    selectedIds.add(snapshot.shipmentId);
+  }
+
+  const shipments = manifest.shipments.filter((shipment) => selectedIds.has(shipment.shipmentId));
+  const documentShipments = manifest.documentShipments.filter((shipment) => selectedIds.has(shipment.shipmentId));
+  const orderIdsByShipment = Object.fromEntries(shipments.map((shipment) => [
+    shipment.shipmentId,
+    [...(manifest.orderIdsByShipment[shipment.shipmentId] ?? [])],
+  ]));
+  return {
+    weekLabel: manifest.weekLabel,
+    shipments,
+    documentShipments,
+    orderIdsByShipment,
+    weatherFlags: manifest.weatherFlags.filter((flag) => selectedIds.has(flag.shipmentId)),
+    productLabels: documentShipments.reduce((sum, shipment) => sum + shipment.productLabels.length, 0),
+    totalCostCents: shipments.reduce((sum, shipment) => sum + shipment.costCents, 0),
+  };
+}
+
+/** Money-gated label batch: only unlinked, unheld pending/paid orders may enter
+ * the purchase workflow. Document review intentionally uses the broader read
+ * model above, never this purchase payload. */
+export async function buildManifest(pg: Pool): Promise<Manifest> {
+  const wi = currentWeekIndex();
+  const weekLabel = `W${wi}`;
+  const res = await pg.query<Row>(`
+    SELECT c.id, c.primary_name, c.tier,
+           sum(CASE WHEN oi.id IS NULL THEN 1 ELSE oi.qty END)::text AS items,
+           max(o.destination_city) AS destination,
+           array_agg(DISTINCT o.platform) AS platforms,
+           array_agg(DISTINCT o.external_id) AS order_ids,
+           coalesce(jsonb_agg(jsonb_build_object(
+             'sku', coalesce(oi.sku, o.external_id),
+             'name', coalesce(oi.name, 'Coral item'),
+             'qty', coalesce(oi.qty, 1)
+           ) ORDER BY o.ordered_at, oi.id), '[]'::jsonb) AS products,
+           NULL::text AS shipment_code,
+           NULL::text AS shipment_status,
+           false AS has_held_order,
+           'purchase:' || c.id::text AS document_key
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.status IN ('pending','paid') AND o.shipment_id IS NULL
+    GROUP BY c.id
+    ORDER BY max(o.ordered_at) DESC
+    LIMIT 12`);
+  return compileManifest(res.rows, wi, weekLabel);
+}
+
+/** Read-only Monday document package. It prepares printable artifacts and
+ * carrier previews without starting the money-moving label purchase run. */
+export async function buildShippingDocumentBoard(pg: Pool): Promise<ComponentSpec[]> {
+  const manifest = await buildShippingDocumentManifest(pg);
+  const purchaseReady = manifest.documentShipments.filter((shipment) => shipment.carrierLabel === "preview");
+  const purchaseIds = new Set(purchaseReady.map((shipment) => shipment.shipmentId));
+  const purchaseCostCents = manifest.shipments
+    .filter((shipment) => purchaseIds.has(shipment.shipmentId))
+    .reduce((sum, shipment) => sum + shipment.costCents, 0);
+  return [{
+    kind: "shipping_document_board",
+    weekLabel: manifest.weekLabel,
+    asOf: demoPriorityTimestamp("monday", 2),
+    shipments: manifest.documentShipments,
+    packingSlips: manifest.shipments.length,
+    fedexLabels: manifest.documentShipments.filter((shipment) => shipment.carrierLabel !== "withheld").length,
+    productLabels: manifest.productLabels,
+    purchaseCostCents,
+    printNote: "Packing slips contain no prices. Product labels print one per physical coral bag, including held orders. FedEx previews stay gated and are withheld for holds.",
+    actions: purchaseReady.length ? [{
+      taskId: "purchase-shipping-labels",
+      label: `APPROVE + PURCHASE ${purchaseReady.length} FEDEX LABELS`,
+      payload: {
+        weekLabel: manifest.weekLabel,
+        shipments: purchaseReady.map((shipment) => ({
+          shipmentId: shipment.shipmentId,
+          orderIds: shipment.orderIds,
+        })),
+      },
+      risk: "gated",
+    }] : [],
+  }];
 }
 
 /** The label_manifest card, with the gated batch-approve chip. `runId` (the
@@ -180,6 +387,7 @@ export async function purchaseLabels(
   let purchased = 0, spend = 0;
 
   for (const s of m.shipments) {
+    const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
     // 1. Claim the shipment row (idempotent). status='planned' means "not yet
     //    fully committed"; a prior partial attempt leaves it here to resume.
     await pg.query(`
@@ -196,8 +404,34 @@ export async function purchaseLabels(
     if (row.status === "purchased") { purchased++; spend += s.costCents; continue; }
     const shipmentPk = row.id;
 
+    // Revalidate the approved sources immediately before any purchase-side
+    // write. A newly held/cancelled order or a different linked shipment stops
+    // the batch before ClickHouse receives a purchase event. A fully purchased
+    // shipment short-circuits above so later shipping lifecycle changes do not
+    // break idempotent replay.
+    const sources = await pg.query<{
+      external_id: string;
+      status: string;
+      shipment_code: string | null;
+      shipment_status: string | null;
+    }>(`
+      SELECT o.external_id, o.status, linked.shipment_code, linked.status AS shipment_status
+      FROM orders o
+      LEFT JOIN shipments linked ON linked.id = o.shipment_id
+      WHERE o.customer_id = $1 AND o.external_id = ANY($2::text[])
+      ORDER BY o.external_id`, [s.customer.customerId, orderIds]);
+    const sourceIds = sources.rows.map((source) => source.external_id).sort().join("|");
+    const approvedIds = [...orderIds].sort().join("|");
+    const invalidSource = sources.rows.some((source) =>
+      !["pending", "paid", "labeled"].includes(source.status)
+      || (source.shipment_code !== null && source.shipment_code !== s.shipmentId)
+      || source.shipment_status === "held"
+      || source.shipment_status === "voided");
+    if (!approvedIds || sourceIds !== approvedIds || invalidSource) {
+      throw new Error(`shipment ${s.shipmentId} changed or is held — label purchase stopped`);
+    }
+
     // 2. Link the orders. Repeating this is a no-op once linked (IS NULL guard).
-    const orderIds = m.orderIdsByShipment[s.shipmentId] ?? [];
     if (orderIds.length) {
       await pg.query(
         `UPDATE orders SET shipment_id = $1, status = 'labeled'

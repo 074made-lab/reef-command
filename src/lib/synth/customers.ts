@@ -1,13 +1,10 @@
 /**
  * Deterministic synthetic customer pool (~1,600 customers).
  *
- * Built to exercise the customer-360 matcher (Task 1):
- *  - ~35% hold accounts on 2+ platforms (merge fodder for Task 3.1)
- *  - of those, most reuse the same email (exact match), some use a different
- *    email but the same phone (tier-2 match), a few share only a name
- *    (low-confidence match → gated merge card)
- *  - spendFactor is lognormal-ish; tiers are percentile cuts over it
- *    (top 5% = T1, to 20% = T2, to 50% = T3, rest = T4 — first-timers land T4)
+ * Built only to create varied public-demo shapes: some synthetic people have
+ * pre-linked accounts on multiple platforms, order frequency varies, and the
+ * UI receives four arbitrary demo bands. These generator choices are not TIA
+ * Coral's identity, customer-value, profitability, or segmentation method.
  *
  * All identities are invented. Zero real customer data anywhere.
  */
@@ -21,10 +18,7 @@ export type SynthCustomer = {
   email: string;
   phone?: string;
   tier: 1 | 2 | 3 | 4;
-  spendFactor: number;                   // relative order-size/frequency multiplier
-  joinWeek: number;                      // cycle-week index (vs generator ANCHOR) when
-                                         // this customer first appears — the pool GROWS
-                                         // over time so new-customer rate & retention are real
+  joinWeek: number;                      // arbitrary synthetic arrival week
   platforms: { platform: Platform; handle: string; email: string; phone?: string }[];
   auctionActive: boolean;
   prefCategories: CoralCategory[];
@@ -49,31 +43,26 @@ function buildPool(seed: number): SynthCustomer[] {
     const email = `${handle}@${DOMAINS[Math.floor(rng() * DOMAINS.length)]}`;
     const phone = rng() < 0.7 ? `+1555${String(1000000 + Math.floor(rng() * 8999999))}` : undefined;
 
-    // lognormal-ish spend propensity (Box–Muller)
-    const n = Math.sqrt(-2 * Math.log(rng() || 1e-9)) * Math.cos(2 * Math.PI * rng());
-    const spendFactor = Math.exp(0.9 * n);   // heavy tail: a few whales, a long tail of one-time buyers
-
     const primary: Platform = rng() < 0.45 ? "web" : rng() < 0.55 ? "auction" : "marketplace";
     const platforms: SynthCustomer["platforms"] = [
       { platform: primary, handle, email, phone },
     ];
 
-    if (rng() < 0.35) {                  // second platform account
+    if (rng() < 0.35) {                  // pre-linked second demo account
       const second: Platform = primary === "auction" ? (rng() < 0.6 ? "web" : "marketplace")
         : primary === "web" ? (rng() < 0.5 ? "auction" : "marketplace")
         : (rng() < 0.5 ? "auction" : "web");
-      const style = rng();
-      if (style < 0.7) {
-        platforms.push({ platform: second, handle: `${handle}_${second[0]}`, email, phone });          // exact-email match
-      } else if (style < 0.9 && phone) {
-        platforms.push({ platform: second, handle: `${handle}${Math.floor(rng() * 99)}`, email: `${handle}.alt@${DOMAINS[Math.floor(rng() * DOMAINS.length)]}`, phone });  // phone match
-      } else {
-        platforms.push({ platform: second, handle: `${handle}x`, email: `${handle}.other@${DOMAINS[Math.floor(rng() * DOMAINS.length)]}` });  // name-only → low confidence
-      }
+      // `customer_id` is the fixture link. The public generator intentionally
+      // does not encode an identity-resolution hierarchy or confidence rule.
+      platforms.push({
+        platform: second,
+        handle: `${handle}_${second[0]}${Math.floor(rng() * 99)}`,
+        email: `${handle}.linked${i}@${DOMAINS[Math.floor(rng() * DOMAINS.length)]}`,
+      });
     }
 
     raw.push({
-      id: i, displayName: handle, email, phone, spendFactor,
+      id: i, displayName: handle, email, phone,
       joinWeek: Math.floor(rng() * 38) - 8,      // steady acquisition, weeks -8 … 29
       platforms,
       auctionActive: platforms.some((p) => p.platform === "auction") && rng() < 0.75,
@@ -82,15 +71,9 @@ function buildPool(seed: number): SynthCustomer[] {
     });
   }
 
-  // percentile tier cuts over spendFactor (generic cuts; the pattern —
-  // top slice = T1, long tail = T4 — is the point, not the exact numbers)
-  const sorted = [...raw].sort((a, b) => b.spendFactor - a.spendFactor);
-  const tierOf = new Map<number, 1 | 2 | 3 | 4>();
-  sorted.forEach((c, idx) => {
-    const pct = idx / sorted.length;
-    tierOf.set(c.id, pct < 0.10 ? 1 : pct < 0.30 ? 2 : pct < 0.60 ? 3 : 4);
-  });
-  return raw.map((c) => ({ ...c, tier: tierOf.get(c.id)! }));
+  // Arbitrary synthetic display bands. They are deliberately unrelated to
+  // spend, orders, return behavior, product mix, or profitability.
+  return raw.map((c) => ({ ...c, tier: (1 + ((c.id * 7) % 4)) as 1 | 2 | 3 | 4 }));
 }
 
 export const CUSTOMERS: SynthCustomer[] = buildPool(7);

@@ -7,6 +7,7 @@ import { schedules } from "@trigger.dev/sdk";
 import { chClient } from "../lib/store/clickhouse";
 import { pgPool } from "../lib/store/postgres";
 import { runTick } from "../lib/live";
+import { tryDemoOperation } from "../lib/demo-operation-lock";
 
 export const liveTick = schedules.task({
   id: "live-tick",
@@ -16,8 +17,16 @@ export const liveTick = schedules.task({
   run: async (payload) => {
     const ch = chClient();
     const pg = pgPool();
-    const out = await runTick(ch, pg, payload.timestamp.toISOString());
-    await ch.close();
-    return out;
+    const operation = await tryDemoOperation(pg);
+    if (!operation) {
+      await ch.close();
+      return { skipped: true, reason: "demo-reset" };
+    }
+    try {
+      return await runTick(ch, pg, payload.timestamp.toISOString());
+    } finally {
+      await operation.release();
+      await ch.close();
+    }
   },
 });

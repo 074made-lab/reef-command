@@ -52,13 +52,20 @@ export const toRow = (e: ReefEvent): EventRow => ({
   meta: JSON.stringify(e.meta ?? {}),
 });
 
-export async function insertEvents(client: ClickHouseClient, events: ReefEvent[]): Promise<void> {
+export async function insertEvents(
+  client: ClickHouseClient,
+  events: ReefEvent[],
+  { deduplicate = true }: { deduplicate?: boolean } = {},
+): Promise<void> {
   if (!events.length) return;
   await client.insert({
     table: "events",
     values: events.map(toRow),
     format: "JSONEachRow",
-    clickhouse_settings: { date_time_input_format: "best_effort" },
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+      insert_deduplicate: deduplicate ? 1 : 0,
+    },
   });
 }
 

@@ -1,28 +1,27 @@
 @import "tailwindcss";
 
-/* ── Reef Command design tokens — deep-ocean dark console ──────────────
-   Surfaces: near-black blue-greens. Data marks: phosphor teal (#0fa896).
-   Actions & alerts: one coral accent (#e8562b). Palette validated for
-   CVD separation + contrast against --color-panel (dataviz six checks). */
+/* Reef Command color system. Coral is the commercial brand signal; quiet
+   blue-green is reserved for data and status so the interface never reads
+   like a neon AI console. */
 
 @theme {
-  --color-abyss: #04090e; /* page floor */
-  --color-panel: #0a1720; /* card surface (chart surface) */
-  --color-raise: #0e1f2b; /* raised surface: inputs, bubbles, table heads */
-  --color-line: #12303a; /* hairline borders */
-  --color-ink: #d7e7e6; /* primary text */
-  --color-dim: #8aa6a8; /* secondary text */
-  --color-mute: #567478; /* tertiary text */
-  --color-teal: #0fa896; /* data mark */
-  --color-tealhi: #4fe3cf; /* phosphor highlight: values, focus */
-  --color-coral: #e8562b; /* action / alert mark */
-  --color-coralhi: #ff7a4d; /* coral highlight: buttons, hot text */
-  --color-ok: #34c98e; /* status good  (age < 1h) */
-  --color-warn: #eab048; /* status warn  (age < 24h) */
-  --color-danger: #f05e5e; /* status bad   (age beyond) */
+  --color-abyss: #071219; /* page floor */
+  --color-panel: #0c1d25; /* main surface */
+  --color-raise: #112a34; /* raised controls */
+  --color-line: #21414a; /* warm blue-green hairline */
+  --color-ink: #f3eee9; /* warm white, not screen-white */
+  --color-dim: #b3c3c1; /* secondary text */
+  --color-mute: #718b8c; /* tertiary text */
+  --color-teal: #48afa6; /* restrained complementary data mark */
+  --color-tealhi: #82d4ca; /* data highlight */
+  --color-coral: #ff8559; /* brand / action / alert mark */
+  --color-coralhi: #ffc1aa; /* coral tint on dark surfaces */
+  --color-ok: #55bd91;
+  --color-warn: #d6a953;
+  --color-danger: #ee746d;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica,
-    Arial, sans-serif;
+  --font-sans: "Avenir Next", Avenir, "Century Gothic", "Trebuchet MS",
+    ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
     "Liberation Mono", monospace;
 }
@@ -34,35 +33,35 @@ body {
 
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   color: var(--color-ink);
-  background:
-    radial-gradient(
-      1100px 520px at 82% -12%,
-      rgba(15, 168, 150, 0.09),
-      transparent 62%
-    ),
-    radial-gradient(
-      900px 620px at -12% 112%,
-      rgba(232, 86, 43, 0.055),
-      transparent 55%
-    ),
-    var(--color-abyss);
+  background: var(--color-abyss);
   background-attachment: fixed;
+  text-rendering: optimizeLegibility;
 }
 
-/* faint console scanlines — atmosphere, kept below legibility threshold */
+/* A single soft surface highlight gives depth without an AI-style mesh. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(215, 231, 230, 0.012) 0 1px,
-    transparent 1px 3px
-  );
+  background: linear-gradient(180deg, rgba(255, 133, 89, 0.025), transparent 34%);
+}
+
+.reef-room {
+  background: linear-gradient(180deg, rgba(12, 29, 37, 0.34), transparent 28%);
+}
+
+.print-only {
+  display: none;
+}
+
+.coral-halo {
+  box-shadow:
+    0 0 0 5px rgba(255, 133, 89, 0.06),
+    0 18px 48px rgba(2, 10, 14, 0.34);
 }
 
 ::selection {
@@ -99,7 +98,7 @@ body::before {
   }
 }
 .anim-rise {
-  animation: rise 0.35s ease-out both;
+  animation: rise 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes shimmer {
@@ -114,7 +113,7 @@ body::before {
   background: linear-gradient(
     90deg,
     var(--color-raise) 25%,
-    rgba(15, 168, 150, 0.18) 50%,
+    rgba(255, 133, 89, 0.16) 50%,
     var(--color-raise) 75%
   );
   background-size: 200% 100%;
@@ -190,5 +189,54 @@ body::before {
   .report-current,
   .sonar-ring {
     animation: none;
+  }
+
+  .merge-particle {
+    display: none;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .shipping-print-board,
+  .shipping-print-board * {
+    visibility: visible !important;
+  }
+
+  .shipping-print-board {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #111;
+    background: #fff;
+  }
+
+  .shipping-print-board .screen-only {
+    display: none !important;
+  }
+
+  .shipping-print-board .print-only {
+    display: block !important;
+  }
+
+  .shipping-print-board .print-sheet {
+    min-height: 9.5in;
+    padding: 0.25in;
+    break-after: page;
+    page-break-after: always;
+    color: #111;
+    background: #fff;
+  }
+
+  .shipping-print-board .print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .shipping-print-board .no-print {
+    display: none !important;
   }
 }

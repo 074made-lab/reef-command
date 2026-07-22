@@ -33,14 +33,14 @@ export type Evidence = {
 export type CustomerRef = {
   customerId: number;
   displayName: string;    // synthetic handle
-  tier: 1 | 2 | 3 | 4;    // 4 = first-time
+  tier: 1 | 2 | 3 | 4;    // arbitrary synthetic display band only
   platforms: Platform[];
 };
 
 // ---------- week cycle ----------
 
 export type WeekPhase =
-  | "announce"            // TUE–WED  campaign cadence
+  | "announce"            // synthetic pre-event phase label
   | "auction_live"        // THU–SAT  bids streaming
   | "winners"             // SAT      close + codes
   | "addon_window"        // SUN–MON  cross-platform add-ons
@@ -61,6 +61,7 @@ export type DayPriority = {
   label: string;
   detail: string;
   cue: "do-now" | "watch" | "human-gate";
+  time: string;           // stable synthetic command time, HH:mm ET
   prompt?: string;
 };
 
@@ -85,6 +86,40 @@ export type AttentionItem = {
   detail?: string;        // original synthetic customer text / request detail
   draft?: string;         // deterministic template draft for unanswered messages
   photoHref?: string;     // synthetic evidence asset (DOA demo only)
+  status?: "open" | "handled";
+  autoActions?: string[]; // concise public-safe action evidence
+  doaReview?: DoaReviewPlan; // deterministic public-demo workflow, never production policy
+};
+
+export type DoaReviewPlan = {
+  caseId: string;
+  reviewWindow: string;
+  customer: {
+    displayName: string;
+    band: 1 | 2 | 3 | 4; // arbitrary synthetic display context only
+    platforms: Platform[];
+  };
+  claimedItems: string[];
+  history: {
+    orders: number;
+    coralItems: number;
+    priorDoa: number;
+    priorRefunds: number;
+    priorCredits: number;
+    priorReplacements: number;
+  };
+  evidence: Evidence[];
+  shipment: {
+    orderId: string;
+    shipWhen: string;
+    destination: string;
+    existingItems: number;
+    currentLabelId: string;
+    currentLabelCostCents: number;
+    updatedLabelId: string;
+    updatedLabelCostCents: number;
+  };
+  replyDraft: string;
 };
 
 export type OrderLine = { sku: string; name: string; category: CoralCategory; qty: number; priceCents: number };
@@ -154,12 +189,14 @@ export type LotPrice = {
   bidCount: number;
   leader: string;         // bidder handle
   closesAt: string;
+  recentBidCount?: number; // activity inside the selected demo moment's last 30 minutes
 };
 
 export type FunnelStep = {
-  label: string;          // "auction win" → "code issued" → "add-on order"
+  label: string;          // "auction winner" → "add-on discount code issued" → "add-on order using code"
   count: number;
   conversionFromPrev?: number;  // 0–1
+  rateLabel?: string;     // e.g. "winner coverage" or "code conversion"
 };
 
 export type CoralCategory = "zoas" | "euphyllia" | "goni" | "mushroom" | "sps" | "other";
@@ -178,13 +215,133 @@ export type AudienceBreakdown = {
   total: number;
   byTier: Record<"1" | "2" | "3" | "4", number>;
   byPlatform: Partial<Record<Platform, number>>;
-  criteria: string;       // human-readable selection, e.g. "tier ≤ 2 AND prefers euphyllia"
+  criteria: string;       // public-safe synthetic demo filter
 };
 
 export type MessagePreview = {
   channel: "email" | "sms";
   subject?: string;
   body: string;           // rendered template with sample customer
+};
+
+export type AddonOrderRow = {
+  orderId: string;
+  platform: Platform;
+  customer: string;
+  coralUnits: number;
+  totalCents: number;
+  orderedAt: string;
+  status: OrderSummary["status"];
+  auctionOrderId: string;
+  auctionCoralUnits: number;
+  combinedCoralUnits: number;
+  mergeState: "ready" | "merged" | "review";
+};
+
+export type ShippingBlockerGroup = {
+  kind: "hold_requests" | "replacement_items" | "customer_questions";
+  label: string;
+  count: number;
+  unit: "requests" | "corals" | "questions";
+  status: "needs-review" | "clear";
+  detail: string;
+  headlines: string[];
+  items: {
+    id: string;
+    headline: string;
+    detail: string;
+    count: number;
+  }[];
+};
+
+export type ShippingDocumentShipment = {
+  shipmentId: string;
+  customer: CustomerRef;
+  orderIds: string[];
+  coralUnits: number;
+  destination: string;
+  boxSize: "S" | "M" | "L" | "XL" | "XXL" | "MANUAL";
+  boxDimensions: string;
+  weightLb: number;
+  lowF: number;
+  highF: number;
+  pack: "none" | "heat" | "ice";
+  carrierLabel: "preview" | "purchased" | "withheld";
+  productLabels: { sku: string; name: string; bag: string }[];
+};
+
+export type ShipmentCommandRow = {
+  shipmentId: string;
+  orderId: string;
+  customer: string;
+  tracking: string;
+  destination: string;
+  coralUnits: number;
+  pack: "none" | "heat" | "ice";
+  handoffAt: string;
+  status: "ready" | "blocked" | "held" | "in_transit" | "delayed" | "exception" | "delivered";
+  blockerIds: string[];
+};
+
+export type ShipmentCommandIssue = {
+  id: string;
+  kind: "doa" | "customer_question" | "address_change" | "weather" | "carrier_delay" | "delivery_exception" | "stalled" | "packing_incomplete";
+  severity: "urgent" | "watch";
+  customer: string;
+  orderId: string;
+  shipmentId: string;
+  tracking: string;
+  detectedAt: string;
+  headline: string;
+  whyBlocked: string;
+  currentValue?: string;
+  recommendation: string;
+  actions: ActionChip[];
+};
+
+export type StaffAgentTask = {
+  id: string;
+  title: string;
+  owner: string;
+  agent: string;
+  source: string;
+  detail: string;
+  checklist: string[];
+  action: ActionChip;
+};
+
+export type CustomerResolutionItem = {
+  id: string;
+  kind: "unanswered_message" | "shipping_problem" | "doa" | "replacement_credit" | "address_issue" | "order_question";
+  customer: string;
+  orderId: string;
+  shipmentId?: string;
+  tracking?: string;
+  openedAt: string;
+  headline: string;
+  detail: string;
+  nextAction: string;
+  action: ActionChip;
+};
+
+export type WinnerEmail = {
+  id: string;
+  winner: string;
+  items: { lotId: string; name: string; priceCents: number }[];
+  totalCents: number;
+  subject: string;
+  body: string;
+  paymentDeadline: string;
+  shippingDeadline: string;
+  addonCode: string;
+  action: ActionChip;
+};
+
+export type SettlementIssue = {
+  id: string;
+  label: string;
+  detail: string;
+  status: "open" | "clear";
 };
 
 // ---------- actions ----------
@@ -205,23 +362,55 @@ export type ComponentSpec =
   | { kind: "day_brief"; dayId: DemoDayId; weekday: string; time: string;
       label: string; goal: string; priorities: DayPriority[]; reminder: string }
   | { kind: "attention_feed"; items: AttentionItem[] }
+  | { kind: "shipping_blocker_board"; asOf: string;
+      groups: ShippingBlockerGroup[]; openCount: number }
   // analytics
   | { kind: "metric_row"; metrics: Metric[] }
   | { kind: "timeseries"; title: string; series: Series[]; annotations?: Annotation[] }
   | { kind: "auction_board"; lots: LotPrice[]; closesAt: string;
-      state: "upcoming" | "live" | "closed" }
+      state: "upcoming" | "live" | "closed"; asOf?: string }
   | { kind: "funnel"; title: string; steps: FunnelStep[] }
   | { kind: "report"; weekLabel: string; sections: ReportSection[] }
   // operations
-  | { kind: "campaign_card"; campaignId: string; phase: WeekPhase;
+  | { kind: "campaign_card"; campaignId: string; title: string; phase: WeekPhase;
       audience: AudienceBreakdown; preview: MessagePreview;
       schedule: string; actions: ActionChip[] }
+  | { kind: "addon_order_board"; windowLabel: string; totalOrders: number;
+      coralUnits: number; totalCents: number; combineReady: number;
+      platformCounts: Partial<Record<Platform, number>>; orders: AddonOrderRow[] }
+  | { kind: "merge_batch"; weekLabel: string; candidates: number;
+      readyCandidates: number; sourceOrders: number; addonOrders: number; coralUnits: number;
+      totalCents: number; asOf?: string; actions: ActionChip[] }
+  | { kind: "auction_announcement"; campaignId: string; dateRange: string;
+      closeTime: string; emailRecipients: number; smsRecipients: number;
+      emailPreview: MessagePreview; smsPreview: MessagePreview; actions: ActionChip[] }
   | { kind: "merge_card"; orders: OrderSummary[]; customer: CustomerRef;
       combined: OrderSummary; confidence: "high" | "low";
+      mergeState: "ready" | "merged";
+      anchorOrderId: string; addonOrderCount: number; totalCoralUnits: number;
       actions?: ActionChip[] }          // low confidence ⇒ gated merge chip
   | { kind: "label_manifest"; weekLabel: string; shipments: ShipmentLine[];
       productLabels: number; weatherFlags: WeatherFlag[];
       totalCostCents: number; actions: ActionChip[] }
+  | { kind: "shipping_document_board"; weekLabel: string; asOf: string;
+      shipments: ShippingDocumentShipment[]; packingSlips: number;
+      fedexLabels: number; productLabels: number; purchaseCostCents?: number;
+      printNote: string; actions?: ActionChip[] }
+  | { kind: "shipment_command_board"; day: "tuesday" | "wednesday" | "thursday";
+      title: string; asOf: string; mode: "ship" | "monitor";
+      shipDate: string; carrierCutoff: string; shipments: ShipmentCommandRow[];
+      issues: ShipmentCommandIssue[] }
+  | { kind: "staff_agent_board"; title: string; asOf: string;
+      note: string; tasks: StaffAgentTask[] }
+  | { kind: "customer_resolution_board"; title: string; asOf: string;
+      note: string; items: CustomerResolutionItem[] }
+  | { kind: "winner_email_board"; title: string; asOf: string;
+      note: string; winners: WinnerEmail[] }
+  | { kind: "auction_settlement_report"; auctionLabel: string; asOf: string;
+      totalRevenueCents: number; orderCount: number; winnerCount: number;
+      soldItems: number; paidOrders: number; unpaidOrders: number;
+      shippingChargesCents: number; discountsCreditsCents: number;
+      issues: SettlementIssue[] }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;

@@ -11,7 +11,10 @@
  * surface uses the real LLM agent.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useChat } from "@ai-sdk/react";
+import { useGSAP } from "@gsap/react";
+import { gsap } from "gsap";
 import {
   useTriggerChatTransport,
   type InferChatUIMessage,
@@ -21,14 +24,30 @@ import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import type { ComponentSpec, DemoDayId } from "@/lib/protocol";
 import { SpecRenderer } from "@/components/specs/SpecRenderer";
 import {
+  createEmptyRoutineProgress,
+  restoreRoutineProgress,
+  RoutineProgressDock,
+  RoutineProgressProvider,
+  RoutineProgressRing,
+  RoutineTaskMark,
+  type RoutineProgressState,
+  type RoutineTaskProgress,
+} from "@/components/chat/RoutineProgress";
+import {
   DEFAULT_DEMO_DAY,
   DEMO_CHAT_PROMPT_EVENT,
   DEMO_DAYS,
   DEMO_DAY_EVENT,
+  DEMO_DAY_STORAGE_KEY,
   demoDay,
+  isDemoDayId,
   stripDemoDayContext,
+  withRoutineContext,
   withDemoDayContext,
+  type DemoChatPromptDetail,
 } from "@/lib/demo-clock";
+
+gsap.registerPlugin(useGSAP);
 
 type ReefMessage = InferChatUIMessage<typeof reefChat>;
 
@@ -39,11 +58,149 @@ const GENERAL_SUGGESTIONS = [
   "Weekly report",
   "How's business?",
 ];
+const DRAFT_KEY = "reef-command:merchant-draft";
+// v2 resets the saved routine after Monday's commands were materially rebuilt.
+// Old 3/3 state must not mark the new blocker/document work complete.
+const ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v2";
+const CHAT_RESPONSE_TIMEOUT_MS = 30_000;
 
-function CoralPulseSkeleton() {
+type RoutineTarget = {
+  dayId: DemoDayId;
+  priorityIndex: number;
+};
+
+type ActiveRoutine = RoutineTarget & {
+  token: number;
+};
+
+type ShipAlertStatus = "request-detected" | "packing-notified" | "protected" | "failed";
+type ShipAlert = {
+  runId: string;
+  status: ShipAlertStatus;
+  customerName: string;
+  shipmentId: string;
+  destination: string;
+  protectedCostCents: number;
+  receivedAt: string;
+  requestSummary: string;
+};
+
+const PENDING_SHIP_ALERT: ShipAlert = {
+  runId: "pending",
+  status: "request-detected",
+  customerName: "Customer request",
+  shipmentId: "matching prepared shipment",
+  destination: "checking destination",
+  protectedCostCents: 0,
+  receivedAt: "TUE · 16:00 ET",
+  requestSummary: "Delivery-day change received before carrier handoff.",
+};
+
+function safeTraceValue(value: string): string {
+  return value.replace(/[\]\n\r]/g, " ").trim();
+}
+
+function shipTracePrompt(alert: ShipAlert): string {
+  const trace = [
+    `status=${alert.status}`,
+    `customer=${safeTraceValue(alert.customerName)}`,
+    `shipment=${safeTraceValue(alert.shipmentId)}`,
+    `request=${safeTraceValue(alert.requestSummary)}`,
+    `packing_sms=${alert.status === "request-detected" ? "pending" : "sent"}`,
+    `carrier_label=${alert.status === "protected" ? "voided" : "checking"}`,
+    `protected_cents=${alert.protectedCostCents}`,
+  ].join("; ");
+  return `[SYNTHETIC SHIP TRACE: ${trace}]\nExplain this ship-day automation trace.`;
+}
+
+function ShipDayAlert({ alert, busy, onReview, onDismiss, onRetry }: {
+  alert: ShipAlert;
+  busy: boolean;
+  onReview: () => void;
+  onDismiss: () => void;
+  onRetry: () => void;
+}) {
+  const protectedUsd = new Intl.NumberFormat("en-US", {
+    style: "currency", currency: "USD",
+  }).format(alert.protectedCostCents / 100);
+  const done = alert.status === "protected";
+  const failed = alert.status === "failed";
+  const matching = alert.runId === "pending";
+  const packingNotified = alert.status === "packing-notified" || done;
   return (
-    <div className="anim-rise space-y-2.5" aria-label="thinking">
-      <div className="flex items-center gap-1.5 pl-0.5">
+    <aside
+      role="status"
+      aria-live="polite"
+      className="anim-rise fixed right-3 bottom-24 left-3 z-30 w-auto overflow-hidden rounded-xl border border-coral/45 bg-panel/96 shadow-[0_24px_70px_rgba(2,10,14,.48)] backdrop-blur-md sm:top-44 sm:right-4 sm:bottom-auto sm:left-auto sm:w-[min(390px,calc(100vw-2rem))]"
+    >
+      <div className="flex items-start gap-2.5 p-3 sm:gap-3 sm:p-4">
+        <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border font-mono text-[14px] sm:h-9 sm:w-9 sm:text-[15px] ${failed ? "border-danger/50 bg-danger/10 text-danger" : done ? "border-ok/45 bg-ok/10 text-ok" : "border-coral/55 bg-coral/10 text-coralhi"}`}>
+          {failed ? "!" : done ? "✓" : "↗"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-[11px] font-semibold tracking-[0.07em] text-coral uppercase sm:text-[12px] sm:tracking-[0.08em]">
+              Automated by Trigger.dev
+            </span>
+            <button type="button" onClick={onDismiss} aria-label="Dismiss ship-day alert" className="-mt-1 text-[18px] leading-none text-mute transition-colors hover:text-ink">×</button>
+          </div>
+          <p className="mt-0.5 font-mono text-[10px] tracking-[0.05em] text-mute">TUE · 16:00 ET · 1 HOUR TO CARRIER HANDOFF</p>
+          <h2 className="mt-0.5 text-[16px] font-semibold tracking-[-0.01em] text-ink sm:mt-1 sm:text-[17px]">
+            {failed ? "Ship-day protection needs review" : done ? "Shipment protected" : "Ship-day change detected"}
+          </h2>
+          <p className="mt-1 hidden text-[14px] leading-snug text-dim sm:block">
+            {failed
+              ? "The request was detected, but the local workflow connection is unavailable."
+              : matching
+              ? "A customer asked to change delivery timing. Matching the prepared shipment now."
+              : <>{alert.customerName} changed delivery timing for <span className="font-mono text-ink">{alert.shipmentId}</span>.</>}
+          </p>
+          <div className="mt-3 hidden space-y-1.5 border-l border-line pl-3 text-[13px] sm:block">
+            <p className={packingNotified ? "text-ok" : "text-mute"}>
+              {packingNotified ? "✓ Packing team notified · synthetic SMS" : failed ? "○ Packing notification not confirmed" : "○ Notifying packing team · synthetic SMS"}
+            </p>
+            <p className={done ? "text-ok" : "text-mute"}>
+              {done ? "✓ Carrier label voided" : failed ? "○ Carrier label status unchanged" : "○ Carrier label being checked"}
+            </p>
+          </div>
+          {done ? (
+            <div className="mt-2 flex items-end justify-between gap-3 border-t border-coral/20 pt-2 sm:mt-3 sm:pt-3">
+              <div>
+                <p className="text-[11px] font-medium tracking-[0.06em] text-mute uppercase">Charge protected</p>
+                <p className="mt-0.5 font-mono text-[18px] tabular-nums text-coralhi sm:text-[20px]">{protectedUsd}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onReview}
+                disabled={busy}
+                className="rounded-md border border-coral bg-coral px-3 py-2 text-[12px] font-semibold text-abyss transition-[background-color,transform] hover:bg-coralhi active:scale-[0.98] disabled:opacity-45"
+              >
+                Ask Teddy about trace
+              </button>
+            </div>
+          ) : null}
+          {failed ? (
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-danger/20 pt-3">
+              <p className="text-[13px] text-danger">Stopped safely. No action was claimed.</p>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="shrink-0 rounded-md border border-danger/45 px-3 py-1.5 text-[12px] font-semibold text-danger transition-colors hover:bg-danger/10"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function CoralPulseSkeleton({ innerRef }: { innerRef?: React.Ref<HTMLDivElement> }) {
+  return (
+    <div ref={innerRef} className="anim-rise rounded-lg border border-line/70 bg-panel/70 px-3 py-3" aria-label="Teddy is checking live store data">
+      <div className="flex items-center gap-1.5">
         <img
           src="/teddy-avatar.jpg"
           alt=""
@@ -58,12 +215,11 @@ function CoralPulseSkeleton() {
             style={{ animationDelay: `${i * 0.18}s` }}
           />
         ))}
-        <span className="ml-1 font-mono text-[12px] tracking-widest text-mute">
-          TEDDY&apos;S READING THE REEF…
+        <span className="ml-1 font-mono text-[13px] tracking-widest text-mute">
+          TEDDY&apos;S CHECKING LIVE STORE DATA…
         </span>
       </div>
-      <div className="skeleton-bar h-16 rounded-md border border-line/50" />
-      <div className="skeleton-bar h-28 rounded-md border border-line/50" />
+      <div className="skeleton-bar mt-2.5 h-1 rounded-full" />
     </div>
   );
 }
@@ -88,26 +244,41 @@ function readAssistant(message: ReefMessage): {
   return { verdict: verdict.trim(), specs };
 }
 
-function AgentAnswer({
-  message,
-  innerRef,
-}: {
-  message: ReefMessage;
-  innerRef?: React.Ref<HTMLDivElement>;
-}) {
+function AgentAnswer({ message }: { message: ReefMessage }) {
   const { verdict, specs } = readAssistant(message);
   const [showRest, setShowRest] = useState(false);
+  const answerRef = useRef<HTMLDivElement>(null);
+  const animatedRef = useRef(false);
+  const visibleKey = verdict || specs.length ? `${Boolean(verdict)}:${specs.length}` : "";
 
-  // Feature the first merge candidate (the signature shot); tuck the rest
-  // behind a compact affordance so the top of the answer stays on screen (m2).
+  useGSAP(() => {
+    if (!visibleKey || animatedRef.current || !answerRef.current) return;
+    animatedRef.current = true;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    gsap.fromTo(
+      answerRef.current,
+      { autoAlpha: 0, y: 10 },
+      {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.24,
+        ease: "power2.out",
+        clearProps: "transform,opacity,visibility",
+      },
+    );
+  }, { dependencies: [visibleKey], scope: answerRef });
+
+  // Feature the first merge candidate; tuck the rest behind a compact
+  // affordance so the top of the answer stays on screen.
+  const mergeBatches = specs.filter((s) => s.kind === "merge_batch");
   const merges = specs.filter((s) => s.kind === "merge_card");
-  const others = specs.filter((s) => s.kind !== "merge_card");
+  const others = specs.filter((s) => s.kind !== "merge_card" && s.kind !== "merge_batch");
   const restMerges = merges.slice(1);
 
-  if (!verdict && specs.length === 0) return <div ref={innerRef} />;
+  if (!verdict && specs.length === 0) return <div ref={answerRef} />;
 
   return (
-    <div ref={innerRef} className="anim-rise space-y-3">
+    <div ref={answerRef} className="space-y-3">
       {verdict ? (
         <div className="flex items-start gap-2.5 border-l-2 border-tealhi/70 pl-2.5">
           <img
@@ -117,8 +288,8 @@ function AgentAnswer({
             height={26}
             className="mt-px shrink-0 rounded-full ring-1 ring-teal/50"
           />
-          <p className="text-[14px] leading-snug text-ink">
-            <span className="mr-2 font-mono text-[12px] tracking-[0.2em] text-teal">
+          <p className="text-[15px] leading-relaxed text-ink">
+            <span className="mr-2 font-mono text-[13px] tracking-[0.18em] text-teal">
               TEDDY»
             </span>
             {verdict}
@@ -126,6 +297,7 @@ function AgentAnswer({
         </div>
       ) : null}
 
+      {mergeBatches.map((spec, i) => <SpecRenderer key={`mb${i}`} spec={spec} />)}
       {merges.length ? <SpecRenderer spec={merges[0]} /> : null}
       {restMerges.length ? (
         <div className="space-y-3">
@@ -135,7 +307,7 @@ function AgentAnswer({
           <button
             type="button"
             onClick={() => setShowRest((v) => !v)}
-            className="rounded-full border border-line px-3 py-1 font-mono text-[12px] text-dim transition-colors hover:border-teal/60 hover:text-tealhi"
+            className="rounded-full border border-line px-3 py-1 font-mono text-[13px] text-dim transition-colors hover:border-teal/60 hover:text-tealhi"
           >
             {showRest
               ? "▲ hide extra merge candidates"
@@ -163,16 +335,96 @@ export function MerchantChat() {
     transport,
   });
   const [input, setInput] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
   const [demoDayId, setDemoDayId] = useState<DemoDayId>(DEFAULT_DEMO_DAY);
+  const [showJump, setShowJump] = useState(false);
+  const [shipAlert, setShipAlert] = useState<ShipAlert | null>(null);
+  const [shipAlertAttempt, setShipAlertAttempt] = useState(0);
+  const [traceFollowupPending, setTraceFollowupPending] = useState(false);
+  const [routineProgress, setRoutineProgress] = useState<RoutineProgressState>(createEmptyRoutineProgress);
+  const [routineProgressReady, setRoutineProgressReady] = useState(false);
+  const [requestFailure, setRequestFailure] = useState<string | null>(null);
   const demoDayRef = useRef<DemoDayId>(DEFAULT_DEMO_DAY);
+  const shipAlertStartedRef = useRef(false);
+  const activeRoutineRef = useRef<ActiveRoutine | null>(null);
+  const routineHadVisualRef = useRef(false);
+  const routineTokenRef = useRef(0);
+  const streamRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const followAnswerRef = useRef(true);
+  const scrollTweenRef = useRef<gsap.core.Tween | null>(null);
 
   const waiting = status === "submitted";
   const streaming = status === "streaming";
   const newest = messages[messages.length - 1];
-  const newestVisualKey = newest?.role === "assistant"
-    ? readAssistant(newest).specs.map((spec) => spec.kind).join("|")
-    : "";
+  const newestAnswer = newest?.role === "assistant" ? readAssistant(newest) : null;
+  const newestVisualKey = newestAnswer?.specs.map((spec) => spec.kind).join("|") ?? "";
+  const showWorking = waiting || (
+    streaming && (!newestAnswer || (!newestAnswer.verdict && newestAnswer.specs.length === 0))
+  );
+
+  const updateRoutine = useCallback((
+    target: RoutineTarget,
+    next: RoutineTaskProgress | ((current: RoutineTaskProgress) => RoutineTaskProgress),
+  ) => {
+    setRoutineProgress((current) => {
+      const dayTasks = current[target.dayId] ?? [];
+      const existing = dayTasks[target.priorityIndex] ?? { status: "idle", progress: 0 };
+      const updated = typeof next === "function" ? next(existing) : next;
+      const tasks = dayTasks.map((task, index) => index === target.priorityIndex ? updated : task);
+      return { ...current, [target.dayId]: tasks };
+    });
+  }, []);
+
+  const beginRoutine = useCallback((target: RoutineTarget): ActiveRoutine => {
+    const active = { ...target, token: ++routineTokenRef.current };
+    activeRoutineRef.current = active;
+    routineHadVisualRef.current = false;
+    updateRoutine(target, { status: "running", progress: 8 });
+    return active;
+  }, [updateRoutine]);
+
+  const finishRoutine = useCallback((active: ActiveRoutine, status: "complete" | "failed") => {
+    if (activeRoutineRef.current?.token !== active.token) return;
+    updateRoutine(active, {
+      status,
+      progress: status === "complete" ? 100 : 0,
+    });
+    routineHadVisualRef.current = false;
+    activeRoutineRef.current = null;
+  }, [updateRoutine]);
+
+  const scrollToLatest = useCallback((force = false) => {
+    if (!force && !followAnswerRef.current) return;
+    const scroller = streamRef.current;
+    const target = lastRef.current;
+    if (!scroller || !target) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const top = Math.max(0, scroller.scrollTop + targetRect.top - scrollerRect.top - 12);
+
+    scrollTweenRef.current?.kill();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      scroller.scrollTop = top;
+      return;
+    }
+    scrollTweenRef.current = gsap.to(scroller, {
+      scrollTop: top,
+      duration: 0.32,
+      ease: "power2.out",
+      overwrite: "auto",
+      onComplete: () => { scrollTweenRef.current = null; },
+    });
+  }, []);
+
+  const pauseAnswerFollow = useCallback(() => {
+    if (!messages.length && !showWorking) return;
+    followAnswerRef.current = false;
+    scrollTweenRef.current?.kill();
+    setShowJump(true);
+  }, [messages.length, showWorking]);
 
   // Land the viewport on the START of the newest turn — the strong visual
   // answers (merge cards, the tall report) open above the fold, not below it.
@@ -180,15 +432,184 @@ export function MerchantChat() {
   // message count alone is not a sufficient signal: scroll again when the
   // renderable component kinds arrive.
   useEffect(() => {
-    lastRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [messages.length, newestVisualKey]);
+    if (!followAnswerRef.current) return;
+    const frame = window.requestAnimationFrame(() => scrollToLatest());
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages.length, newestVisualKey, scrollToLatest, showWorking]);
 
-  const submit = useCallback((text: string, dayOverride?: DemoDayId) => {
-    const message = text.trim();
+  useEffect(() => () => {
+    scrollTweenRef.current?.kill();
+  }, []);
+
+  useEffect(() => {
+    const draft = window.sessionStorage.getItem(DRAFT_KEY);
+    if (draft) setInput(draft);
+    const storedDay = window.sessionStorage.getItem(DEMO_DAY_STORAGE_KEY);
+    if (isDemoDayId(storedDay)) {
+      demoDayRef.current = storedDay;
+      setDemoDayId(storedDay);
+    }
+    setRoutineProgress(restoreRoutineProgress(window.sessionStorage.getItem(ROUTINE_PROGRESS_KEY)));
+    setRoutineProgressReady(true);
+    setDraftReady(true);
+    if (window.matchMedia("(pointer: fine)").matches) {
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (input) window.sessionStorage.setItem(DRAFT_KEY, input);
+    else window.sessionStorage.removeItem(DRAFT_KEY);
+  }, [draftReady, input]);
+
+  useEffect(() => {
+    if (!routineProgressReady) return;
+    window.sessionStorage.setItem(ROUTINE_PROGRESS_KEY, JSON.stringify(routineProgress));
+  }, [routineProgress, routineProgressReady]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!active) return;
+    if (newestAnswer?.specs.length) routineHadVisualRef.current = true;
+    if (waiting) {
+      updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, 24) }));
+      return;
+    }
+    if (streaming) {
+      const progress = newestAnswer?.specs.length ? 88 : newestAnswer?.verdict ? 72 : 52;
+      updateRoutine(active, (task) => ({ ...task, status: "running", progress: Math.max(task.progress, progress) }));
+    }
+  }, [newestAnswer?.specs.length, newestAnswer?.verdict, streaming, updateRoutine, waiting]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!active || waiting || streaming || status !== "ready") return;
+    // Every routine maps to a structured tool. A prose-only turn can be an
+    // honest tool/network failure, but it is not completed operational work.
+    finishRoutine(active, routineHadVisualRef.current ? "complete" : "failed");
+  }, [finishRoutine, status, streaming, waiting]);
+
+  useEffect(() => {
+    const active = activeRoutineRef.current;
+    if (!error || !active) return;
+    finishRoutine(active, "failed");
+  }, [error, finishRoutine]);
+
+  useEffect(() => {
+    if (!waiting && !streaming) return;
+    const timeout = window.setTimeout(() => {
+      const active = activeRoutineRef.current;
+      if (active) finishRoutine(active, "failed");
+      setRequestFailure(
+        "Teddy did not receive an agent response within 30 seconds. Confirm the local Trigger.dev worker is running, then retry.",
+      );
+      void stop();
+    }, CHAT_RESPONSE_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [finishRoutine, stop, streaming, waiting]);
+
+  const submit = useCallback((text: string, dayOverride?: DemoDayId, routine?: RoutineTarget) => {
+    let message = text.trim();
     if (!message || waiting || streaming) return;
+    if (traceFollowupPending) {
+      if (/^(?:yes|yes please|yep|yeah|sure|okay|ok)\b/i.test(message)) {
+        message = "Yes. Show me all other things that need my attention.";
+      }
+      setTraceFollowupPending(false);
+    }
+    followAnswerRef.current = true;
+    setShowJump(false);
+    setRequestFailure(null);
     setInput("");
-    void sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, message) });
-  }, [sendMessage, streaming, waiting]);
+    if (routine) beginRoutine(routine);
+    const routedMessage = routine ? withRoutineContext(routine.dayId, routine.priorityIndex, message) : message;
+    const request = sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, routedMessage) });
+    void request.catch(() => {
+      const active = activeRoutineRef.current;
+      if (active) finishRoutine(active, "failed");
+    });
+  }, [beginRoutine, finishRoutine, sendMessage, streaming, traceFollowupPending, waiting]);
+
+  useEffect(() => {
+    if (demoDayId !== "tuesday") {
+      shipAlertStartedRef.current = false;
+      setShipAlert(null);
+      return;
+    }
+    if (shipAlertStartedRef.current) return;
+    shipAlertStartedRef.current = true;
+    // The alert is the inbound event, so show it before waiting on the durable
+    // workflow. This keeps the autonomous signal visible even when a local
+    // dependency is unavailable; the card then fails closed instead of
+    // disappearing.
+    setShipAlert(PENDING_SHIP_ALERT);
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollCount = 0;
+
+    const start = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (cancelled) return;
+      try {
+        const response = await fetch("/api/demo/ship-day-exception", { method: "POST" });
+        const body = await response.json() as {
+          ok: boolean;
+          runId?: string;
+          reused?: boolean;
+          status?: ShipAlertStatus;
+          incident?: Omit<ShipAlert, "runId" | "status">;
+        };
+        if (!response.ok || !body.ok || !body.incident) throw new Error("start failed");
+        if (body.reused && body.status === "protected") {
+          if (!cancelled && demoDayRef.current === "tuesday") {
+            setShipAlert({ ...body.incident, runId: "reused", status: "protected" });
+          }
+          return;
+        }
+        if (!body.runId) throw new Error("run id missing");
+        const base: ShipAlert = { ...body.incident, runId: body.runId, status: "request-detected" };
+        if (!cancelled && demoDayRef.current === "tuesday") setShipAlert(base);
+
+        const poll = async () => {
+          if (cancelled || demoDayRef.current !== "tuesday") return;
+          pollCount += 1;
+          const statusResponse = await fetch(`/api/demo/ship-day-exception?runId=${encodeURIComponent(body.runId!)}`);
+          const statusBody = await statusResponse.json() as { ok: boolean; metadata?: Record<string, unknown> };
+          if (!statusResponse.ok || !statusBody.ok) throw new Error("poll failed");
+          const status = statusBody.metadata?.status;
+          if (typeof status === "string" && ["request-detected", "packing-notified", "protected", "failed"].includes(status)) {
+            setShipAlert((current) => demoDayRef.current === "tuesday" && current ? {
+              ...current,
+              status: status as ShipAlertStatus,
+              customerName: String(statusBody.metadata?.customerName ?? current.customerName),
+              shipmentId: String(statusBody.metadata?.shipmentId ?? current.shipmentId),
+              destination: String(statusBody.metadata?.destination ?? current.destination),
+              protectedCostCents: Number(statusBody.metadata?.protectedCostCents ?? current.protectedCostCents),
+              requestSummary: String(statusBody.metadata?.requestSummary ?? current.requestSummary),
+            } : null);
+            if (status === "protected" || status === "failed") return;
+          }
+          if (pollCount >= 60) {
+            setShipAlert((current) => demoDayRef.current === "tuesday" && current ? { ...current, status: "failed" } : null);
+            return;
+          }
+          pollTimer = setTimeout(() => { void poll().catch(() => setShipAlert((current) => demoDayRef.current === "tuesday" && current ? { ...current, status: "failed" } : null)); }, 650);
+        };
+        await poll();
+      } catch {
+        if (!cancelled && demoDayRef.current === "tuesday") {
+          shipAlertStartedRef.current = false;
+          setShipAlert((current) => current ? { ...current, status: "failed" } : current);
+        }
+      }
+    };
+    void start();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [demoDayId, shipAlertAttempt]);
 
   useEffect(() => {
     const onDay = (event: Event) => {
@@ -202,16 +623,35 @@ export function MerchantChat() {
         return;
       }
       demoDayRef.current = next;
+      if (next !== "tuesday") {
+        shipAlertStartedRef.current = false;
+        setShipAlert(null);
+      }
       setDemoDayId(next);
+      window.sessionStorage.setItem(DEMO_DAY_STORAGE_KEY, next);
       const day = demoDay(next);
       submit(
-        `Show me ${day.weekday}'s command brief. What are today's priorities, and what should you remind me not to miss?`,
+        `Show me ${day.weekday}'s three jobs and today's note.`,
         next,
       );
     };
     const onPrompt = (event: Event) => {
-      const prompt = (event as CustomEvent<string>).detail;
-      if (typeof prompt === "string") submit(prompt);
+      const detail = (event as CustomEvent<string | DemoChatPromptDetail>).detail;
+      if (typeof detail === "string") {
+        submit(detail);
+        return;
+      }
+      if (
+        detail &&
+        typeof detail.prompt === "string" &&
+        isDemoDayId(detail.dayId) &&
+        Number.isInteger(detail.priorityIndex)
+      ) {
+        submit(detail.prompt, detail.dayId, {
+          dayId: detail.dayId,
+          priorityIndex: detail.priorityIndex,
+        });
+      }
     };
     window.addEventListener(DEMO_DAY_EVENT, onDay);
     window.addEventListener(DEMO_CHAT_PROMPT_EVENT, onPrompt);
@@ -222,38 +662,117 @@ export function MerchantChat() {
   }, [streaming, submit, waiting]);
 
   const currentDay = demoDay(demoDayId);
+  const currentProgress = routineProgress[demoDayId];
+  const hasRoutineProgress = currentProgress.some((task) => task.status !== "idle" || task.progress > 0);
   const suggestions = [
-    ...currentDay.priorities.flatMap((priority) => priority.prompt ? [priority.prompt] : []),
-    ...GENERAL_SUGGESTIONS,
-  ].filter((suggestion, index, all) => all.indexOf(suggestion) === index).slice(0, 5);
+    ...currentDay.priorities.flatMap((priority, index) => priority.prompt ? [{
+      prompt: priority.prompt,
+      routine: { dayId: demoDayId, priorityIndex: index } satisfies RoutineTarget,
+    }] : []),
+    ...GENERAL_SUGGESTIONS.map((prompt) => ({ prompt, routine: undefined })),
+  ].filter((suggestion, index, all) => all.findIndex((item) => item.prompt === suggestion.prompt) === index).slice(0, 3);
 
   return (
+    <RoutineProgressProvider value={routineProgress} busy={waiting || streaming}>
     <div className="flex min-h-0 flex-1 flex-col">
+      {demoDayId === "tuesday" && shipAlert ? (
+        <ShipDayAlert
+          alert={shipAlert}
+          busy={waiting || streaming}
+          onReview={() => {
+            submit(shipTracePrompt(shipAlert));
+            setTraceFollowupPending(true);
+            setShipAlert(null);
+          }}
+          onDismiss={() => setShipAlert(null)}
+          onRetry={() => {
+            shipAlertStartedRef.current = false;
+            setShipAlertAttempt((attempt) => attempt + 1);
+          }}
+        />
+      ) : null}
       {/* stream */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl space-y-5 px-4 py-5">
+      <div
+        ref={streamRef}
+        className="reef-room min-h-0 flex-1 overflow-y-auto"
+        onWheel={pauseAnswerFollow}
+        onTouchMove={pauseAnswerFollow}
+      >
+        <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
+          {messages.length > 0 && hasRoutineProgress ? (
+            <RoutineProgressDock
+              weekday={currentDay.weekday}
+              priorities={currentDay.priorities}
+              tasks={currentProgress}
+              busy={waiting || streaming}
+              onStart={(index) => {
+                const priority = currentDay.priorities[index];
+                submit(
+                  priority.prompt ?? priority.label,
+                  demoDayId,
+                  { dayId: demoDayId, priorityIndex: index },
+                );
+              }}
+            />
+          ) : null}
           {messages.length === 0 && status === "ready" ? (
-            <div className="pt-10 text-center">
-              {/* Teddy — the real reef dog behind the store. The first frame a
-                  judge sees: a face, not a terminal. */}
-              <img
-                src="/teddy.jpg"
-                alt="Teddy the reef dog, wearing his HAPPY REEFING headband in front of the coral tanks"
-                width={112}
-                height={112}
-                className="mx-auto rounded-full ring-2 ring-coral/60 shadow-[0_0_46px_rgba(232,86,43,0.28)]"
-              />
-              <p className="mt-4 font-mono text-[12px] tracking-[0.3em] text-mute uppercase">
-                channel open · today is {currentDay.weekday} · {currentDay.label}
-              </p>
-              <p className="mt-2 text-sm text-dim">
-                Teddy&apos;s watching the reef. Choose a day above — he&apos;ll brief the
-                priorities and open the right component.
-              </p>
-              <p className="mt-1.5 font-mono text-[11px] tracking-[0.24em] text-coralhi/85 uppercase">
-                happy reefing
-              </p>
-            </div>
+            <section className="max-w-3xl py-5 md:py-10">
+              <div className="text-left">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/teddy-avatar.jpg"
+                    alt="Teddy, the reef co-pilot"
+                    width={42}
+                    height={42}
+                    className="rounded-lg ring-1 ring-coral/55"
+                  />
+                  <p className="text-[13px] font-semibold tracking-[0.08em] text-coral uppercase">
+                    {currentDay.weekday} / {currentDay.time}
+                  </p>
+                </div>
+                <h1 className="mt-5 max-w-[12ch] text-[40px] leading-[1.02] font-semibold tracking-[-0.045em] text-ink sm:text-[52px]">
+                  {currentDay.label}.
+                </h1>
+                <p className="mt-3 max-w-xl text-[17px] leading-relaxed text-dim">
+                  TIA Coral runs on a weekly auction-to-shipping rhythm. Start one of today&apos;s three jobs.
+                </p>
+
+                <div className="mt-8 text-left">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[14px] font-semibold tracking-[0.06em] text-ink uppercase">Today&apos;s focus</h2>
+                      <p className="mt-1 text-[13px] text-mute">Live routine progress</p>
+                    </div>
+                    <RoutineProgressRing tasks={currentProgress} />
+                  </div>
+                  <ul className="mt-2 border-y border-line/80">
+                  {currentDay.priorities.map((priority, index) => (
+                    <li key={priority.label} className="border-b border-line/65 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => submit(
+                          priority.prompt ?? priority.label,
+                          demoDayId,
+                          { dayId: demoDayId, priorityIndex: index },
+                        )}
+                        disabled={waiting || streaming}
+                        aria-label={`Start routine: ${priority.label}`}
+                        className="group flex min-h-14 w-full items-center gap-3 px-1 py-3 text-left transition-[color,background-color,transform] hover:bg-coral/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/35 active:translate-x-0.5 disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <RoutineTaskMark task={currentProgress[index]} index={index} />
+                        <span className="min-w-0 flex-1 text-[16px] leading-snug text-ink">{priority.label}</span>
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-mute">{priority.time} ET</span>
+                        <span className={`text-[12px] font-semibold ${currentProgress[index].status === "complete" ? "text-ok" : currentProgress[index].status === "running" ? "text-coralhi" : currentProgress[index].status === "failed" ? "text-danger" : "text-mute"}`}>
+                          {currentProgress[index].status === "complete" ? "DONE" : currentProgress[index].status === "running" ? "RUNNING" : currentProgress[index].status === "failed" ? "RETRY" : "START"}
+                        </span>
+                        <span aria-hidden className="translate-x-0 text-[18px] text-mute transition-[color,transform] group-hover:translate-x-1 group-hover:text-coral">→</span>
+                      </button>
+                    </li>
+                  ))}
+                  </ul>
+                </div>
+              </div>
+            </section>
           ) : null}
 
           {messages.map((m, i) => {
@@ -264,7 +783,7 @@ export function MerchantChat() {
                 ref={isLast ? lastRef : undefined}
                 className="flex justify-end"
               >
-                <p className="anim-rise max-w-[75%] rounded-md rounded-br-sm border border-line bg-raise px-3.5 py-2 text-[14px] text-ink">
+                <p className="anim-rise max-w-[75%] rounded-md rounded-br-sm border border-line bg-raise px-3.5 py-2 text-[15px] text-ink">
                   {m.parts
                     .filter((p): p is { type: "text"; text: string } => p.type === "text")
                     .map((p) => p.text)
@@ -273,20 +792,27 @@ export function MerchantChat() {
                 </p>
               </div>
             ) : (
-              <AgentAnswer key={m.id} message={m} innerRef={isLast ? lastRef : undefined} />
+              <div key={m.id} ref={isLast ? lastRef : undefined}>
+                <AgentAnswer message={m} />
+              </div>
             );
           })}
 
-          {waiting ? <CoralPulseSkeleton /> : null}
+          {showWorking ? <CoralPulseSkeleton innerRef={lastRef} /> : null}
 
-          {error ? (
+          {error || requestFailure ? (
             <div className="anim-rise">
               <SpecRenderer
                 spec={{
                   kind: "verdict_card",
-                  verdict: "The agent hit an error — showing it, not a guess.",
+                  verdict: requestFailure ?? "The agent could not complete this request. Please retry.",
                   confidence: "low",
-                  evidence: [{ label: "error", detail: error.message }],
+                  evidence: [{
+                    label: "next step",
+                    detail: requestFailure
+                      ? "Keep the Trigger.dev local worker running, then start the task again."
+                      : "Retry the task. If it fails again, check the local app and agent-worker terminals.",
+                  }],
                 }}
               />
             </div>
@@ -295,18 +821,37 @@ export function MerchantChat() {
       </div>
 
       {/* composer */}
-      <div className="border-t border-line/80 bg-abyss/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-4 pt-2.5 pb-4">
-          <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {suggestions.map((s) => (
+      <div className="border-t border-line/80 bg-abyss/95 backdrop-blur-sm">
+        <div className="mx-auto max-w-6xl px-4 pt-2.5 pb-4 sm:px-6">
+          {showJump ? (
+            <div className="mb-2 flex justify-center">
               <button
-                key={s}
                 type="button"
-                onClick={() => submit(s)}
-                disabled={waiting || streaming}
-                className="rounded-full border border-line px-3 py-1 font-mono text-[12px] text-dim transition-colors hover:border-teal/60 hover:text-tealhi disabled:opacity-50"
+                onClick={() => {
+                  followAnswerRef.current = true;
+                  setShowJump(false);
+                  scrollToLatest(true);
+                }}
+                className="rounded-full border border-coral/45 bg-abyss/90 px-3 py-1 font-mono text-[13px] text-coralhi shadow-[0_8px_26px_rgba(0,0,0,0.28)] transition-transform hover:-translate-y-0.5 active:translate-y-0"
               >
-                {s}
+                ↓ JUMP TO TEDDY
+              </button>
+            </div>
+          ) : null}
+          <div className="mb-2.5 flex flex-wrap gap-1.5">
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.prompt}
+                type="button"
+                onClick={() => submit(suggestion.prompt, demoDayId, suggestion.routine)}
+                disabled={waiting || streaming}
+                className={`rounded-full border px-3 py-1.5 text-[13px] font-medium transition-[color,background-color,border-color,transform] active:scale-[0.98] disabled:opacity-50 ${
+                  index === 0
+                    ? "border-coral/45 bg-coral/[0.06] text-coralhi hover:border-coral/75 hover:bg-coral/10"
+                    : "border-line text-dim hover:border-teal/60 hover:text-tealhi"
+                }`}
+              >
+                {suggestion.prompt}
               </button>
             ))}
             {waiting || streaming ? (
@@ -315,8 +860,12 @@ export function MerchantChat() {
               // without it the composer would wait forever with no exit.
               <button
                 type="button"
-                onClick={() => void stop()}
-                className="rounded-full border border-coral/70 px-3 py-1 font-mono text-[12px] text-coralhi transition-colors hover:bg-coral/15"
+                onClick={() => {
+                  const active = activeRoutineRef.current;
+                  if (active) finishRoutine(active, "failed");
+                  void stop();
+                }}
+                className="rounded-full border border-coral/70 px-3 py-1 font-mono text-[13px] text-coralhi transition-colors hover:bg-coral/15"
               >
                 ◼ STOP
               </button>
@@ -329,26 +878,27 @@ export function MerchantChat() {
             }}
             className="flex gap-2"
           >
-            {/* Never disabled: typing must survive a hung or slow run — only
-                SEND gates on in-flight state. A locked composer reads as a
-                broken product on camera. */}
+            {/* Never disabled: typing must survive a hung or slow run. Only
+                SEND gates on in-flight state. */}
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask Teddy — attention, revenue, auction, merges, report…"
+              placeholder="Ask Teddy about attention, orders, auction, or the report…"
               aria-label="Message"
-              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3.5 py-2.5 font-mono text-[13px] text-ink placeholder:text-mute focus:border-teal focus:outline-none"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-4 py-3 text-[15px] text-ink placeholder:text-mute transition-[border-color,box-shadow] focus:border-coral/70 focus:shadow-[0_0_0_3px_rgba(255,133,89,0.08)] focus:outline-none"
             />
             <button
               type="submit"
               disabled={waiting || streaming || !input.trim()}
-              className="rounded-md border border-coral/70 bg-coral/15 px-4 font-mono text-[12px] font-semibold tracking-widest text-coralhi transition-colors hover:bg-coral/25 disabled:opacity-40"
+              className="rounded-lg border border-coral bg-coral px-5 text-[13px] font-semibold text-abyss transition-[background-color,transform] hover:bg-coralhi active:scale-[0.98] disabled:border-coral/35 disabled:bg-coral/10 disabled:text-coralhi disabled:opacity-50"
             >
-              SEND ▸
+              Send
             </button>
           </form>
         </div>
       </div>
     </div>
+    </RoutineProgressProvider>
   );
 }

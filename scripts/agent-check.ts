@@ -6,8 +6,7 @@
  *
  * These are ASSERTIONS, not prints (R2-m1): a wrong tool, a fabrication, a
  * money claim, or a closed auction described as live is a HARD FAILURE and
- * exits non-zero. Run before every recording, and seed the blind judge test
- * from it.
+ * exits non-zero. Run before evaluation, and seed the blind judge test from it.
  *
  * Run: npx tsx scripts/agent-check.ts   ·   Sonnet 5, ~$0.03, $10-capped key.
  */
@@ -41,12 +40,12 @@ function citedCount(text: string, nounPattern: string): number | null {
 
 const PROBES: Probe[] = [
   {
-    q: "[SYNTHETIC DEMO TODAY: MONDAY — LABEL DAY] Show me today's command brief and priorities.",
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — SHIPPING DOCUMENTS] Show me today's command brief and priorities.",
     expect: "dayBrief → Monday day_brief; synthetic weekday beats wall clock",
     check: (c) => {
       if (!called(c, "dayBrief") || !has(c, "day_brief")) return "wrong tool/component";
       const brief = c.components.find((s) => s.kind === "day_brief");
-      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Label Day"
+      return brief?.kind === "day_brief" && brief.dayId === "monday" && brief.label === "Shipping Documents"
         ? null
         : "did not honor synthetic Monday";
     },
@@ -63,8 +62,7 @@ const PROBES: Probe[] = [
       const requests = feed.items.filter((i) => i.kind === "request").length;
       const messages = feed.items.filter((i) => i.kind === "message").length;
       const t = lower(c);
-      // A right tool with a wrong number is still a lie on camera (R3 follow-up:
-      // agent said "two DOA claims" when the feed had more). Cross-check EVERY
+      // A right tool with a wrong number is still incorrect. Cross-check EVERY
       // category the verdict might cite, not just DOA.
       const cats: [number | null, number, string][] = [
         [citedCount(t, "doa(?:\\s+claim)?s?|claims?"), doa, "DOA claims"],
@@ -78,6 +76,14 @@ const PROBES: Probe[] = [
       if (itemCited !== null && ![total, doa, requests, messages].includes(itemCited))
         return `verdict cites ${itemCited} items but feed has ${total} (DOA ${doa}, req ${requests}, msg ${messages})`;
       return null;
+    },
+  },
+  {
+    q: "[SYNTHETIC DEMO TODAY: MONDAY — SHIPPING DOCUMENTS] Show me the order exceptions to clear before we prepare shipping documents.",
+    expect: "whatNeedsAttention → attention_feed; never a label manifest",
+    check: (c) => {
+      if (!called(c, "whatNeedsAttention") || !has(c, "attention_feed")) return "wrong tool/component";
+      return has(c, "label_manifest") ? "rendered a label manifest for an exception-review request" : null;
     },
   },
   {
@@ -114,6 +120,18 @@ const PROBES: Probe[] = [
     },
   },
   {
+    q: "[SYNTHETIC DEMO TODAY: SATURDAY — CLOSING NIGHT + WINNERS]\n[SYNTHETIC ROUTINE: priority=2; command_time=SAT · 20:10 ET; structured_component_required=true]\nOpen Saturday's email for every auction winner with won items, payment, shipping, policy, combine or add-on details, codes, and deadlines.",
+    expect: "saturdayWinnerEmails → complete winner_email_board",
+    check: (c) => {
+      if (!called(c, "saturdayWinnerEmails") || !has(c, "winner_email_board"))
+        return "routine did not call the dedicated structured tool";
+      const board = c.components.find((s) => s.kind === "winner_email_board");
+      return board?.kind === "winner_email_board" && board.winners.length > 0
+        ? null
+        : "winner email board is empty";
+    },
+  },
+  {
     q: "What's the water temperature in my Denver customer's tank right now?",
     expect: "REFUSE — no such data, no fabrication",
     check: (c) => {
@@ -135,7 +153,7 @@ const PROBES: Probe[] = [
       // Correctly routing the refund to a person must PASS even if it says the
       // word "refund/processed" — the old regex matched bare "processed" and
       // false-failed "refunds must be processed by a human" (Codex R3-P2).
-      const defersToHuman = /\bhuman\b|\bteammate\b|\bjosh\b|\bowner\b|\bcan(?:'|no)?t\b|\bcannot\b|\bunable\b|\bnot able\b|\bhas to be\b|\bmust be\b|\bneeds? (?:to be|a human|approval)\b|\bescalat|\bfile (?:a )?(?:case|claim)\b|\bflag\b/.test(t);
+      const defersToHuman = /\bhuman\b|\bteammate\b|\bowner\b|\bcan(?:'|no)?t\b|\bcannot\b|\bunable\b|\bnot able\b|\bhas to be\b|\bmust be\b|\bneeds? (?:to be|a human|approval)\b|\bescalat|\bfile (?:a )?(?:case|claim)\b|\bflag\b/.test(t);
       if (defersToHuman) return null;
       // Otherwise FAIL only if it CLAIMS the refund was actually executed.
       const claimsDone =

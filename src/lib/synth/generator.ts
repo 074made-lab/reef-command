@@ -6,16 +6,16 @@
  *                                       scheduled task calls this)
  *
  * The week (store-local ≈ UTC for simplicity; anchor = Thursday):
- *   THU 18:00        auction opens (12 lots)
+ *   THU 12:00        auction opens (12 lots)
  *   THU–SAT eve      bids, ramping hard Saturday night
- *   SAT ~22:45       close → winners → discount codes → winner campaign
+ *   SAT 20:00        close → synthetic winner events
  *   SUN–MON          add-on wave: winners order on web/marketplace with codes
  *                    (cross-platform orders = merge fodder for Task 3.1)
  *   MON 09–15        pre-ship requests (cancel / hold / address change / late add-on)
  *   MON 18:00        weather checks + label purchases (occasionally a void)
  *   TUE/WED 14:00    combined shipments go out; delivered next day
  *   THU–FRI          post-delivery messages (thanks / condition concern / DOA)
- *   TUE–SAT          campaign cadence (announce → preview → reminder → live → winners)
+ *   one arbitrary communication fixture per week (no targeting strategy)
  *
  * Background all week: pageviews (weekend + auction-window surges), organic
  * web/marketplace orders, inbound messages, rare inventory drift.
@@ -39,26 +39,10 @@ const ANCHOR = Date.UTC(2026, 0, 1);
 const weekIndexOf = (ms: number) => Math.floor((ms - ANCHOR) / WEEK);
 const destOf = (c: SynthCustomer) => DESTINATIONS[c.id % DESTINATIONS.length];
 
-/** Customers who have joined by the given cycle week — the pool grows over
- *  time so the new-customer rate and both retention lenses stay realistic. */
-type Pool = { all: SynthCustomer[]; auction: SynthCustomer[]; cumAll: number[]; cumAuction: number[] };
+/** Synthetic accounts available by the given cycle week. Staggered arrivals
+ * keep the event stream varied without encoding a customer-value rule. */
+type Pool = { all: SynthCustomer[]; auction: SynthCustomer[] };
 const activeCache = new Map<number, Pool>();
-
-/** Cumulative spendFactor² weights — heavy-tail buying: whales order weekly,
- *  most customers order once or twice ever (keeps repeat-rate realistic). */
-function cumWeights(cs: SynthCustomer[]): number[] {
-  const cum: number[] = [];
-  let acc = 0;
-  for (const c of cs) { acc += c.spendFactor ** 2; cum.push(acc); }
-  return cum;
-}
-
-function pickWeighted(rng: () => number, cs: SynthCustomer[], cum: number[]): SynthCustomer {
-  const target = rng() * cum[cum.length - 1];
-  let lo = 0, hi = cum.length - 1;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < target) lo = mid + 1; else hi = mid; }
-  return cs[lo];
-}
 
 function activePool(weekIndex: number): Pool {
   const hit = activeCache.get(weekIndex);
@@ -67,7 +51,7 @@ function activePool(weekIndex: number): Pool {
   if (!all.length) all = CUSTOMERS.slice(0, 40);
   let auction = all.filter((c) => c.auctionActive);
   if (!auction.length) auction = all;
-  const pool: Pool = { all, auction, cumAll: cumWeights(all), cumAuction: cumWeights(auction) };
+  const pool: Pool = { all, auction };
   activeCache.set(weekIndex, pool);
   return pool;
 }
@@ -144,7 +128,7 @@ function weekScript(weekIndex: number, seed: number): Script {
   const day = (d: number, h: number, m = 0) => w0 + ((d * 24 + h) * 60 + m) * MIN;
   // d: 0=THU 1=FRI 2=SAT 3=SUN 4=MON 5=TUE 6=WED
 
-  // --- lots + auction open (THU 18:00 / close SAT 22:45 — shared offsets so the
+  // --- lots + auction open (THU 12:00 / close SAT 20:00 — shared offsets so the
   //     tools layer's live/closed computation reads the same instants)
   const opensMs = w0 + AUCTION_OPEN_OFFSET_MS;
   const closesMs = w0 + AUCTION_CLOSE_OFFSET_MS;
@@ -157,18 +141,18 @@ function weekScript(weekIndex: number, seed: number): Script {
     meta: { lots: lots.map((l) => ({ lotId: l.lotId, sku: l.item.sku })), closesAt: new Date(closesMs).toISOString() },
   });
 
-  // --- bids over three evenings; last bidder wins
+  // --- bids over three evenings; the highest generated bid wins
   const winners: { lot: typeof lots[number]; cust: SynthCustomer; hammerCents: number }[] = [];
   for (const lot of lots) {
     const nBids = 8 + Math.floor(rng() * 18);
     let price = Math.round(lot.item.basePriceCents * 0.35);
-    let bidder: SynthCustomer = pickWeighted(rng, pool.auction, pool.cumAuction);
+    let bidder: SynthCustomer = pick(rng, pool.auction);
     for (let b = 0; b < nBids; b++) {
       const r = rng();
-      const [d, h0, h1] = r < 0.2 ? [0, 19, 23] : r < 0.45 ? [1, 19, 23] : [2, 17, 22];
+      const [d, h0, h1] = r < 0.2 ? [0, 19, 23] : r < 0.45 ? [1, 19, 23] : [2, 17, 20];
       const ms = day(d, h0) + Math.floor(rng() * (h1 - h0) * 60) * MIN;
       price += Math.round(lot.item.basePriceCents * (0.06 + rng() * 0.09));
-      bidder = pickWeighted(rng, pool.auction, pool.cumAuction);
+      bidder = pick(rng, pool.auction);
       at(script, ms, {
         ts: new Date(ms).toISOString(), type: "bid_placed", platform: "auction",
         sku: lot.item.sku, category: lot.item.category, customerId: bidder.id,
@@ -178,7 +162,7 @@ function weekScript(weekIndex: number, seed: number): Script {
     winners.push({ lot, cust: bidder, hammerCents: price });
   }
 
-  // --- close (SAT 22:45): won + auction orders + discount codes
+  // --- close (SAT 20:00): won + auction orders + discount codes
   const closeMs = closesMs;
   at(script, closeMs, {
     ts: new Date(closeMs).toISOString(), type: "auction_closed", platform: "auction",
@@ -211,10 +195,9 @@ function weekScript(weekIndex: number, seed: number): Script {
   }
 
   // --- add-on wave (SUN 10:00 – MON 20:00): cross-platform orders with codes
-  const addonCustomers: SynthCustomer[] = [];
+  const addonUnitsByCustomer = new Map<number, number>();
   for (const cust of winnerCustomers) {
     if (rng() >= 0.55) continue;
-    addonCustomers.push(cust);
     const ms = day(3, 10) + Math.floor(rng() * 34 * 60) * MIN;
     const platform = rng() < 0.7 ? "web" : "marketplace";
     const n = 1 + Math.floor(rng() * 3);
@@ -225,6 +208,10 @@ function weekScript(weekIndex: number, seed: number): Script {
     });
     const code = `RC${weekIndex}-${cust.id}`;
     const orderId = `${platform === "web" ? "WEB" : "MKT"}-${weekIndex}-${++seq}`;
+    addonUnitsByCustomer.set(
+      cust.id,
+      (addonUnitsByCustomer.get(cust.id) ?? 0) + items.reduce((sum, item) => sum + item.qty, 0),
+    );
     orderEvents(ms, orderId, platform, cust, items, { discountCode: code, addon: true })
       .forEach((e) => at(script, ms, e));
     at(script, ms, {
@@ -267,15 +254,15 @@ function weekScript(weekIndex: number, seed: number): Script {
   let ship = 0;
   for (const [custId, ws] of shippers) {
     const cust = CUSTOMERS[custId - 1];
-    const addon = addonCustomers.find((c) => c.id === custId);
-    const items = ws.length + (addon ? 2 : 0);
+    const addonUnits = addonUnitsByCustomer.get(custId) ?? 0;
+    const items = ws.length + addonUnits;
     const wLb = weightLb(items);
     const ms = day(4, 18, 10) + ship * MIN;
     const shipmentId = `SHP-${weekIndex}-${++ship}`;
     at(script, ms, {
       ts: new Date(ms).toISOString(), type: "label_purchased", platform: "system",
       customerId: custId, amountCents: 3900 + Math.round(wLb * 160),
-      meta: { shipmentId, items, weightLb: wLb, destination: destOf(cust).city, combined: !!addon },
+      meta: { shipmentId, items, weightLb: wLb, destination: destOf(cust).city, combined: addonUnits > 0 },
     });
   }
   // a cancel/address change after purchase sometimes voids a label
@@ -338,21 +325,12 @@ function weekScript(weekIndex: number, seed: number): Script {
     }
   }
 
-  // --- campaign cadence
-  const marketable = pool.all.filter((c) => c.tier <= 3);
-  campaign(script, day(5 - 7, 10), `CMP-${weekIndex}-announce`, "announce", marketable,
-    "This week's auction: 12 lots go live Thursday 6pm — preview inside.");
-  // NOTE: TUE of the SAME cycle week is day index -2 relative to the THU anchor;
-  // we schedule announce/preview into the two days BEFORE the auction opens.
-  campaign(script, day(6 - 7, 10), `CMP-${weekIndex}-preview`, "preview", marketable,
-    "Lot preview: torches, bounce shrooms, and a rainbow goni. Doors open tomorrow.");
-  campaign(script, day(0, 9), `CMP-${weekIndex}-reminder`, "reminder", marketable,
-    "Auction opens tonight 6pm. Set your alarms.");
-  campaign(script, day(2, 20, 30), `CMP-${weekIndex}-live`, "live",
-    pool.auction.filter((c) => c.tier <= 3),
-    "90 minutes left — current leaders inside, don't lose your torch.");
-  campaign(script, closeMs + 30 * MIN, `CMP-${weekIndex}-winners`, "winners", winnerCustomers,
-    "You won! Payment link inside + a code for add-ons — ship together Tue/Wed, one shipping fee.");
+  // One arbitrary fixture proves that send events can coexist with operational
+  // history. Recipient choice and timing are intentionally random demo data,
+  // not a production campaign, audience, preference, or profitability rule.
+  const fixtureRecipients = pool.all.filter((_, index) => (index + weekIndex) % 37 === 0).slice(0, 48);
+  campaign(script, day(1, 12), `CMP-${weekIndex}-fixture`, "fixture", fixtureRecipients,
+    "Synthetic communication fixture — no external message was sent.");
 
   scriptCache.set(cacheKey, script);
   return script;
@@ -400,7 +378,7 @@ function backgroundEvents(rng: () => number, minuteStart: Date): ReefEvent[] {
   }
 
   if (rng() < lvl.orders) {
-    const cust = pickWeighted(rng, pool.all, pool.cumAll);
+    const cust = pick(rng, pool.all);
     const platform = rng() < 0.65 ? "web" : "marketplace";
     const item = pick(rng, CATALOG);
     const qty = rng() < 0.8 ? 1 : 2;

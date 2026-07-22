@@ -1,6 +1,7 @@
 /**
- * Synthetic coral store catalog. All names are generic coral-trade terms;
- * no real store's data is used anywhere in this project.
+ * Synthetic coral store catalog. Three public TIA product names pair with
+ * owner-authorized photos in the report UI; their prices, rankings, bids, and
+ * events remain invented. No production store data is used here.
  *
  * Six reporting categories (Task 4): zoas, euphyllia, goni, mushroom, sps, other.
  */
@@ -21,14 +22,14 @@ const LINES: [genus: string, category: CoralCategory, names: string[],
   care: CatalogItem["careLevel"], baseUsd: number, auctionable: boolean][] = [
   ["Euphyllia", "euphyllia", ["Gold Torch", "Dragon Torch", "Purple Hammer", "Green Hammer", "Frogspawn Branch", "Cristata Crown"], "intermediate", 120, true],
   ["Zoanthus", "zoas", ["Sunburst Zoa", "Lava Lamp Zoa", "Midnight Zoa", "Citrus Splash Zoa", "Storm Cloud Zoa", "Dragon Eye Zoa"], "beginner", 35, true],
-  ["Goniopora", "goni", ["Red Goni", "Rainbow Goni", "Green Metallic Goni", "Sunrise Goni"], "intermediate", 70, true],
+  ["Goniopora", "goni", ["Red Goni", "Rainbow Goni", "Green Metallic Goni", "Sparkleball Glitter Goniopora"], "intermediate", 70, true],
   ["Discosoma", "mushroom", ["Cherry Mushroom", "Marble Mushroom", "Neon Green Shroom"], "beginner", 25, false],
-  ["Rhodactis", "mushroom", ["Bounce Mushroom", "Galaxy Bounce", "Orange Crush Bounce"], "intermediate", 150, true],
+  ["Rhodactis", "mushroom", ["Bounce Mushroom", "Toxic Velvet Bounce Mushroom", "Orange Crush Bounce"], "intermediate", 150, true],
   ["Acropora", "sps", ["Blue Stag Acro", "Pink Millepora", "Sunset Tabling Acro", "Teal Tip Acro"], "expert", 90, true],
   ["Montipora", "sps", ["Rainbow Monti Cap", "Forest Fire Digitata", "Sunset Monti"], "intermediate", 45, false],
   ["Caulastraea", "other", ["Neon Candy Cane", "Pastel Candy Cane"], "beginner", 40, false],
   ["Favia", "other", ["Dragon Soul Favia", "Reverse Prism Favia"], "intermediate", 60, true],
-  ["Chalice", "other", ["Miami Sunrise Chalice", "Blueberry Chalice"], "expert", 110, true],
+  ["Chalice", "other", ["Opposite Day Chalice", "Blueberry Chalice"], "expert", 110, true],
 ];
 
 export const CATALOG: CatalogItem[] = LINES.flatMap(([genus, category, names, careLevel, baseUsd, auctionable], li) =>

@@ -10,14 +10,27 @@
 import { chClient } from "./store/clickhouse";
 import { pgPool } from "./store/postgres";
 import {
+  addonOrderBoard,
   attentionFeed,
+  auctionAnnouncement,
   auctionBoard,
+  auctionSettlementReport,
+  fridayPlan,
+  listingPlan,
   mergeScan,
+  promotionPlan,
   revenuePulse,
+  saturdayLastCall,
+  saturdayWinnerEmails,
+  shippingCommand,
+  shippingBlockerBoard,
+  thursdayAnnouncementPlan,
+  winnerNextSteps,
   weeklyReport,
 } from "./tools";
+import { buildShippingDocumentBoard } from "./label-day";
 import type { ChatResponse, ComponentSpec } from "./protocol";
-import { dayBriefSpec, parseDemoDayContext } from "./demo-clock";
+import { dayBriefSpec, parseDemoDayContext, stripDemoDayContext } from "./demo-clock";
 
 const ch = chClient();
 const pg = pgPool();
@@ -35,17 +48,87 @@ function firstOf<K extends ComponentSpec["kind"]>(
 }
 
 async function attention(): Promise<ChatResponse> {
-  const [feed, pulse] = await Promise.all([
-    attentionFeed(ch, pg),
-    revenuePulse(ch),
-  ]);
+  const feed = await attentionFeed(ch, pg);
   const n = firstOf(feed, "attention_feed")?.items.length ?? 0;
   return {
     verdict:
       n === 0
-        ? "Feed clear — nothing needs you; revenue is ticking."
-        : `${plural(n, "thing")} need${n === 1 ? "s" : ""} you; revenue is ticking.`,
-    components: [...feed, ...pulse],
+        ? "Feed clear. Nothing needs you."
+        : `${plural(n, "thing")} need${n === 1 ? "s" : ""} your attention.`,
+    components: feed,
+  };
+}
+
+async function blockers(): Promise<ChatResponse> {
+  const components = await shippingBlockerBoard(ch, pg);
+  const board = firstOf(components, "shipping_blocker_board");
+  return {
+    verdict: board?.openCount
+      ? "Monday's hold, replacement, and customer-question lanes are open below."
+      : "Monday's shipping blocker board is clear.",
+    components,
+  };
+}
+
+async function documents(): Promise<ChatResponse> {
+  const components = await buildShippingDocumentBoard(pg);
+  return {
+    verdict: "The packing documents and carrier previews are ready to print. No FedEx label has been purchased.",
+    components,
+  };
+}
+
+async function weekdayShipCommand(message: string): Promise<ChatResponse> {
+  const selected = parseDemoDayContext(message);
+  const day = selected === "thursday" ? "thursday" : selected === "wednesday" ? "wednesday" : "tuesday";
+  const scope = /monitor every (?:tuesday|wednesday) shipment|mominito|overnight shipment|fedex.*movement.*delivery/i.test(message)
+    ? "monitor"
+    : "ship";
+  const components = shippingCommand(day, scope);
+  const board = firstOf(components, "shipment_command_board");
+  return {
+    verdict: board
+      ? `${plural(board.shipments.length, "shipment")} are on the ${scope === "monitor" ? "overnight watch" : "ship-day manifest"}; clear the linked exceptions now.`
+      : "The shipment command board is ready.",
+    components,
+  };
+}
+
+async function thursdayDrafts(): Promise<ChatResponse> {
+  return {
+    verdict: "Four Thursday launch drafts are ready for separate approval. No external message has been sent.",
+    components: await thursdayAnnouncementPlan(pg),
+  };
+}
+
+async function fridayCommand(message: string): Promise<ChatResponse> {
+  const scope = /social|instagram|tiktok|film/.test(message) ? "social" : "issues";
+  return {
+    verdict: scope === "social"
+      ? "The actionable social-team reminder is ready. The SMS is simulated and posting remains with staff."
+      : "Every remaining prior-cycle customer issue has an explicit next action below.",
+    components: fridayPlan(scope),
+  };
+}
+
+async function saturdayLastCallCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "The live-bid last-call SMS and email are ready for separate approval. Nothing has been sent externally.",
+    components: await saturdayLastCall(ch, pg),
+  };
+}
+
+async function saturdayWinnerEmailCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "Every closed-auction winner email is ready for individual review and simulated approval.",
+    components: await saturdayWinnerEmails(ch),
+  };
+}
+
+async function saturdaySettlementCommand(): Promise<ChatResponse> {
+  return {
+    verdict: "The auction-only settlement is below, separate from Wednesday's operating report.",
+    components: await auctionSettlementReport(ch, pg),
   };
 }
 
@@ -83,14 +166,63 @@ async function auction(message: string): Promise<ChatResponse> {
   };
 }
 
-async function merges(): Promise<ChatResponse> {
-  const specs = await mergeScan(pg);
+async function winnerHandoff(): Promise<ChatResponse> {
+  return {
+    verdict: "Saturday's closed board and winner handoff are ready for review. Nothing has been sent.",
+    components: await winnerNextSteps(ch),
+  };
+}
+
+async function listings(message: string): Promise<ChatResponse> {
+  const inventory = /inventory reminder|inventory check|physical inventory|update shopify/i.test(message);
+  return {
+    verdict: inventory
+      ? "The physical inventory handoff is ready. No Shopify or eBay quantity was changed."
+      : "The ReefnBid and Shopify local-agent tasks are staged. Nothing is published.",
+    components: listingPlan(inventory ? "inventory" : "listings"),
+  };
+}
+
+async function promotions(message: string): Promise<ChatResponse> {
+  const selected = parseDemoDayContext(message);
+  const day = selected === "friday" ? selected : "wednesday";
+  return {
+    verdict: "The selected promotion is a reviewable draft. Nothing has been sent.",
+    components: promotionPlan(day),
+  };
+}
+
+async function addOns(): Promise<ChatResponse> {
+  const components = await addonOrderBoard(pg);
+  const board = firstOf(components, "addon_order_board");
+  return {
+    verdict: board
+      ? `${plural(board.totalOrders, "add-on order")} are open; ${plural(board.combineReady, "order")} can join an auction shipment.`
+      : "The add-on order board is ready.",
+    components,
+  };
+}
+
+async function announcement(): Promise<ChatResponse> {
+  return {
+    verdict: "Next Thursday-through-Saturday announcement is ready for human approval. External sending remains off.",
+    components: await auctionAnnouncement(pg),
+  };
+}
+
+async function merges(message: string): Promise<ChatResponse> {
+  const selected = parseDemoDayContext(message);
+  const day = selected === "monday" ? "monday" : "sunday";
+  const specs = await mergeScan(pg, day);
   const n = specs.filter((s) => s.kind === "merge_card").length;
+  const batch = firstOf(specs, "merge_batch");
   return {
     verdict:
       n === 0
-        ? "No cross-platform merge candidates right now — every open order is single-platform."
-        : `${plural(n, "cross-platform merge candidate")} found — one box, one shipping fee each.`,
+        ? "No ReefnBid shipments have winner-code Shopify or eBay add-ons waiting to merge."
+        : batch?.readyCandidates
+          ? `${plural(batch.readyCandidates, "ReefnBid-anchored shipment")} can merge now. Add-on and coral totals are reconciled below.`
+          : `${plural(n, "ReefnBid-anchored shipment")} already merged. The reconciled source-order and coral totals remain visible.`,
     components: specs,
   };
 }
@@ -123,23 +255,57 @@ async function dayBrief(message: string): Promise<ChatResponse> {
   const brief = firstOf(specs, "day_brief");
   return {
     verdict: brief
-      ? `Today is ${brief.weekday} — ${brief.label}. Start with “${brief.priorities[0]?.label}”; Teddy will keep the gate visible.`
-      : "Today's command brief is below.",
+      ? `Today is ${brief.weekday}: ${brief.label}. Start with “${brief.priorities[0]?.label}.”`
+      : "Today's three jobs are below.",
     components: specs,
   };
 }
 
 /** message → ChatResponse. Deterministic, ordered keyword rules. */
 export async function routeChat(message: string): Promise<ChatResponse> {
-  const q = message.toLowerCase();
+  const raw = message.toLowerCase();
+  const q = stripDemoDayContext(message).toLowerCase();
   try {
+    if (/\[synthetic ship trace:/.test(raw)) {
+      return {
+        verdict: "Packing was notified and the label was handled before carrier handoff. Want to see everything else that needs attention?",
+        components: [],
+      };
+    }
     if (/command brief|today'?s (?:work )?priorit|remind me not to miss/.test(q))
       return await dayBrief(message);
-    if (/attention|morning|needs? my|need me/.test(q)) return await attention();
+    if (/shipping blocker board|hold order requests?.*replacement items?.*customer questions?/.test(q))
+      return await blockers();
+    if (/shipping document board|print-ready shipping|packing slips?.*fedex|product label.*coral bag/.test(q))
+      return await documents();
+    if (/clear[- ]shipping[- ]blockers.*ship[- ]today|ship[- ]today manifest|today'?s shipments|final regular ship[- ]day|monitor every (?:tuesday|wednesday) shipment|mominito.*fedex/.test(q))
+      return await weekdayShipCommand(message);
+    if (/last-minute auction sms and email drafts.*current bid prices|last-call sms.*last-call email/.test(q))
+      return await saturdayLastCallCommand();
+    if (/email for every auction winner|every winner.*won items.*payment.*shipping/.test(q))
+      return await saturdayWinnerEmailCommand();
+    if (/auction-only settlement report|settlement.*paid.*unpaid.*shipping/.test(q))
+      return await saturdaySettlementCommand();
+    if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
+      return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
       return await report();
+    if (/add-on orders? board|add-on volume|coral units.*combine-ready|watch add-on orders/.test(q))
+      return await addOns();
+    if (/next-auction announcement|announce next auction|email and sms recipient counts|demo send button/.test(q))
+      return await announcement();
+    if (/four separate 12:00 pm launch drafts|auction sms.*arrivals sms.*auction email.*arrivals email/.test(q))
+      return await thursdayDrafts();
+    if (/actionable staff sms.*instagram.*tiktok|remaining customer-issue board|remedy.*address.*order-question/.test(q))
+      return await fridayCommand(q);
+    if (/listings?|inventory reminder|inventory check|shopify.*(?:product|arrival|inventory)/.test(q))
+      return await listings(q);
+    if (/promotion|advertis|e-?mail|sms|announcement|last[ -]call|auction reminder|arrivals promo/.test(q))
+      return await promotions(message);
+    if (/winner.*next steps|payment.*add-on.*shipping/.test(q))
+      return await winnerHandoff();
     if (/auction|bids?|board/.test(q)) return await auction(message);
-    if (/merge|combine|orders?/.test(q)) return await merges();
+    if (/merge|combine|orders?/.test(q)) return await merges(message);
     if (/revenue|business|sales|how are we|how'?s (it|the week)/.test(q))
       return await revenue();
     return await fallback();

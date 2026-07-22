@@ -1,8 +1,8 @@
 "use client";
 
-/** Executable action chips. `gated` = human-only click (coral); `auto` (teal).
- *  Clicking POSTs to /api/actions. The label-batch approval is owner-gated: the
- *  chip loads owner-auth state, and if the caller has no owner session it prompts
+/** Executable action chips. `gated` = owner-authenticated click (coral); `auto` (teal).
+ *  Clicking POSTs to /api/actions. Every gated chip loads owner-auth state,
+ *  and if the caller has no owner session it prompts
  *  for the passphrase INLINE (never gating the rest of the cockpit — R3-P1
  *  rescope), then — on unlock — asks the owner to click Approve again rather than
  *  auto-buying. If REEF_OWNER_TOKEN isn't configured the chip is disabled with a
@@ -16,20 +16,24 @@ import { getLabelRunProgress, getOwnerAuthState } from "@/app/actions";
 
 type Progress = { status: string; failed: boolean; purchased: number; shipments: number; totalCostCents: number };
 type Auth = { configured: boolean; authenticated: boolean };
+export type ActionCompletion = { taskId: string; progress?: Progress; note: string };
 
 function usd(cents: number) {
   return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
 }
 
-function ChipButton({ chip }: { chip: ActionChip }) {
+function ChipButton({ chip, onComplete }: {
+  chip: ActionChip;
+  onComplete?: (completion: ActionCompletion) => void;
+}) {
   const [state, setState] = useState<"idle" | "busy" | "running" | "done" | "error" | "stalled">("idle");
   const [note, setNote] = useState("");
   const [prog, setProg] = useState<Progress | null>(null);
 
-  const isApproval = chip.taskId === "approve-label-batch";
-  const runId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
+  const isApproval = chip.risk === "gated";
+  const payloadRunId = typeof chip.payload?.runId === "string" ? chip.payload.runId : null;
 
-  // Owner-auth state (approval chip only): drives disabled/unlock/go.
+  // Owner-auth state for every gated chip: drives disabled/unlock/go.
   const [auth, setAuth] = useState<Auth | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [pass, setPass] = useState("");
@@ -55,8 +59,10 @@ function ChipButton({ chip }: { chip: ActionChip }) {
       }
       setProg(p);
       if (p.status === "purchased") {
+        const doneNote = `purchased ${p.purchased}/${p.shipments} labels · ${usd(p.totalCostCents)} — Postgres rows + ClickHouse events written`;
         setState("done");
-        setNote(`purchased ${p.purchased}/${p.shipments} labels · ${usd(p.totalCostCents)} — Postgres rows + ClickHouse events written`);
+        setNote(doneNote);
+        onComplete?.({ taskId: chip.taskId, progress: p, note: doneNote });
         return;
       }
       if (p.failed) {
@@ -88,12 +94,27 @@ function ChipButton({ chip }: { chip: ActionChip }) {
     setState("busy");
     setNote("");
     try {
-      const res = await fetch("/api/actions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const request = () => fetch("/api/actions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ taskId: chip.taskId, payload: chip.payload }),
+        });
+      let res = await request();
+      let data = (await res.json().catch(() => ({}))) as { error?: string; note?: string; runId?: string };
+      if (res.status === 202 && chip.taskId.startsWith("merge-")) {
+        setState("running");
+        setNote(data.note ?? "merge staged — finalizing audit event…");
+        for (let attempt = 0; attempt < 30 && res.status === 202; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          res = await request();
+          data = (await res.json().catch(() => ({}))) as { error?: string; note?: string; runId?: string };
+        }
+        if (res.status === 202) {
+          setState("stalled");
+          setNote("merge is staged; audit delivery is still finishing");
+          return;
+        }
+      }
       if (!res.ok) {
         if (isApproval && res.status === 401) {           // session lost/expired
           setState("idle");
@@ -110,13 +131,16 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         setNote(data.error ?? `action failed (${res.status})`);
         return;
       }
-      if (isApproval && runId) {
+      const activeRunId = data.runId ?? payloadRunId;
+      if (isApproval && activeRunId) {
         setState("running");
         setNote("approved — buying labels…");
-        void pollRun(runId);
+        void pollRun(activeRunId);
       } else {
+        const doneNote = data.note ?? "done";
         setState("done");
-        setNote("done");
+        setNote(doneNote);
+        onComplete?.({ taskId: chip.taskId, note: doneNote });
       }
     } catch {
       setState("error");
@@ -159,7 +183,7 @@ function ChipButton({ chip }: { chip: ActionChip }) {
 
   const gated = chip.risk === "gated";
   const base =
-    "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[12px] tracking-wide transition-colors disabled:opacity-60";
+    "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 font-mono text-[13px] tracking-wide transition-colors disabled:opacity-60";
   const tone = gated
     ? "border-coral/60 text-coralhi hover:bg-coral/10"
     : "border-teal/60 text-tealhi hover:bg-teal/10";
@@ -175,33 +199,33 @@ function ChipButton({ chip }: { chip: ActionChip }) {
         className={`${base} ${tone}`}
       >
         {gated ? (
-          <span className="rounded-[2px] bg-coral/20 px-1 text-[11px] text-coralhi">GATED</span>
+          <span className="rounded-[2px] bg-coral/20 px-1 text-[12px] text-coralhi">GATED</span>
         ) : null}
         {chip.label}
         <span aria-hidden>▸</span>
       </button>
-      {state === "busy" ? <span className="font-mono text-[12px] text-mute">sending…</span> : null}
+      {state === "busy" ? <span className="font-mono text-[13px] text-mute">sending…</span> : null}
       {running ? (
-        <span className="anim-rise font-mono text-[12px] text-tealhi">
+        <span className="anim-rise font-mono text-[13px] text-tealhi">
           {prog && prog.status === "purchasing"
             ? `▸ purchasing ${prog.purchased}/${prog.shipments}…`
             : note || "approved — buying labels…"}
         </span>
       ) : null}
       {state === "done" ? (
-        <span className="anim-rise font-mono text-[12px] text-ok">✓ {note}</span>
+        <span className="anim-rise font-mono text-[13px] text-ok">✓ {note}</span>
       ) : null}
       {state === "stalled" ? (
-        <span className="font-mono text-[12px] text-mute">⋯ {note}</span>
+        <span className="font-mono text-[13px] text-mute">⋯ {note}</span>
       ) : null}
       {state === "error" ? (
-        <span className="font-mono text-[12px] text-danger">✕ {note}</span>
+        <span className="font-mono text-[13px] text-danger">✕ {note}</span>
       ) : null}
       {state === "idle" && note ? (
-        <span className="font-mono text-[12px] text-tealhi">{note}</span>
+        <span className="font-mono text-[13px] text-tealhi">{note}</span>
       ) : null}
       {unconfigured ? (
-        <span className="font-mono text-[12px] text-warn">set REEF_OWNER_TOKEN to enable gated actions</span>
+        <span className="font-mono text-[13px] text-warn">set REEF_OWNER_TOKEN to enable gated actions</span>
       ) : null}
       {unlocking ? (
         <form onSubmit={unlock} className="inline-flex flex-wrap items-center gap-1.5">
@@ -213,28 +237,31 @@ function ChipButton({ chip }: { chip: ActionChip }) {
             value={pass}
             onChange={(e) => setPass(e.target.value)}
             disabled={unlockBusy}
-            className="rounded-sm border border-line bg-raise px-2 py-1 text-[12px] text-ink outline-none focus:border-tealhi/70 disabled:opacity-60"
+            className="rounded-sm border border-line bg-raise px-2 py-1 text-[13px] text-ink outline-none focus:border-tealhi/70 disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={unlockBusy || !pass}
-            className="inline-flex items-center rounded-sm border border-coral/60 px-2 py-1 font-mono text-[12px] text-coralhi hover:bg-coral/10 disabled:opacity-60"
+            className="inline-flex items-center rounded-sm border border-coral/60 px-2 py-1 font-mono text-[13px] text-coralhi hover:bg-coral/10 disabled:opacity-60"
           >
             {unlockBusy ? "unlocking…" : "Unlock"}
           </button>
-          {unlockErr ? <span className="font-mono text-[12px] text-danger">✕ {unlockErr}</span> : null}
+          {unlockErr ? <span className="font-mono text-[13px] text-danger">✕ {unlockErr}</span> : null}
         </form>
       ) : null}
     </span>
   );
 }
 
-export function ActionRow({ actions }: { actions?: ActionChip[] }) {
+export function ActionRow({ actions, onComplete }: {
+  actions?: ActionChip[];
+  onComplete?: (completion: ActionCompletion) => void;
+}) {
   if (!actions?.length) return null;
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line/60 pt-2.5">
       {actions.map((a) => (
-        <ChipButton key={a.taskId + a.label} chip={a} />
+        <ChipButton key={a.taskId + a.label} chip={a} onComplete={onComplete} />
       ))}
     </div>
   );

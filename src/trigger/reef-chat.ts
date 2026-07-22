@@ -2,9 +2,9 @@
  * Reef Command chat agent — the LLM brain as a durable Trigger.dev task.
  *
  * A `chat.agent()` running Claude (Sonnet) via the Vercel AI SDK, driven from
- * the frontend by `useTriggerChatTransport`. The five read tools + model +
+ * the frontend by `useTriggerChatTransport`. The read/review tools + model +
  * system prompt live in `lib/agent-config.ts` (orchestration-agnostic). The
- * sixth tool, `prepareLabelDay`, is Trigger-native: it fires the durable
+ * write-side tool, `prepareLabelDay`, is Trigger-native: it fires the durable
  * label-day run (which pauses on a human waitpoint) and renders the manifest
  * with a gated approve chip, so it lives here alongside the Trigger wiring.
  * `lib/router.ts` + `/api/chat` remain as an offline fallback path.
@@ -17,17 +17,25 @@ import { MODEL, SYSTEM, reefTools } from "../lib/agent-config";
 import { pgPool } from "../lib/store/postgres";
 import { buildManifest, manifestSpec } from "../lib/label-day";
 import { labelDay } from "./label-day";
+import { tryDemoOperation } from "../lib/demo-operation-lock";
 
 const prepareLabelDay = tool({
   description:
-    "Call this on label day (MON) or when the owner asks to run labels, print shipping labels, prep the batch, or 'ship manifest' — 'label day', 'buy labels', 'run the manifest'. Fires the durable label-day run (it pauses for your approval) and renders the manifest: per-shipment weight, weather pack verdicts, total cost, and a gated Approve chip that resumes the run and buys the labels.",
+    "Call this only when the owner explicitly asks to START THE CARRIER-LABEL PURCHASE APPROVAL RUN. Do not call it for Monday's normal blocker, combine, or printable shipping-document commands. This starts a durable money-gated run and pauses for owner approval before any synthetic label purchase.",
   inputSchema: z.object({}),
   execute: async () => {
+    const pg = pgPool();
+    const operation = await tryDemoOperation(pg);
+    if (!operation) throw new Error("demo reset in progress");
     // Build ONCE, then hand the exact manifest to the run — the card the owner
     // approves is the payload the task buys (no build-twice race; R2-M1).
-    const manifest = await buildManifest(pgPool());
-    const handle = await labelDay.trigger({ manifest });
-    return [manifestSpec(manifest, handle.id)];
+    try {
+      const manifest = await buildManifest(pg);
+      const handle = await labelDay.trigger({ manifest });
+      return [manifestSpec(manifest, handle.id)];
+    } finally {
+      await operation.release();
+    }
   },
   toModelOutput: () => ({
     type: "text" as const,
