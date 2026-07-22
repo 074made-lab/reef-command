@@ -5,10 +5,7 @@
 
 **Daily AI Assistant for Multi-Channel Coral Businesses**
 
-Ask about the week and you don't get paragraphs; you get a live auction board,
-two orders visibly merging into one shipping box, a reef-health report with
-week-over-week deltas, or a one-click gated action. Chat is the frame;
-interactive components are the answers.
+Built from a real 10-year coral business. It plans work, and automates operations. Every day, every task, one chat..
 
 Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme:
 *Beyond the Wall of Text*).
