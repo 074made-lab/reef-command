@@ -18,6 +18,8 @@ import { MetricRow } from "./MetricRow";
 import { OrderCard } from "./OrderCard";
 import { ReportCard } from "./ReportCard";
 import { RequestCard } from "./RequestCard";
+import { ShippingBlockerBoard } from "./ShippingBlockerBoard";
+import { ShippingDocumentBoard } from "./ShippingDocumentBoard";
 import { Timeseries } from "./Timeseries";
 import { VerdictCard } from "./VerdictCard";
 import { WeatherStrip } from "./WeatherStrip";
@@ -30,6 +32,8 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <DayBriefCard spec={spec} />;
     case "attention_feed":
       return <AttentionFeed items={spec.items} />;
+    case "shipping_blocker_board":
+      return <ShippingBlockerBoard spec={spec} />;
     case "metric_row":
       return <MetricRow metrics={spec.metrics} />;
     case "timeseries":
@@ -58,6 +62,8 @@ export function SpecRenderer({ spec }: { spec: ComponentSpec }) {
       return <MergeCard spec={spec} />;
     case "label_manifest":
       return <LabelManifest spec={spec} />;
+    case "shipping_document_board":
+      return <ShippingDocumentBoard spec={spec} />;
     case "order_card":
       return (
         <OrderCard order={spec.order} timeline={spec.timeline} actions={spec.actions} />

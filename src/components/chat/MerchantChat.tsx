@@ -59,7 +59,9 @@ const GENERAL_SUGGESTIONS = [
   "How's business?",
 ];
 const DRAFT_KEY = "reef-command:merchant-draft";
-const ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v1";
+// v2 resets the saved routine after Monday's commands were materially rebuilt.
+// Old 3/3 state must not mark the new blocker/document work complete.
+const ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v2";
 const CHAT_RESPONSE_TIMEOUT_MS = 30_000;
 
 type RoutineTarget = {
@@ -518,7 +520,7 @@ export function MerchantChat() {
     setRequestFailure(null);
     setInput("");
     if (routine) beginRoutine(routine);
-    const routedMessage = routine ? withRoutineContext(routine.priorityIndex, message) : message;
+    const routedMessage = routine ? withRoutineContext(routine.dayId, routine.priorityIndex, message) : message;
     const request = sendMessage({ text: withDemoDayContext(dayOverride ?? demoDayRef.current, routedMessage) });
     void request.catch(() => {
       const active = activeRoutineRef.current;
@@ -557,24 +559,24 @@ export function MerchantChat() {
         };
         if (!response.ok || !body.ok || !body.incident) throw new Error("start failed");
         if (body.reused && body.status === "protected") {
-          if (!cancelled) {
+          if (!cancelled && demoDayRef.current === "tuesday") {
             setShipAlert({ ...body.incident, runId: "reused", status: "protected" });
           }
           return;
         }
         if (!body.runId) throw new Error("run id missing");
         const base: ShipAlert = { ...body.incident, runId: body.runId, status: "request-detected" };
-        if (!cancelled) setShipAlert(base);
+        if (!cancelled && demoDayRef.current === "tuesday") setShipAlert(base);
 
         const poll = async () => {
-          if (cancelled) return;
+          if (cancelled || demoDayRef.current !== "tuesday") return;
           pollCount += 1;
           const statusResponse = await fetch(`/api/demo/ship-day-exception?runId=${encodeURIComponent(body.runId!)}`);
           const statusBody = await statusResponse.json() as { ok: boolean; metadata?: Record<string, unknown> };
           if (!statusResponse.ok || !statusBody.ok) throw new Error("poll failed");
           const status = statusBody.metadata?.status;
           if (typeof status === "string" && ["request-detected", "packing-notified", "protected", "failed"].includes(status)) {
-            setShipAlert((current) => current ? {
+            setShipAlert((current) => demoDayRef.current === "tuesday" && current ? {
               ...current,
               status: status as ShipAlertStatus,
               customerName: String(statusBody.metadata?.customerName ?? current.customerName),
@@ -582,18 +584,18 @@ export function MerchantChat() {
               destination: String(statusBody.metadata?.destination ?? current.destination),
               protectedCostCents: Number(statusBody.metadata?.protectedCostCents ?? current.protectedCostCents),
               requestSummary: String(statusBody.metadata?.requestSummary ?? current.requestSummary),
-            } : current);
+            } : null);
             if (status === "protected" || status === "failed") return;
           }
           if (pollCount >= 60) {
-            setShipAlert((current) => current ? { ...current, status: "failed" } : current);
+            setShipAlert((current) => demoDayRef.current === "tuesday" && current ? { ...current, status: "failed" } : null);
             return;
           }
-          pollTimer = setTimeout(() => { void poll().catch(() => setShipAlert((current) => current ? { ...current, status: "failed" } : current)); }, 650);
+          pollTimer = setTimeout(() => { void poll().catch(() => setShipAlert((current) => demoDayRef.current === "tuesday" && current ? { ...current, status: "failed" } : null)); }, 650);
         };
         await poll();
       } catch {
-        if (!cancelled) {
+        if (!cancelled && demoDayRef.current === "tuesday") {
           shipAlertStartedRef.current = false;
           setShipAlert((current) => current ? { ...current, status: "failed" } : current);
         }
@@ -618,6 +620,10 @@ export function MerchantChat() {
         return;
       }
       demoDayRef.current = next;
+      if (next !== "tuesday") {
+        shipAlertStartedRef.current = false;
+        setShipAlert(null);
+      }
       setDemoDayId(next);
       window.sessionStorage.setItem(DEMO_DAY_STORAGE_KEY, next);
       const day = demoDay(next);
@@ -666,7 +672,7 @@ export function MerchantChat() {
   return (
     <RoutineProgressProvider value={routineProgress} busy={waiting || streaming}>
     <div className="flex min-h-0 flex-1 flex-col">
-      {shipAlert ? (
+      {demoDayId === "tuesday" && shipAlert ? (
         <ShipDayAlert
           alert={shipAlert}
           busy={waiting || streaming}
@@ -752,6 +758,7 @@ export function MerchantChat() {
                       >
                         <RoutineTaskMark task={currentProgress[index]} index={index} />
                         <span className="min-w-0 flex-1 text-[16px] leading-snug text-ink">{priority.label}</span>
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-mute">{priority.time} ET</span>
                         <span className={`text-[12px] font-semibold ${currentProgress[index].status === "complete" ? "text-ok" : currentProgress[index].status === "running" ? "text-coralhi" : currentProgress[index].status === "failed" ? "text-danger" : "text-mute"}`}>
                           {currentProgress[index].status === "complete" ? "DONE" : currentProgress[index].status === "running" ? "RUNNING" : currentProgress[index].status === "failed" ? "RETRY" : "START"}
                         </span>

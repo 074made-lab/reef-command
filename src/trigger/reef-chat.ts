@@ -20,7 +20,7 @@ import { labelDay } from "./label-day";
 
 const prepareLabelDay = tool({
   description:
-    "Call this only when the owner explicitly asks to PREPARE, RUN, or BUILD the label batch/manifest, such as 'Run label day', 'prepare the shipping-label batch', or 'run the manifest'. Do NOT call it for order exceptions, customer messages, holds, address changes, or anything to clear before label approval; those belong to whatNeedsAttention. This fires the durable label-day run, pauses for approval, and renders weights, packs, cost, and a gated Approve chip.",
+    "Call this only when the owner explicitly asks to START THE CARRIER-LABEL PURCHASE APPROVAL RUN. Do not call it for Monday's normal blocker, combine, or printable shipping-document commands. This starts a durable money-gated run and pauses for owner approval before any synthetic label purchase.",
   inputSchema: z.object({}),
   execute: async () => {
     // Build ONCE, then hand the exact manifest to the run — the card the owner

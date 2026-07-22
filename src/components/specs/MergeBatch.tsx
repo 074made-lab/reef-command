@@ -17,7 +17,12 @@ export function MergeBatch({ spec }: { spec: MergeBatchSpec }) {
     <SpecCard
       tag="COMBINED ORDER RUN"
       tone="coral"
-      right={<Chip className="border-coral/50 text-coralhi">READY TO MERGE</Chip>}
+      right={(
+        <>
+          {spec.asOf ? <Chip className="border-line text-mute">{spec.asOf}</Chip> : null}
+          <Chip className="border-coral/50 text-coralhi">READY TO MERGE</Chip>
+        </>
+      )}
     >
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
         <div>

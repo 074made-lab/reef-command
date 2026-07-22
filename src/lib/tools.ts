@@ -11,11 +11,11 @@ import type { Pool } from "pg";
 import { queryRows } from "./store/clickhouse";
 import type {
   AddonOrderRow, AttentionItem, ComponentSpec, CustomerRef, DemoDayId, FunnelStep,
-  LotPrice, Metric, OrderLine, OrderSummary, ReportSection,
+  LotPrice, Metric, OrderLine, OrderSummary, ReportSection, ShippingBlockerGroup,
 } from "./protocol";
 import { CATALOG } from "./synth/catalog";
 import { AUCTION_OPEN_OFFSET_MS, AUCTION_CLOSE_OFFSET_MS } from "./synth/schedule";
-import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment } from "./demo-clock";
+import { DEMO_AUCTION_WEEK_INDEX, demoAuctionMoment, demoPriorityTimestamp } from "./demo-clock";
 import { DEMO_DOA_CASE_ID, DEMO_DOA_REVIEW } from "./doa-demo";
 
 const WEEK_MS = 7 * 24 * 3600_000;
@@ -69,7 +69,7 @@ export async function revenuePulse(ch: ClickHouseClient): Promise<ComponentSpec[
 
 // ---------------------------------------------------------------- attention
 
-export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
+export async function attentionFeed(ch: ClickHouseClient, pg: Pool, limit = 10): Promise<ComponentSpec[]> {
   const items: AttentionItem[] = [];
   const now = Date.now();
 
@@ -118,7 +118,7 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
         ORDER BY m.at DESC LIMIT 1), cases.summary) AS customer_text
     FROM cases JOIN customers c ON c.id = cases.customer_id
     WHERE cases.status = 'open' AND cases.kind <> 'doa_claim'
-    ORDER BY cases.created_at DESC LIMIT 4`);
+    ORDER BY cases.created_at DESC LIMIT 20`);
   for (const r of cases.rows) items.push({
     id: r.case_code, kind: "case",
     headline: `${r.kind === "doa_claim" ? "DOA claim" : r.kind} from ${r.primary_name} — evidence ready, needs your decision`,
@@ -132,7 +132,7 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
   const reqs = await pg.query(`SELECT request_code, kind, received_at, c.primary_name
     FROM requests JOIN customers c ON c.id = requests.customer_id
     WHERE requests.status = 'open' AND received_at > now() - interval '7 days'
-    ORDER BY received_at DESC LIMIT 5`);
+    ORDER BY received_at DESC LIMIT 20`);
   for (const r of reqs.rows) items.push({
     id: r.request_code, kind: "request",
     headline: `${r.primary_name} asks: ${String(r.kind).replace(/_/g, " ")}`,
@@ -153,8 +153,8 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
         SELECT JSONExtractString(meta,'id') FROM events
         WHERE type = 'message_answered' AND ts > now() - INTERVAL 3 DAY)`;
   const [aging, freshRows] = await Promise.all([
-    queryRows<MsgRow>(ch, `${msgSelect} ORDER BY ts ASC LIMIT 6`),
-    queryRows<MsgRow>(ch, `${msgSelect} AND ts > now() - INTERVAL 15 MINUTE ORDER BY ts DESC LIMIT 3`),
+    queryRows<MsgRow>(ch, `${msgSelect} ORDER BY ts ASC LIMIT 20`),
+    queryRows<MsgRow>(ch, `${msgSelect} AND ts > now() - INTERVAL 15 MINUTE ORDER BY ts DESC LIMIT 10`),
   ]);
   const unanswered = [...freshRows, ...aging.filter((a) => !freshRows.some((f) => f.id === a.id))];
   const messageCustomerIds = [...new Set(unanswered.map((m) => Number(m.customer_id)).filter(Boolean))];
@@ -185,13 +185,81 @@ export async function attentionFeed(ch: ClickHouseClient, pg: Pool): Promise<Com
   }));
   // Fresh arrivals (≤15 min — e.g. a live concierge question) lead the feed so
   // "it just landed" is visible without scrolling; the aged queue keeps its
-  // oldest-first shape (max 6, as before) underneath.
+  // oldest-first shape underneath. The final `limit` still bounds the returned
+  // payload, while Monday can count a wider operational queue.
   const freshMsgs = msgItems.filter((m) => m.ageMinutes <= 15)
-    .sort((a, b) => a.ageMinutes - b.ageMinutes).slice(0, 3);
-  items.push(...msgItems.filter((m) => m.ageMinutes > 15).slice(0, 6));
+    .sort((a, b) => a.ageMinutes - b.ageMinutes).slice(0, 10);
+  items.push(...msgItems.filter((m) => m.ageMinutes > 15).slice(0, 20));
 
   items.sort((a, b) => b.ageMinutes - a.ageMinutes);
-  return [{ kind: "attention_feed", items: [demoDoaItem, ...handledItems, ...freshMsgs, ...items].slice(0, 10) }];
+  return [{ kind: "attention_feed", items: [demoDoaItem, ...handledItems, ...freshMsgs, ...items].slice(0, limit) }];
+}
+
+/** Monday's blocker command: a three-lane shipping summary followed by the
+ * exact live queue used to resolve the underlying records. */
+export function categorizeShippingBlockers(items: AttentionItem[]): {
+  groups: ShippingBlockerGroup[];
+  openCount: number;
+} {
+  const open = items.filter((item) => item.status !== "handled");
+  const isHoldLane = (item: AttentionItem) =>
+    /hold next week|address change|wrong (?:apartment|address)|delivery (?:change|timing)|cancel ship/i.test(`${item.headline} ${item.detail ?? ""}`);
+  const holds = open.filter((item) =>
+    (item.kind === "request" || item.kind === "message") && isHoldLane(item),
+  );
+  const replacementCases = open.filter((item) =>
+    item.kind === "case" && (Boolean(item.doaReview) || /DOA|replacement/i.test(`${item.headline} ${item.detail ?? ""}`)),
+  );
+  const questions = open.filter((item) => item.kind === "message" && !isHoldLane(item));
+  const replacementCorals = replacementCases.reduce(
+    (sum, item) => sum + (item.doaReview?.claimedItems.length ?? 1),
+    0,
+  );
+
+  return { groups: [
+    {
+      kind: "hold_requests",
+      label: "Hold order requests",
+      count: holds.length,
+      unit: "requests",
+      status: holds.length ? "needs-review" : "clear",
+      detail: "Verify ship timing and address changes before any carrier label enters the purchase queue.",
+      headlines: holds.map((item) => item.headline),
+    },
+    {
+      kind: "replacement_items",
+      label: "Replacement items",
+      count: replacementCorals,
+      unit: "corals",
+      status: replacementCases.length ? "needs-review" : "clear",
+      detail: "Approved replacement corals must be added to both the packing slip and one-per-bag product-label count.",
+      headlines: replacementCases.map((item) => item.headline),
+    },
+    {
+      kind: "customer_questions",
+      label: "Customer questions",
+      count: questions.length,
+      unit: "questions",
+      status: questions.length ? "needs-review" : "clear",
+      detail: "Review the original question and editable reply draft before the shipping document set is locked.",
+      headlines: questions.map((item) => item.headline),
+    },
+  ], openCount: holds.length + replacementCases.length + questions.length };
+}
+
+export async function shippingBlockerBoard(ch: ClickHouseClient, pg: Pool): Promise<ComponentSpec[]> {
+  // Source caps yield at most 74 records (demo + handled + cases + requests +
+  // deduplicated fresh/aging messages), so 80 conserves the full bounded queue.
+  const feed = await attentionFeed(ch, pg, 80);
+  const items = feed[0]?.kind === "attention_feed" ? feed[0].items : [];
+  const { groups, openCount } = categorizeShippingBlockers(items);
+
+  return [{
+    kind: "shipping_blocker_board",
+    asOf: demoPriorityTimestamp("monday", 0),
+    groups,
+    openCount,
+  }, ...feed];
 }
 
 // ---------------------------------------------------------------- auction
@@ -547,7 +615,7 @@ export function promotionPlan(dayId: "wednesday" | "friday"): ComponentSpec[] {
 // ---------------------------------------------------------------- merge scan
 
 /** ReefnBid anchor shipments with winner-code Shopify/eBay add-ons this cycle. */
-export async function mergeScan(pg: Pool): Promise<ComponentSpec[]> {
+export async function mergeScan(pg: Pool, dayId: "sunday" | "monday" = "sunday"): Promise<ComponentSpec[]> {
   const plans = (await currentAddonMergePlans(pg)).filter((plan) => plan.mergeState === "ready");
   if (!plans.length) return [];
   const batch: ComponentSpec = {
@@ -558,6 +626,7 @@ export async function mergeScan(pg: Pool): Promise<ComponentSpec[]> {
     addonOrders: plans.reduce((sum, plan) => sum + plan.addons.length, 0),
     coralUnits: plans.reduce((sum, plan) => sum + plan.totalCoralUnits, 0),
     totalCents: plans.reduce((sum, plan) => sum + plan.totalCents, 0),
+    asOf: demoPriorityTimestamp(dayId, 1),
     actions: [{
       taskId: "merge-all-orders",
       label: "Merge all",

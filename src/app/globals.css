@@ -54,6 +54,10 @@ body::before {
   background: linear-gradient(180deg, rgba(12, 29, 37, 0.34), transparent 28%);
 }
 
+.print-only {
+  display: none;
+}
+
 .coral-halo {
   box-shadow:
     0 0 0 5px rgba(255, 133, 89, 0.06),
@@ -189,5 +193,50 @@ body::before {
 
   .merge-particle {
     display: none;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .shipping-print-board,
+  .shipping-print-board * {
+    visibility: visible !important;
+  }
+
+  .shipping-print-board {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #111;
+    background: #fff;
+  }
+
+  .shipping-print-board .screen-only {
+    display: none !important;
+  }
+
+  .shipping-print-board .print-only {
+    display: block !important;
+  }
+
+  .shipping-print-board .print-sheet {
+    min-height: 9.5in;
+    padding: 0.25in;
+    break-after: page;
+    page-break-after: always;
+    color: #111;
+    background: #fff;
+  }
+
+  .shipping-print-board .print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .shipping-print-board .no-print {
+    display: none !important;
   }
 }

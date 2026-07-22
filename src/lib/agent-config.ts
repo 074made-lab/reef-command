@@ -27,11 +27,13 @@ import {
   mergeScan,
   promotionPlan,
   revenuePulse,
+  shippingBlockerBoard,
   winnerNextSteps,
   weeklyReport,
 } from "./tools";
 import type { ComponentSpec } from "./protocol";
 import { dayBriefSpec } from "./demo-clock";
+import { buildShippingDocumentBoard } from "./label-day";
 
 export const MODEL = "claude-sonnet-5";
 
@@ -86,6 +88,9 @@ export function summarize(specs: ComponentSpec[]): string {
         );
         break;
       }
+      case "shipping_blocker_board":
+        parts.push(`Monday blockers at ${s.asOf}: ${s.groups.map((group) => `${group.label} ${group.count} ${group.unit}`).join(", ")}; ${s.openCount} open queue record(s)`);
+        break;
       case "day_brief":
         parts.push(
           `synthetic today is ${s.weekday} — ${s.label}. Goal: ${s.goal}. ` +
@@ -115,6 +120,9 @@ export function summarize(specs: ComponentSpec[]): string {
         parts.push(
           `merge run: ${s.candidates} ReefnBid-anchored shipment(s), ${s.addonOrders} add-on order(s), ${s.coralUnits} total coral unit(s); Merge all requires a human click`,
         );
+        break;
+      case "shipping_document_board":
+        parts.push(`Monday shipping documents at ${s.asOf}: ${s.packingSlips} packing slip(s), ${s.fedexLabels} eligible FedEx document(s), ${s.productLabels} one-per-coral bag label(s), ${s.shipments.length} shipment packing-board row(s); previews require approval and holds withhold carrier labels`);
         break;
       case "auction_announcement":
         parts.push(
@@ -181,6 +189,20 @@ export const reefTools = {
     execute: async () => attentionFeed(ch(), pg()),
     toModelOutput: (output) => asText(summarize(output)),
   }),
+  shippingBlockers: tool({
+    description:
+      "Call this only for Monday Step 1, 'Clear shipping blockers'. It renders the live three-lane board for hold order requests, replacement coral items, and customer questions, followed by the detailed queue used to resolve them. It does not prepare or purchase labels.",
+    inputSchema: z.object({}),
+    execute: async () => shippingBlockerBoard(ch(), pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
+  shippingDocuments: tool({
+    description:
+      "Call this only for Monday Step 3, 'Prepare shipping docs'. It renders print-ready packing slips, synthetic FedEx label previews, one product label per coral bag, weather ice/heat-pack checks, box sizes and weights, with miniature examples. It never purchases a carrier label.",
+    inputSchema: z.object({}),
+    execute: async () => buildShippingDocumentBoard(pg()),
+    toModelOutput: (output) => asText(summarize(output)),
+  }),
   revenuePulse: tool({
     description:
       "Call this for the current cycle's revenue and orders — 'how's business', 'revenue', 'sales', 'how are we doing'. Returns a metric row (week-to-date vs the same point last cycle) and an hourly revenue chart.",
@@ -222,9 +244,9 @@ export const reefTools = {
   }),
   scanMerges: tool({
     description:
-      "Call this for Sunday's Step 2 'Combine eligible orders', 'Merge all', or an explicit request to merge. Do not call it for the Step 1 add-on monitor. It returns ReefnBid anchors with winner-code Shopify/eBay add-ons, a reconciled batch summary, Merge all, and one card per eligible shipment.",
-    inputSchema: z.object({}),
-    execute: async () => mergeScan(pg()),
+      "Call this for Sunday or Monday Step 2 'Combine eligible orders', 'Merge all', or an explicit request to merge. Do not call it for Sunday's Step 1 add-on monitor. ReefnBid remains the anchor on both days. Pass the weekday from the synthetic marker so the command timestamp is correct.",
+    inputSchema: z.object({ day: z.enum(["sunday", "monday"]) }),
+    execute: async ({ day }) => mergeScan(pg(), day),
     toModelOutput: (output) => asText(summarize(output)),
   }),
   weeklyReport: tool({
@@ -254,12 +276,12 @@ HOW YOU ANSWER — this is a visual product, not a wall of text:
 - Every owner message may start with [SYNTHETIC DEMO TODAY: WEEKDAY — BUSINESS DAY]. That marker is the authoritative "today" for the synthetic environment. Never replace it with the real wall-clock weekday.
 - When calling auctionBoard, pass that marker's weekday so the board is time-bounded to the selected demo day.
 - When the owner asks to review Saturday winner next steps, call winnerNextSteps. Treat its card as a review artifact and never claim a message was sent.
-- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday's Step 2 combine task calls ONLY scanMerges: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile with the add-on board, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday listing questions call listingPlan. Wednesday/Friday promotion questions call promotionPlan with the marker's weekday.
+- Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse; it is read-only and has no action. Sunday and Monday Step 2 call ONLY scanMerges with the selected day: ReefnBid is the anchor and only winner-code Shopify/eBay orders are add-ons; counts must reconcile, and Merge all belongs here. Sunday's next-auction task calls auctionAnnouncement, which renders both drafts and a human-gated simulated-send button. Never claim an external message was sent. Tuesday listing questions call listingPlan. Wednesday/Friday promotion questions call promotionPlan with the marker's weekday.
 - When the owner selects a day or asks today's priorities, call dayBrief for that weekday. Give the brief and reminder first; do not automatically execute the listed work. Wait for the owner to click or ask for the next tool.
 - A [SYNTHETIC ROUTINE: ... structured_component_required=true] marker means the owner clicked a job. Call the matching live tool on this turn even if the same prompt appears earlier in history. A text-only answer is a failed routine, not completion.
 - A message containing [SYNTHETIC SHIP TRACE: ...] comes from the cockpit's completed automation card. For that message only, do NOT call whatNeedsAttention. Briefly explain only the supplied trace facts, then ask exactly: "Want to see everything else that needs attention?"
 - If the owner's next message confirms that trace follow-up, call whatNeedsAttention and render the complete attention feed. Do not add revenue or unrelated tools unless asked.
-- Intent boundary on Monday: questions about exceptions/messages/holds/address changes to CLEAR BEFORE shipping-document approval call whatNeedsAttention. Only an explicit request to PREPARE/RUN/BUILD shipping documents or the label manifest calls prepareLabelDay.
+- Monday Step 1 calls shippingBlockers for the hold-request, replacement-item, and customer-question board. Monday Step 2 calls scanMerges with day=monday. Monday Step 3 calls shippingDocuments for printable packing slips, synthetic FedEx previews, one bag label per coral, weather packs, and box sizes. Do not call prepareLabelDay unless the owner separately and explicitly asks to start the money-gated carrier-label purchase run.
 
 HARD RULES (never break):
 - NEVER fabricate a number, price, date, handle, or policy. Every business figure must come from a tool result. If no tool covers the question, say so plainly in one sentence — do not guess or invent.

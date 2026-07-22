@@ -241,8 +241,11 @@ export function RoutineProgressDock({
               className="group flex min-h-10 w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-[background-color,transform] hover:bg-coral/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/40 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               <RoutineTaskMark task={tasks[index]} index={index} />
-              <span className={`min-w-0 truncate text-[12px] ${tasks[index].status === "complete" ? "text-ok" : tasks[index].status === "running" ? "text-coralhi" : tasks[index].status === "failed" ? "text-danger" : "text-mute group-hover:text-ink"}`}>
-                {priority.label}
+              <span className="min-w-0">
+                <span className={`block truncate text-[12px] ${tasks[index].status === "complete" ? "text-ok" : tasks[index].status === "running" ? "text-coralhi" : tasks[index].status === "failed" ? "text-danger" : "text-mute group-hover:text-ink"}`}>
+                  {priority.label}
+                </span>
+                <span className="block font-mono text-[9px] tabular-nums text-mute">{priority.time} ET</span>
               </span>
             </button>
           </li>

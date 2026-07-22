@@ -18,9 +18,11 @@ import {
   mergeScan,
   promotionPlan,
   revenuePulse,
+  shippingBlockerBoard,
   winnerNextSteps,
   weeklyReport,
 } from "./tools";
+import { buildShippingDocumentBoard } from "./label-day";
 import type { ChatResponse, ComponentSpec } from "./protocol";
 import { dayBriefSpec, parseDemoDayContext, stripDemoDayContext } from "./demo-clock";
 
@@ -48,6 +50,25 @@ async function attention(): Promise<ChatResponse> {
         ? "Feed clear. Nothing needs you."
         : `${plural(n, "thing")} need${n === 1 ? "s" : ""} your attention.`,
     components: feed,
+  };
+}
+
+async function blockers(): Promise<ChatResponse> {
+  const components = await shippingBlockerBoard(ch, pg);
+  const board = firstOf(components, "shipping_blocker_board");
+  return {
+    verdict: board?.openCount
+      ? "Monday's hold, replacement, and customer-question lanes are open below."
+      : "Monday's shipping blocker board is clear.",
+    components,
+  };
+}
+
+async function documents(): Promise<ChatResponse> {
+  const components = await buildShippingDocumentBoard(pg);
+  return {
+    verdict: "The packing documents and carrier previews are ready to print. No FedEx label has been purchased.",
+    components,
   };
 }
 
@@ -126,8 +147,10 @@ async function announcement(): Promise<ChatResponse> {
   };
 }
 
-async function merges(): Promise<ChatResponse> {
-  const specs = await mergeScan(pg);
+async function merges(message: string): Promise<ChatResponse> {
+  const selected = parseDemoDayContext(message);
+  const day = selected === "monday" ? "monday" : "sunday";
+  const specs = await mergeScan(pg, day);
   const n = specs.filter((s) => s.kind === "merge_card").length;
   return {
     verdict:
@@ -185,6 +208,10 @@ export async function routeChat(message: string): Promise<ChatResponse> {
     }
     if (/command brief|today'?s (?:work )?priorit|remind me not to miss/.test(q))
       return await dayBrief(message);
+    if (/shipping blocker board|hold order requests?.*replacement items?.*customer questions?/.test(q))
+      return await blockers();
+    if (/shipping document board|print-ready shipping|packing slips?.*fedex|product label.*coral bag/.test(q))
+      return await documents();
     if (/attention|morning|needs? my|need me|exceptions?|holds?|address changes?|clear before (?:label|shipping)/.test(q))
       return await attention();
     if (/report|weekly|last week|top\s?-?10|top ten|hammer/.test(q))
@@ -200,7 +227,7 @@ export async function routeChat(message: string): Promise<ChatResponse> {
     if (/winner.*next steps|payment.*add-on.*shipping/.test(q))
       return await winnerHandoff();
     if (/auction|bids?|board/.test(q)) return await auction(message);
-    if (/merge|combine|orders?/.test(q)) return await merges();
+    if (/merge|combine|orders?/.test(q)) return await merges(message);
     if (/revenue|business|sales|how are we|how'?s (it|the week)/.test(q))
       return await revenue();
     return await fallback();

@@ -18,8 +18,11 @@ assert.deepEqual(
   ["Clear shipping blockers", "Combine eligible orders", "Prepare shipping docs"],
   "Monday's visible shipping-document routine must stay plain and task-focused",
 );
-assert.match(monday.priorities[0].prompt ?? "", /customer messages|holds|address changes/i);
-assert.match(monday.priorities[0].prompt ?? "", /do not prepare the label manifest/i);
+assert.match(monday.priorities[0].prompt ?? "", /hold order requests.*replacement items.*customer questions/i);
+assert.match(monday.priorities[0].prompt ?? "", /do not prepare shipping documents/i);
+assert.match(monday.priorities[2].prompt ?? "", /packing slips.*FedEx label previews.*one product label per coral bag/i);
+assert.match(monday.priorities[2].prompt ?? "", /weather pack checks.*box sizes.*miniature examples/i);
+assert.deepEqual(monday.priorities.map((priority) => priority.time), ["08:30", "11:00", "16:30"]);
 assert.equal(tuesday.priorities[1].label, "Stage Thursday listings");
 assert.match(tuesday.priorities[1].prompt ?? "", /ReefnBid.*Shopify/i);
 assert.equal(tuesday.priorities[2].label, "Request inventory check");
@@ -99,6 +102,8 @@ assert.match(doaReviewSource, /polls > 90/,
   "DOA workflow polling must stop with a visible failure state when the run never progresses");
 
 const merchantSource = readFileSync(new URL("../src/components/chat/MerchantChat.tsx", import.meta.url), "utf8");
+assert.match(merchantSource, /ROUTINE_PROGRESS_KEY = "reef-command:routine-progress:v2"/,
+  "the rebuilt Monday routine must not inherit stale completion state from the old commands");
 assert.match(merchantSource, /pollCount >= 60/,
   "ship-day alert polling must stop with a visible failure state");
 assert.match(merchantSource, /body\.reused && body\.status === "protected"/,
@@ -107,6 +112,10 @@ assert.match(merchantSource, /setShipAlert\(PENDING_SHIP_ALERT\)/,
   "Tuesday must show the inbound change before its durable workflow responds");
 assert.match(merchantSource, /demoDayId !== "tuesday"[\s\S]*shipAlertStartedRef\.current = false/,
   "leaving Tuesday must reset the autonomous alert for the next visit");
+assert.match(merchantSource, /demoDayId === "tuesday" && shipAlert/,
+  "the Tuesday autonomous alert must be render-gated so it cannot flash on Monday");
+assert.match(merchantSource, /demoDayRef\.current === "tuesday"/,
+  "late Tuesday workflow responses must be ignored after the selected day changes");
 assert.match(merchantSource, /routineHadVisualRef\.current \? "complete" : "failed"/,
   "routine completion must require a structured operational component");
 assert.doesNotMatch(merchantSource, /request\.then\(\(\) => finishRoutine\(active, "complete"\)\)/,
@@ -138,9 +147,13 @@ assert.match(agentSource, /Tuesday listing questions call listingPlan/,
 assert.match(agentSource, /Sunday's add-on monitor calls ONLY addonOrderBoard, never scanMerges or revenuePulse/,
   "Sunday's monitor must open the dedicated order board");
 assert.match(agentSource, /ReefnBid is the anchor and only winner-code Shopify\/eBay orders are add-ons/,
-  "Sunday's merge task must use the ReefnBid anchor/add-on contract");
+  "Sunday and Monday merge tasks must use the ReefnBid anchor/add-on contract");
 assert.match(agentSource, /Sunday's next-auction task calls auctionAnnouncement/,
   "Sunday's announcement must open drafts, counts, and the gated send control");
+assert.match(agentSource, /Monday Step 1 calls shippingBlockers/,
+  "Monday's first command must open the dedicated blocker board");
+assert.match(agentSource, /Monday Step 3 calls shippingDocuments/,
+  "Monday's document command must render print artifacts without purchasing labels");
 
 const routerSource = readFileSync(new URL("../src/lib/router.ts", import.meta.url), "utf8");
 assert.match(routerSource, /exceptions\?\|holds\?\|address changes\?/,
@@ -153,6 +166,10 @@ assert.match(routerSource, /add-on orders\? board[\s\S]*return await addOns/,
   "offline fallback must route the Sunday monitor to its board");
 assert.match(routerSource, /next-auction announcement[\s\S]*return await announcement/,
   "offline fallback must route the Sunday announcement to its review package");
+assert.match(routerSource, /shipping blocker board[\s\S]*return await blockers/,
+  "offline fallback must route Monday blockers before generic attention");
+assert.match(routerSource, /shipping document board[\s\S]*return await documents/,
+  "offline fallback must route Monday print documents before generic order matching");
 assert.doesNotMatch(routerSource, /components: \[\.\.\.feed, \.\.\.pulse\]/,
   "attention must not silently append an unrelated revenue pulse");
 
@@ -163,6 +180,10 @@ assert.match(rendererSource, /case "merge_batch"/,
   "the merge routine must render its batch summary and Merge all control");
 assert.match(rendererSource, /case "auction_announcement"/,
   "the next-auction package must render both drafts and its action");
+assert.match(rendererSource, /case "shipping_blocker_board"/,
+  "Monday blockers must render as a dedicated three-lane board");
+assert.match(rendererSource, /case "shipping_document_board"/,
+  "Monday documents must render as a printable document and packing board");
 
 const actionRouteSource = readFileSync(new URL("../src/app/api/actions/route.ts", import.meta.url), "utf8");
 assert.match(actionRouteSource, /send-demo-auction-announcement/,
@@ -197,6 +218,42 @@ assert.match(toolSource, /kind: "merge_batch"[\s\S]*label: "Merge all"/,
   "the merge batch must expose one explicit Merge all action");
 assert.match(toolSource, /groups: plans\.map/,
   "Merge all must bind the click to every exact group rendered on the board");
+assert.match(toolSource, /export async function shippingBlockerBoard/,
+  "Monday blockers must be built from the same live attention queue shown below them");
+assert.match(toolSource, /attentionFeed\(ch, pg, 80\)/,
+  "Monday blocker counts must use the full bounded queue, not the default ten-row display slice");
+assert.match(toolSource, /cases\.created_at DESC LIMIT 20[\s\S]*received_at DESC LIMIT 20/,
+  "Monday blocker source reads must not retain the smaller default queue caps");
+assert.match(toolSource, /ORDER BY ts ASC LIMIT 20[\s\S]*ORDER BY ts DESC LIMIT 10/,
+  "Monday blocker source reads must include the wider aging and fresh message queues");
+assert.match(toolSource, /item\.kind === "message" && !isHoldLane\(item\)/,
+  "address and hold messages must not be double-counted as customer questions");
+
+const labelDaySource = readFileSync(new URL("../src/lib/label-day.ts", import.meta.url), "utf8");
+assert.match(labelDaySource, /FLOOR_LB = 4\.0/,
+  "shipping documents must apply the four-pound carrier floor");
+assert.match(labelDaySource, /boxSize: "S"[\s\S]*boxSize: "XXL"[\s\S]*boxSize: "MANUAL"/,
+  "shipping documents must calculate every supported box size and fail to manual review above XXL");
+assert.match(labelDaySource, /pack === "cold" \? "ice" : pack/,
+  "the packing board must use the staff-facing ice-pack label");
+assert.match(labelDaySource, /active_shipment\.status IN \('planned','purchased','held','voided'\)/,
+  "shipping documents must retain active shipments plus voided shipments carrying real held orders");
+assert.match(labelDaySource, /buildManifest[\s\S]*o\.status IN \('pending','paid'\) AND o\.shipment_id IS NULL/,
+  "the money-gated label batch must stay narrower than the document read model");
+assert.match(labelDaySource, /carrierLabel: r\.has_held_order \|\| r\.shipment_status === "held" \|\| r\.shipment_status === "voided"[\s\S]*\? "withheld"/,
+  "held and voided shipments must print product labels without entering the carrier queue");
+assert.match(labelDaySource, /documentToken = r\.document_key[\s\S]*SHP-\$\{r\.id\}-\$\{wi\}-\$\{documentToken\}/,
+  "separate document groups for one customer must keep unique synthetic shipment identifiers");
+assert.match(labelDaySource, /sum\(CASE WHEN oi\.id IS NULL THEN 1 ELSE oi\.qty END\)/,
+  "mixed itemized and itemless order groups must conserve the fallback unit count");
+
+const shippingDocumentSource = readFileSync(new URL("../src/components/specs/ShippingDocumentBoard.tsx", import.meta.url), "utf8");
+assert.match(shippingDocumentSource, /data-print-packing-slip/,
+  "the print package must render every shipment packing slip");
+assert.match(shippingDocumentSource, /data-print-fedex-label/,
+  "the print package must render every eligible carrier document");
+assert.match(shippingDocumentSource, /data-print-product-label/,
+  "the print package must render one physical label node per coral bag");
 
 const mergeMigrationSource = readFileSync(new URL("../db/postgres/0002_merge_runs.sql", import.meta.url), "utf8");
 assert.match(mergeMigrationSource, /merge_code\s+TEXT PRIMARY KEY/,

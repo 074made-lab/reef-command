@@ -62,6 +62,7 @@ export function DayBriefCard({ spec }: { spec: DayBriefSpec }) {
               <RoutineTaskMark task={task} index={index} />
               <h4 className="text-[14px] font-semibold text-ink">{priority.label}</h4>
               <div className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-auto">
+                <Chip className="border-line text-mute">{priority.time} ET</Chip>
                 <Chip className={cue.tone}>{cue.label}</Chip>
                 {priority.prompt ? (
                   <button

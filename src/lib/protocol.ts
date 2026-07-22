@@ -61,6 +61,7 @@ export type DayPriority = {
   label: string;
   detail: string;
   cue: "do-now" | "watch" | "human-gate";
+  time: string;           // stable synthetic command time, HH:mm ET
   prompt?: string;
 };
 
@@ -236,6 +237,32 @@ export type AddonOrderRow = {
   mergeState: "ready" | "merged" | "review";
 };
 
+export type ShippingBlockerGroup = {
+  kind: "hold_requests" | "replacement_items" | "customer_questions";
+  label: string;
+  count: number;
+  unit: "requests" | "corals" | "questions";
+  status: "needs-review" | "clear";
+  detail: string;
+  headlines: string[];
+};
+
+export type ShippingDocumentShipment = {
+  shipmentId: string;
+  customer: CustomerRef;
+  orderIds: string[];
+  coralUnits: number;
+  destination: string;
+  boxSize: "S" | "M" | "L" | "XL" | "XXL" | "MANUAL";
+  boxDimensions: string;
+  weightLb: number;
+  lowF: number;
+  highF: number;
+  pack: "none" | "heat" | "ice";
+  carrierLabel: "preview" | "purchased" | "withheld";
+  productLabels: { sku: string; name: string; bag: string }[];
+};
+
 // ---------- actions ----------
 
 /** An executable action. `gated` requires an explicit human click. */
@@ -254,6 +281,8 @@ export type ComponentSpec =
   | { kind: "day_brief"; dayId: DemoDayId; weekday: string; time: string;
       label: string; goal: string; priorities: DayPriority[]; reminder: string }
   | { kind: "attention_feed"; items: AttentionItem[] }
+  | { kind: "shipping_blocker_board"; asOf: string;
+      groups: ShippingBlockerGroup[]; openCount: number }
   // analytics
   | { kind: "metric_row"; metrics: Metric[] }
   | { kind: "timeseries"; title: string; series: Series[]; annotations?: Annotation[] }
@@ -270,7 +299,7 @@ export type ComponentSpec =
       platformCounts: Partial<Record<Platform, number>>; orders: AddonOrderRow[] }
   | { kind: "merge_batch"; weekLabel: string; candidates: number;
       sourceOrders: number; addonOrders: number; coralUnits: number;
-      totalCents: number; actions: ActionChip[] }
+      totalCents: number; asOf?: string; actions: ActionChip[] }
   | { kind: "auction_announcement"; campaignId: string; dateRange: string;
       closeTime: string; emailRecipients: number; smsRecipients: number;
       emailPreview: MessagePreview; smsPreview: MessagePreview; actions: ActionChip[] }
@@ -281,6 +310,9 @@ export type ComponentSpec =
   | { kind: "label_manifest"; weekLabel: string; shipments: ShipmentLine[];
       productLabels: number; weatherFlags: WeatherFlag[];
       totalCostCents: number; actions: ActionChip[] }
+  | { kind: "shipping_document_board"; weekLabel: string; asOf: string;
+      shipments: ShippingDocumentShipment[]; packingSlips: number;
+      fedexLabels: number; productLabels: number; printNote: string }
   | { kind: "order_card"; order: OrderSummary; timeline: TimelineStep[];
       actions?: ActionChip[] }
   | { kind: "request_card"; request: CustomerRequest;

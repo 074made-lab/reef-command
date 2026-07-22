@@ -77,6 +77,7 @@ function manifest(): Manifest {
       pack: "none", costCents: 2400, status: "planned",
     }],
     weatherFlags: [], productLabels: 3, totalCostCents: 2400,
+    documentShipments: [],
     orderIdsByShipment: { [shipmentId]: ["WEB-1", "AUC-2"] },
   };
 }
