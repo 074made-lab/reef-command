@@ -9,6 +9,10 @@ import {
   buildManifest,
   selectShippingLabelPurchase,
 } from "../src/lib/label-day";
+import { demoCycleIsoWindow } from "../src/lib/tools";
+import { DEMO_AUCTION_WEEK_INDEX } from "../src/lib/demo-clock";
+
+const DEMO_CYCLE_END = demoCycleIsoWindow(DEMO_AUCTION_WEEK_INDEX).end;
 
 const rows = [
   {
@@ -89,7 +93,10 @@ assert.match(fake.sql, /o\.status = 'held' AND o\.shipment_id IS NULL[\s\S]*THEN
   "an unlinked held order must not fold into an unrelated planned shipment");
 assert.match(fake.sql, /sum\(CASE WHEN oi\.id IS NULL THEN 1 ELSE oi\.qty END\)/,
   "itemless orders must contribute a fallback coral label inside mixed groups");
-assert.deepEqual(fake.params, [manifest.weekLabel]);
+assert.match(fake.sql, /o\.ordered_at < \$2::timestamptz/,
+  "document manifest must be bounded to the demo cycle — no future-cycle orders");
+assert.deepEqual(fake.params, [manifest.weekLabel, DEMO_CYCLE_END],
+  "document manifest must query the demo week with the cycle chronology bound");
 
 const purchaseFake = new FakePool();
 await buildManifest(purchaseFake as unknown as Pool);
@@ -97,6 +104,10 @@ assert.match(purchaseFake.sql, /o\.status IN \('pending','paid'\) AND o\.shipmen
   "money-gated purchase payload must exclude held, purchased, and already-linked orders");
 assert.doesNotMatch(purchaseFake.sql, /o\.status IN \('pending','paid','labeled','held'\)/,
   "the broader document read model must never leak into the purchase payload");
+assert.match(purchaseFake.sql, /o\.ordered_at < \$1::timestamptz/,
+  "money-gated purchase payload must be bounded to the demo cycle");
+assert.deepEqual(purchaseFake.params, [DEMO_CYCLE_END],
+  "purchase manifest must apply the cycle chronology bound");
 
 const fakeForBoard = new FakePool();
 const specs = await buildShippingDocumentBoard(fakeForBoard as unknown as Pool);
