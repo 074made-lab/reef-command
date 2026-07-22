@@ -72,7 +72,7 @@ async function main() {
   }
   assert.match(liveTickSource, /tryDemoOperation/, "the scheduled Postgres writer must participate in the durable lock");
   assert.match(reefChatSource, /tryDemoOperation[\s\S]*buildManifest[\s\S]*labelDay\.trigger/, "the chat label-run producer must hold the durable lock through trigger admission");
-  assert.match(runnerSource, /startsWith\("reef-command:"\)/, "success must clear every Reef Command session key");
+  assert.match(runnerSource, /startsWith\("reef-command:"\)/, "success must clear every CoralSeller session key");
   assert.match(runnerSource, /window\.location\.replace\("\/merchant"\)/, "success must return to a fresh Sunday page");
 
   console.log("demo-reset-check: ok");

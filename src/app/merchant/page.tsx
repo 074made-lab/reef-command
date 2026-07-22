@@ -3,7 +3,7 @@ import { MerchantChat } from "@/components/chat/MerchantChat";
 import { Header } from "@/components/chat/Header";
 
 export const metadata: Metadata = {
-  title: "Reef Command — Merchant Cockpit",
+  title: "CoralSeller — Merchant Cockpit",
 };
 
 // The cockpit is always open — chat, reports, auction board, merge cards, and

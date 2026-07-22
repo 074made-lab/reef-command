@@ -5,7 +5,7 @@ import { ShopIntake } from "@/components/chat/ShopIntake";
 import { SpecRenderer } from "@/components/specs/SpecRenderer";
 
 export const metadata: Metadata = {
-  title: "Reef Command — Customer Concierge",
+  title: "CoralSeller — Customer Concierge",
 };
 
 /**

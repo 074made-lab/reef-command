@@ -1,7 +1,7 @@
-# Reef Command — UI direction
+# CoralSeller — UI direction
 
 > Owner design call (2026-07-20). One-line positioning:
-> **Reef Command — TIA's living coral cockpit, watched over by Teddy.**
+> **CoralSeller — Daily AI Assistant for Multi-Channel Coral Businesses.**
 >
 > This is presentation guidance for the `/merchant` cockpit and the video. It
 > refines the visual language already shipped (deep-ocean console); it does not

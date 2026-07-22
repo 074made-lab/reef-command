@@ -1,51 +1,42 @@
 # Claude Code Submission Audit Handoff
 
-Refreshed on 2026-07-22 after the Anthropic quota was restored. This document
-covers the hackathon project in this repository only. Do not copy, merge,
-deploy, or write any of this work into TIA Coral.
+Finalized on 2026-07-22 after the independent Claude Code audit and the
+display-only CoralSeller rename. This document covers the hackathon project in
+this repository only. Do not copy, merge, deploy, or write any of this work into
+TIA Coral.
 
-## Read this first: quota fixed, two audit failures remain
+## Read this first: engineering blockers resolved
 
-The restored Anthropic credential is working. A live browser request reached
-Trigger.dev `chat.agent()`, called the merge tool, and rendered the complete
-five-shipment merge board. Selecting Tuesday also returned its AI day brief,
-and the autonomous Trigger.dev shipment-protection task completed in 3.1 seconds.
+The restored Anthropic credential is working. The independent audit fixed the
+wall-clock rollover class, bounded Monday manifests to W28, made chronology an
+asserting gate, aligned agent probes with the real transport contract, protected
+Monday labels from Tuesday staging, converged the W29 ClickHouse fixture, and
+carried Sunday's merged boxes into Monday's board.
 
-Do not treat the project as submission-ready yet. The refreshed audit found two
-repeatable issues:
-
-1. `npx tsx scripts/agent-check.ts` fails 1 of 10 probes on two consecutive
-   runs. The unmarked prompt `Any orders I can merge into one box?` asks the
-   model to call `scanMerges`, but the tool requires a Sunday/Monday `day` and
-   the prompt supplies no synthetic-day marker. The model correctly asks which
-   day instead. The real UI adds the marker and passed in-browser, so this is a
-   regression-contract mismatch rather than a broken production chat path.
-   Claude Code should align the probe with the actual transport contract or
-   define an explicit safe default, then require 10/10 on repeated runs.
-2. After a clean reset, `npx tsx scripts/labelday-check.ts` reports a `W28`
-   Monday manifest containing future `AUC-29-*` winner orders. Reset seeds
-   Postgres through Saturday's W29 close, while `buildManifest()` selects every
-   unlinked pending/paid order without a selected-day/order-time boundary. This
-   is a real chronology defect in the money-gated Monday workflow. Do not record
-   or approve the label-day flow until its cycle boundary is fixed and tested.
-
-No credential or organization identifier is recorded here. Anthropic remains a
-single provider dependency, but quota is no longer the active blocker.
+The audited baseline passed all 17 validation gates, two consecutive 10/10 agent
+runs, and a live Trigger.dev + ClickHouse + Postgres E2E covering merge, label
+approval, Tuesday protection, DOA resolution, and reset. CoralSeller changes only
+display copy, metadata, documentation, the package label, and the agent's
+self-name; deployed `reef-*` task IDs and data/session identifiers remain stable.
 
 ## Current repository status
 
-- Current audited baseline: merge commit `16358a6` on `main`.
+- Current audited engineering baseline: commit `b313508` on `main` before the
+  display-only CoralSeller finalization.
 - Completed feature integration: merge commit `77f8b4c`.
 - Prior handoff document: commit `7de00c0`.
 - Feature branch tip: `01ea321` (`fix: reconcile demo week and auction truth`).
 - The full implementation range is visible with
   `git log --oneline ab5e592..main`.
-- This handoff is intentionally a documentation-only follow-up.
-- The product has not been renamed. The requested CoralSeller rename is left to
-  the final Claude Code pass.
+- This handoff accompanies the final display-only CoralSeller rename; no
+  workflow, persistence, task-ID, or synthetic-story behavior changed in that
+  finalization.
+- The public display name is CoralSeller. Internal `reef-*` identifiers remain
+  unchanged intentionally to avoid orphaning deployed Trigger.dev tasks or
+  invalidating deterministic fixture/session contracts.
 - No TIA Coral repository file, service, theme, or workflow was touched. Existing
-  Reef Command copy and provenance notes still name TIA Coral; review and remove
-  those references during the owner-requested rename/separation pass.
+  provenance notes credit TIA Coral only as business inspiration and pair that
+  credit with explicit synthetic-data boundaries.
 
 ## What changed
 
@@ -210,18 +201,14 @@ waits for their completion, and inserts a non-deduplicated canonical fixture.
 The refreshed reset took 15.6 seconds and returned the browser to Sunday `0/3`.
 Do not reset during the recorded demo.
 
-Important defect: the reset intentionally seeds operational data through
-Saturday 2026-07-25 so every selectable day works, but Monday label preparation
-uses the real wall-clock W28 and does not filter orders to the Monday demo
-horizon. The resulting W28 manifest contains W29 auction orders. Inspect
-`src/app/api/demo/reset/route.ts`, `src/lib/synth/reset-postgres.ts`, and
-`src/lib/label-day.ts:buildManifest` together.
+The final audit pinned story surfaces to the demo clock, bounded Monday documents
+and label preparation before `2026-07-23T00:00:00Z`, and made reset aging use the
+synthetic horizon. `labelday-check.ts` now exits non-zero for an incorrect week,
+empty batch, future-cycle order, or chronology violation.
 
 ## Validation completed on the merged feature tree
 
-The following commands were rerun on 2026-07-22. Everything in this block exited
-zero, but `labelday-check.ts` is currently a false green because it prints the
-cycle mismatch without asserting it; see the findings immediately below.
+The following commands passed on the audited baseline on 2026-07-22:
 
 ```text
 npx tsc --noEmit
@@ -241,6 +228,7 @@ npx tsx scripts/doa-resolution-check.ts
 npx tsx scripts/ch-verify.ts
 npx tsx scripts/report-check.ts
 npx tsx scripts/tools-check.ts
+npx tsx scripts/agent-check.ts  # 10/10 twice consecutively
 ```
 
 The production build compiled, typechecked, and generated all 15 routes. The only
@@ -256,15 +244,11 @@ Live ClickHouse verification passed. Representative refreshed query times were
 `windowFunnel`. The last complete historical verification cycle was
 2026-07-09 through 2026-07-16.
 
-Checks with findings:
-
-- `npx tsx scripts/agent-check.ts`: the credential works, but both refreshed
-  runs scored 9/10 because the generic merge probe omits the day required by
-  `scanMerges`. All other routing, component, count-integrity, auction-phase,
-  no-fabrication, and human-only money probes passed.
-- `npx tsx scripts/labelday-check.ts`: the query completed, but the W28 manifest
-  contained W29 auction orders after reset. Treat this as a failed business
-  invariant, even though the script currently only prints data and exits zero.
+Final audit evidence also includes a simulated Jul-26 clock with the same
+5-candidate / 10-order / 13-coral / $1,473.65 story, an exact canonical W29
+ClickHouse fixture, 1,973,931 events, and a live four-workflow E2E. The former
+agent-probe and label-chronology failures were independently reproduced before
+their fixes and passed after them.
 
 Local `tsx` scripts initially received an `EPERM` error when their IPC socket was
 run inside a restricted sandbox. They passed when executed normally. That was a
@@ -296,12 +280,11 @@ process.
 ## High-risk logic for Claude Code to audit
 
 1. `scripts/agent-check.ts`, `src/trigger/reef-chat.ts`, and
-   `src/lib/agent-config.ts`: reconcile the generic merge probe with the
-   synthetic-day marker that `MerchantChat` adds. Require repeated 10/10 results,
-   not one lucky run.
+   `src/lib/agent-config.ts`: verify the generic merge probe retains the same
+   synthetic-day marker that `MerchantChat` adds. Require repeated 10/10 results.
 2. `src/app/api/demo/reset/route.ts`, `src/lib/synth/reset-postgres.ts`, and
-   `src/lib/label-day.ts`: prevent Monday W28 label approval from including
-   future W29 auction orders while preserving the selectable Saturday demo.
+   `src/lib/label-day.ts`: verify Monday W28 label approval remains bounded away
+   from future W29 auction orders while preserving the selectable Saturday demo.
 3. `src/trigger/reef-chat.ts` and `src/lib/agent-config.ts`: required
    `chat.agent()` use, tool routing, provider recovery, step limit, component-only
    answer contract, and secret handling.
@@ -341,42 +324,37 @@ Postgres advisory-lock protection.
 - Run progress uses polling rather than Trigger.dev Realtime.
 - Anthropic is the only configured agent provider; it is healthy in the refreshed
   audit but has no fallback.
-- The advertised agent regression gate currently scores 9/10 because its generic
-  merge probe omits required UI day context.
-- Monday's label manifest can include future-cycle auction orders after reset.
 - Reset requires ClickHouse mutation permission and is too slow for an on-camera
   recovery.
 - A small set of unsupported actions intentionally returns `501`.
 - External ClickHouse/Trigger/provider connectivity can still introduce demo
   latency despite bounded read retries.
-- Naming is inconsistent by design for now; the owner requested that Claude Code
-  perform the later rename.
-- README/AGENTS claims such as “five live-store reads,” “4/4” recovery scenarios,
-  and a passing 10-probe agent gate are stale relative to the current tool set,
-  five recovery scenarios, and refreshed 9/10 result.
+- `npm audit --omit=dev` currently reports 27 production-tree advisories
+  (0 critical, 6 high). The high findings are in Next/Sharp and Trigger.dev's
+  Socket.IO/WebSocket transitive tree; the offered fixes require unsafe
+  major-version changes or a Trigger.dev downgrade, so no submission-day
+  dependency churn was applied. Practical exposure is reduced because this is a
+  synthetic hackathon demo with no untrusted image-upload surface, but a
+  post-submission dependency upgrade should be the first security task.
+- The public name is CoralSeller while internal `reef-*` identifiers remain for
+  deployment and data compatibility; this is deliberate and invisible to users.
 
 ## Recommended final audit order
 
-1. Fix the agent-check day-context mismatch and require at least two consecutive
-   10/10 runs.
-2. Fix the W28 label manifest so it cannot contain W29 orders. Add an asserting
-   cycle-boundary check; the current print-only script must fail non-zero on a
-   mismatch.
-3. Read `README.md`, `AGENTS.md`, `src/trigger/reef-chat.ts`, and
+1. Read `README.md`, `AGENTS.md`, `src/trigger/reef-chat.ts`, and
    `src/lib/agent-config.ts` to verify requirement claims match code.
-4. Inspect `db/clickhouse/0001_events.sql`, `src/lib/store/clickhouse.ts`, and
+2. Inspect `db/clickhouse/0001_events.sql`, `src/lib/store/clickhouse.ts`, and
    `src/lib/tools.ts` to confirm ClickHouse is central and queries are correct.
-5. Inspect the high-risk areas above, especially reset/delete scope, chronology,
+3. Inspect the high-risk areas above, especially reset/delete scope, chronology,
    and retry/idempotency boundaries.
-6. Run the full validation ledger exactly as listed.
-7. Start Trigger.dev first, then Next.js, perform one reset, and execute both
+4. Run the full validation ledger exactly as listed, including two consecutive
+   10/10 agent runs and the asserting label chronology check.
+5. Start Trigger.dev first, then Next.js, perform one reset, and execute both
    recommended workflows in a real browser.
-8. Verify the corresponding Trigger.dev runs, Postgres state, and ClickHouse
+6. Verify the corresponding Trigger.dev runs, Postgres state, and ClickHouse
    events—not just the rendered UI.
-9. Check `git status`, the public repository license, secret scanning, deploy
+7. Check `git status`, the public repository license, secret scanning, deploy
    configuration, and the final public GitHub URL.
-10. Perform the requested product rename last, then rerun typecheck, build, agent
-   probes, reset, and both video workflows.
 
 ## Strongest two-workflow demo story
 
@@ -396,10 +374,8 @@ $1,473.65. Continue into Monday's shipping-document and label review, then appro
 the Trigger.dev waitpoint. Show the Postgres shipping mutation and the matching
 ClickHouse `label_purchased` events.
 
-This remains the strongest story only after the W28/W29 label-manifest defect is
-fixed. Until then, stop the video at the read-only shipping documents or choose
-the Wednesday DOA approval as the second executable workflow; never display or
-approve a chronologically impossible carrier manifest.
+The W28/W29 label-manifest defect is fixed and guarded by a non-zero asserting
+check, so this complete workflow is safe to record after the final release gate.
 
 Together, these workflows tell a better story than using two customer-service
 exceptions. The first proves autonomous urgency; the second proves the core
@@ -432,9 +408,9 @@ Official requirements: <https://triggerdev.clickhouse.com/>
 
 ## Candid prize assessment
 
-The restored agent makes this a credible finalist-quality project again, but the
-failing advertised gate and future-order label manifest mean it is not yet
-submission-ready or a clear grand-prize favorite.
+The independent post-fix assessment rates CoralSeller as a genuine contender,
+not a lock. Engineering blockers are resolved; presentation quality, public-repo
+availability, and the five-minute video are now the dominant variables.
 
 Strengths:
 
@@ -450,10 +426,6 @@ Strengths:
 
 Weaknesses that can cost the prize:
 
-- The required `chat.agent()` experience now works, but a judge following
-  `AGENTS.md` will immediately see the 9/10 gate failure.
-- The Monday money-gated demo can expose future W29 orders inside a W28 manifest,
-  undermining the project's strongest integrity claim.
 - The seven-day breadth can look like a scripted dashboard rather than one
   indispensable product. The video needs two decisive workflows, not a feature
   tour.
@@ -465,17 +437,17 @@ Weaknesses that can cost the prize:
   Trigger run and ClickHouse evidence briefly on screen.
 - Polling, single-tenant state, no full refresh recovery, and provider fragility
   expose hackathon-grade edges.
+- A strict repository security audit will surface the unresolved transitive
+  dependency advisories above. Do not claim a clean `npm audit`; explain the
+  tested synthetic-demo boundary and the deliberate decision not to risk a
+  major-version migration immediately before submission.
 - A long founder intro and catalog-style closing would spend scarce time without
   proving either sponsor technology.
 
 Subjective odds, because the field size and judge preferences are unknown:
 
-- Current state with working API but the two unresolved audit failures: roughly
-  5–15% grand-prize chance.
-- After fixing both defects, passing the gate repeatedly, rehearsing the exact
-  route, and visibly proving both sponsor technologies: roughly 20–35%
-  grand-prize chance, 35–55% chance of any judged prize, and 45–65% chance of
-  the OLTP + OLAP bonus.
+- Independent post-fix ranges: 55–75% finalist chance, 40–60% chance of any
+  prize, 45–65% chance of the OLTP + OLAP bonus, and 15–30% grand-prize chance.
 
 Those ranges are an informed judgment, not a statistical forecast. The project’s
 largest upside is the combination of an authentic niche operator story and

@@ -1,5 +1,5 @@
 /**
- * Restore the deterministic Postgres world used by Reef Command.
+ * Restore the deterministic Postgres world used by CoralSeller.
  *
  *   npx tsx scripts/pg-seed.ts --weeks 10 --wipe
  */

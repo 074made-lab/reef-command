@@ -1,10 +1,9 @@
-# 🪸 Reef Command
+# 🪸 CoralSeller
 
 **Created by Xin Lin · [GitHub](https://github.com/074made-lab) ·
 [LinkedIn](https://www.linkedin.com/in/xin-lin-xl/).**
 
-**One week of a live-coral business, run from one chat window — where the
-answer is never a wall of text.**
+**Daily AI Assistant for Multi-Channel Coral Businesses**
 
 Ask about the week and you don't get paragraphs; you get a live auction board,
 two orders visibly merging into one shipping box, a reef-health report with
@@ -18,24 +17,24 @@ Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme
 > [TIA Coral, a Long Island live coral store](https://www.tiacoral.com/).**
 > TIA Coral serves reef keepers through its Deer Park, New York store and its
 > online collections of WYSIWYG, SPS, LPS, soft corals, and other live corals.
-> Reef Command turns that physical-commerce context into a public-safe software
+> CoralSeller turns that physical-commerce context into a public-safe software
 > experiment. Every customer, order, amount, workflow rule, and message in this
 > repository is an invented synthetic fixture. See
 > [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ---
 
-## Why Reef Command exists
+## Why CoralSeller exists
 
 A physical store does not run inside one system. Customer messages, auction
 activity, online orders, shipping decisions, staff handoffs, and reporting all
-move at different speeds. Before Reef Command, each tool could show one piece
+move at different speeds. Before CoralSeller, each tool could show one piece
 of the business, but no shared operating layer could connect the work as it
 happened.
 
 **ClickHouse gives the store a fast, shared view of operational events.
 Trigger.dev turns those events into durable workflows with automation, visible
-progress, and human approval where authority matters.** Reef Command brings
+progress, and human approval where authority matters.** CoralSeller brings
 both into one conversational cockpit, so a question can become live evidence,
 a staff task, an approval, and an auditable outcome without losing context
 between systems.
@@ -74,7 +73,7 @@ problems are highly time-sensitive. The system must identify and escalate these
 issues quickly so staff can respond before coral health deteriorates further.
 A missed customer change can also become wasted packing work, an avoidable
 carrier charge, or an incorrect shipment.
-Reef Command demonstrates how a multi-channel merchant can automate, visualize,
+CoralSeller demonstrates how a multi-channel merchant can automate, visualize,
 audit, and **gate** that coordination without publishing TIA Coral's methods.
 
 ## How it uses both tools (materially, not decoratively)
@@ -140,7 +139,7 @@ audit trace. Replays are idempotent: they do not send another SMS, void twice,
 or duplicate the ClickHouse events.
 
 **Impact:** a late fulfillment change can otherwise become a mis-shipped live
-order, wasted packing work, and an avoidable carrier charge. Reef Command turns
+order, wasted packing work, and an avoidable carrier charge. CoralSeller turns
 that fragmented handoff into one observable loop that acts before the owner
 opens chat. For a small physical-commerce team, the practical outcome is fewer
 avoidable fees, fewer incorrect shipments, faster customer handling, and one
@@ -303,7 +302,7 @@ is built to migrate off hackathon infrastructure onto the owner's own stack
 
 ## Where it goes next
 
-Reef Command is designed to become a protected operating surface for the whole
+CoralSeller is designed to become a protected operating surface for the whole
 store, not an owner-only demo. The next product layer is:
 
 - a mobile-first staff experience that works where packing, customer service,
@@ -332,9 +331,9 @@ src/components/specs/   one renderer per component kind — the "answers are com
 scripts/                init / backfill / seed + the live verification harnesses
 ```
 
-## The real business behind Reef Command
+## The real business behind CoralSeller
 
-Reef Command began with the operational reality of running
+CoralSeller began with the operational reality of running
 [TIA Coral, an online live coral store in Long Island, New York](https://www.tiacoral.com/).
 TIA Coral offers collector corals, WYSIWYG pieces, aquacultured SPS, LPS,
 Goniopora, Zoanthids, soft corals, and mushrooms, with local pickup and

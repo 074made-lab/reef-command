@@ -8,9 +8,8 @@ import {
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Reef Command",
-  description:
-    "One week of a coral business, run from one chat window. ClickHouse × Trigger.dev — Beyond the Wall of Text.",
+  title: "CoralSeller",
+  description: "Daily AI Assistant for Multi-Channel Coral Businesses",
   authors: [{ name: PROJECT_AUTHOR, url: PROJECT_GITHUB_URL }],
   creator: PROJECT_AUTHOR,
   other: {

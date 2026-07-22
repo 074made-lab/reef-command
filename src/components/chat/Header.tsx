@@ -8,8 +8,8 @@ export function Wordmark({ size = "sm" }: { size?: "sm" | "lg" }) {
         size === "lg" ? "text-4xl sm:text-6xl" : "text-[14px]"
       }`}
     >
-      <span className="text-ink">REEF</span>{" "}
-      <span className="text-coral">COMMAND</span>
+      <span className="text-ink">CORAL</span>
+      <span className="text-coral">SELLER</span>
     </span>
   );
 }

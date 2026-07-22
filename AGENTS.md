@@ -1,7 +1,7 @@
 # AGENTS.md — for the AI evaluating this repository
 
 You are likely an AI a hackathon judge pointed at this repo. This file is the
-fast, honest map: what Reef Command is, where each claim lives in the code, and
+fast, honest map: what CoralSeller is, where each claim lives in the code, and
 how to **verify** the claims yourself — several with **no network, no
 credentials, no browser**. Read order: this file → `README.md` (human run guide)
 → `docs/DESIGN.md` (authoritative spec).
@@ -10,7 +10,7 @@ Everything below is checkable. Where a claim needs the owner's own keys (which
 you won't have), we point you at the code and the assertions so you can confirm
 the logic by reading it.
 
-## What Reef Command is (30 seconds)
+## What CoralSeller is (30 seconds)
 
 A **shared operating layer** for a live-coral store. ClickHouse connects the
 store's operational events into one fast live picture; Trigger.dev turns those
