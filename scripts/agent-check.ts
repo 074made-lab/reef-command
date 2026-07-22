@@ -92,8 +92,13 @@ const PROBES: Probe[] = [
     check: (c) => (called(c, "revenuePulse") && has(c, "metric_row") ? null : "wrong tool/component"),
   },
   {
-    q: "Any orders I can merge into one box?",
-    expect: "scanMerges → merge_card",
+    // Every real /merchant message carries the day marker (MerchantChat.submit
+    // wraps ALL sends in withDemoDayContext, defaulting to Sunday) — a
+    // marker-less merge ask is a transport state the UI cannot produce, and the
+    // model correctly asks "which day?" for it. The probe must exercise the
+    // production contract, not an unreachable one.
+    q: "[SYNTHETIC DEMO TODAY: SUNDAY — ADD-ONS + ANNOUNCEMENT]\nAny orders I can merge into one box?",
+    expect: "scanMerges → merge_card (day from the transport's synthetic marker)",
     check: (c) => (called(c, "scanMerges") && has(c, "merge_card") ? null : "wrong tool/component"),
   },
   {
