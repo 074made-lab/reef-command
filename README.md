@@ -5,7 +5,8 @@
 
 **Daily AI Assistant for Multi-Channel Coral Businesses**
 
-Built from a real 10-year coral business. It plans work, and automates operations. Every day, every task, one chat..
+Built from ten years of running a real coral business. CoralSeller plans the
+work and automates operations—every day, every task, one chat.
 
 Built for the **ClickHouse × Trigger.dev Virtual Summer Hackathon 2026** (theme:
 *Beyond the Wall of Text*).
